@@ -69,65 +69,71 @@ function stopServer() {
 }
 
 // ---- 启动 ----
-function startServer(callback) {
+function startServer() {
   log('  ⏳ 正在启动 ReaderQ 服务...', 'B');
 
   const dataDir = join(ROOT_DIR, 'data');
   if (!existsSync(dataDir)) mkdirSync(dataDir, { recursive: true });
 
-  const child = spawn('npm', ['run', 'dev'], {
+  const logFile = join(dataDir, 'server.log');
+
+  // 使用 shell 的 nohup 启动，避免 detached+pipe IO 阻塞问题
+  const child = spawn('sh', ['-c', `nohup npm run dev > "${logFile}" 2>&1 &\necho $!`], {
     cwd: ROOT_DIR,
-    detached: true,
     stdio: ['ignore', 'pipe', 'pipe'],
   });
 
-  writeFileSync(PID_FILE, String(child.pid));
+  let pidStr = '';
+  child.stdout.on('data', (buf) => { pidStr += buf.toString(); });
 
-  let done = false;
-  const finish = () => {
-    if (done) return;
-    done = true;
-    child.stdout.removeAllListeners();
-    child.stderr.removeAllListeners();
-    child.unref();
-    if (callback) callback();
-  };
-
-  child.stdout.on('data', (buf) => {
-    if (buf.toString().includes('Ready') && !done) {
-      log(`  ✅ 服务已启动 (PID: ${child.pid})`, 'G');
-      log(`  ✅ 访问地址: http://localhost:${PORT}`, 'G');
-      log('');
-      finish();
-      process.exit(0);
-    }
-  });
-
-  child.stderr.on('data', (buf) => {
-    const s = buf.toString();
-    if (s.includes('EADDRINUSE') && !done) {
-      log(`  ✗ 端口 ${PORT} 被占用，启动失败`, 'E');
-      done = true;
-      child.kill();
+  child.on('close', () => {
+    const pid = parseInt(pidStr.trim(), 10);
+    if (!pid || isNaN(pid)) {
+      log('  ✗ 启动失败：无法获取 PID', 'E');
       process.exit(1);
     }
+
+    writeFileSync(PID_FILE, String(pid));
+
+    // 轮询日志文件等待 "Ready"
+    let attempts = 0;
+    const maxAttempts = 30;
+    const poll = setInterval(() => {
+      attempts++;
+      try {
+        if (existsSync(logFile)) {
+          const content = readFileSync(logFile, 'utf-8');
+          if (content.includes('Ready')) {
+            clearInterval(poll);
+            log(`  ✅ 服务已启动 (PID: ${pid})`, 'G');
+            log(`  ✅ 访问地址: http://localhost:${PORT}`, 'G');
+            log(`  ✅ 日志文件: data/server.log`, 'G');
+            log('');
+            process.exit(0);
+          }
+          if (content.includes('EADDRINUSE')) {
+            clearInterval(poll);
+            log(`  ✗ 端口 ${PORT} 被占用，启动失败`, 'E');
+            process.exit(1);
+          }
+        }
+      } catch { /* ignore */ }
+
+      if (attempts >= maxAttempts) {
+        clearInterval(poll);
+        log(`  ✅ 服务正在后台启动 (PID: ${pid})`, 'G');
+        log(`  ✅ 请稍候访问: http://localhost:${PORT}`, 'G');
+        log(`  ✅ 日志文件: data/server.log`, 'G');
+        log('');
+        process.exit(0);
+      }
+    }, 500);
   });
 
   child.on('error', (err) => {
     log(`  ✗ 启动失败: ${err.message}`, 'E');
     process.exit(1);
   });
-
-  // 超时兜底
-  setTimeout(() => {
-    if (!done) {
-      log(`  ✅ 服务正在后台启动 (PID: ${child.pid})`, 'G');
-      log(`  ✅ 请稍候访问: http://localhost:${PORT}`, 'G');
-      log('');
-      finish();
-      process.exit(0);
-    }
-  }, 10000);
 }
 
 // ---- 状态 ----
