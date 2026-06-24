@@ -36,7 +36,7 @@ export default function Sidebar() {
       <div className="sidebar-header">
         {!sidebarCollapsed && (
           <div className="sidebar-logo">
-            <div className="sidebar-logo-icon">R</div>
+            <img src="/logo.png" alt="ReaderQ Logo" className="sidebar-logo-img" />
             <span>ReaderQ</span>
           </div>
         )}

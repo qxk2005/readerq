@@ -278,6 +278,13 @@ textarea:focus {
   font-weight: 700;
 }
 
+.sidebar-logo-img {
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-md);
+  object-fit: cover;
+}
+
 .sidebar-toggle {
   width: 28px;
   height: 28px;

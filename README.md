@@ -1,6 +1,12 @@
-# ReaderQ 📖
+<p align="center">
+  <img src="public/logo.png" width="120" height="120" style="border-radius: 24px;" alt="ReaderQ Logo">
+</p>
 
-> Readwise Reader 开源复刻版 — 智能阅读助手
+<h1 align="center">ReaderQ</h1>
+
+<p align="center">
+  <strong>Readwise Reader 开源复刻版 — 智能阅读助手</strong>
+</p>
 
 集中管理、标注和消化你的数字阅读内容。使用 Readwise API 连接你的阅读数据，通过 OpenAI 兼容服务器驱动 AI 功能。
 
