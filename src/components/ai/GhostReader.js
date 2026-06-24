@@ -2,7 +2,7 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { useApp } from '@/context/AppContext';
 
 export default function GhostReader() {
-  const { showAiPanel, setShowAiPanel, selectedDoc } = useApp();
+  const { showAiPanel, setShowAiPanel, selectedDoc, updateDocumentLocally } = useApp();
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -10,6 +10,7 @@ export default function GhostReader() {
   const [actionResult, setActionResult] = useState(null);
   const [actionStage, setActionStage] = useState('');
   const [elapsedTime, setElapsedTime] = useState(0);
+  const [isSavingNote, setIsSavingNote] = useState(false);
   const messagesEndRef = useRef(null);
 
   // 快速操作的计时器
@@ -38,6 +39,38 @@ export default function GhostReader() {
       selectedDoc.summary && `摘要: ${selectedDoc.summary}`,
       selectedDoc.html_content && `正文: ${selectedDoc.html_content.substring(0, 4000)}`,
     ].filter(Boolean).join('\n\n');
+  };
+
+  const handleAddToNote = async () => {
+    if (!selectedDoc || !actionResult || typeof actionResult !== 'string') return;
+    setIsSavingNote(true);
+    try {
+      const existingNote = selectedDoc.notes || '';
+      let newNote;
+      if (existingNote.trim() === '') {
+        newNote = actionResult;
+      } else {
+        newNote = `${existingNote.trim()}\n\n---\n\n${actionResult}`;
+      }
+      
+      const res = await fetch(`/api/documents/${selectedDoc.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ notes: newNote })
+      });
+      
+      if (!res.ok) throw new Error('网络请求失败');
+      
+      updateDocumentLocally(selectedDoc.id, { notes: newNote });
+      
+      const originalResult = actionResult;
+      setActionResult('✅ 成功添加到文章备注！');
+      setTimeout(() => setActionResult(originalResult), 1500);
+    } catch (err) {
+      alert('添加备注失败: ' + err.message);
+    } finally {
+      setIsSavingNote(false);
+    }
   };
 
   // AI 快速操作
@@ -252,8 +285,36 @@ export default function GhostReader() {
                 </div>
               </div>
             ) : (
-              <div style={{ whiteSpace: 'pre-wrap', lineHeight: '1.6' }}>
-                {actionResult}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <div style={{ whiteSpace: 'pre-wrap', lineHeight: '1.6' }}>
+                  {actionResult}
+                </div>
+                {typeof actionResult === 'string' && !actionResult.startsWith('✅') && (
+                  <button 
+                    onClick={handleAddToNote}
+                    disabled={isSavingNote}
+                    style={{
+                      alignSelf: 'flex-start',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      padding: '4px 10px',
+                      fontSize: '12px',
+                      color: 'var(--color-text-secondary)',
+                      background: 'var(--color-bg-secondary)',
+                      border: '1px solid var(--color-border)',
+                      borderRadius: 'var(--radius-sm)',
+                      cursor: isSavingNote ? 'not-allowed' : 'pointer',
+                      opacity: isSavingNote ? 0.7 : 1,
+                      transition: 'all 0.2s'
+                    }}
+                    onMouseOver={(e) => { if (!isSavingNote) { e.currentTarget.style.color = 'var(--color-text-primary)'; e.currentTarget.style.borderColor = 'var(--color-text-tertiary)'; } }}
+                    onMouseOut={(e) => { if (!isSavingNote) { e.currentTarget.style.color = 'var(--color-text-secondary)'; e.currentTarget.style.borderColor = 'var(--color-border)'; } }}
+                  >
+                    <span>{isSavingNote ? '⏳' : '📝'}</span>
+                    {isSavingNote ? '添加中...' : '添加到文章备注'}
+                  </button>
+                )}
               </div>
             )}
           </div>
