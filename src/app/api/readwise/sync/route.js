@@ -76,6 +76,9 @@ async function runSync(client, fullSync) {
         const highlightDocs = [];
 
         for (const doc of batchResults) {
+          if (doc.content) {
+            doc.html_content = doc.content;
+          }
           if (doc.category === 'highlight') {
             highlightDocs.push(doc);
           } else {

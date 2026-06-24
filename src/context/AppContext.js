@@ -139,6 +139,7 @@ export function AppProvider({ children }) {
         if (isSyncing) {
           // 如果刚从 syncing 变为 idle/canceled/error，触发文档刷新
           fetchDocuments();
+          fetchTags();
         }
         setIsSyncing(false);
       }
@@ -215,6 +216,37 @@ export function AppProvider({ children }) {
     }
   }, [fetchDocuments]);
 
+  // 批量移动文档
+  const batchMoveDocuments = useCallback(async (ids, location) => {
+    try {
+      // 乐观更新
+      setDocuments(prev => prev.filter(doc => {
+        if (ids.includes(doc.id)) {
+          if (currentView === 'all') return true;
+          if (currentView === location) return true;
+          if (['new', 'later', 'archive', 'feed'].includes(currentView)) return false;
+        }
+        return true;
+      }).map(doc => ids.includes(doc.id) ? { ...doc, location } : doc));
+
+      const res = await fetch('/api/readwise/documents/batch-move', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids, location })
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      
+      // 可以选择是否再调一次 fetchDocuments，但乐观更新通常足够
+      return true;
+    } catch (err) {
+      console.error('批量移动文档失败:', err);
+      // 如果失败可以重刷列表恢复原状
+      fetchDocuments({ page: 1 });
+      throw err;
+    }
+  }, [currentView, fetchDocuments]);
+
   // 切换视图
   const switchView = useCallback((view) => {
     setCurrentView(view);
@@ -239,6 +271,34 @@ export function AppProvider({ children }) {
     setSelectedDoc(null);
   }, []);
 
+  // 局部更新文档信息（避免全量拉取）
+  const updateDocumentLocally = useCallback((id, updates) => {
+    setDocuments(prevDocs => 
+      prevDocs.map(doc => doc.id === id ? { ...doc, ...updates } : doc)
+    );
+    _setSelectedDoc(prev => (prev && prev.id === id ? { ...prev, ...updates } : prev));
+  }, []);
+
+  // 获取所有标签
+  const fetchTags = useCallback(async () => {
+    try {
+      const res = await fetch('/api/tags');
+      const data = await res.json();
+      if (data.tags) {
+        setTags(data.tags);
+      }
+    } catch (err) {
+      console.error('获取标签列表失败:', err);
+    }
+  }, []);
+
+  // 初始化加载
+  useEffect(() => {
+    checkSyncStatus();
+    fetchDocuments();
+    fetchTags();
+  }, [checkSyncStatus, fetchDocuments, fetchTags]);
+
   // 视图变化时重新获取
   useEffect(() => {
     fetchDocuments();
@@ -248,6 +308,7 @@ export function AppProvider({ children }) {
     documents,
     selectedDoc,
     setSelectedDoc,
+    updateDocumentLocally,
     currentView,
     currentCategory,
     currentTag,
@@ -283,6 +344,7 @@ export function AppProvider({ children }) {
     syncData,
     cancelSync,
     saveDocument,
+    batchMoveDocuments,
     switchView,
     switchCategory,
     switchTag,

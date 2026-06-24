@@ -458,3 +458,21 @@ export function clearAllData() {
   });
   transaction();
 }
+
+/**
+ * 批量更新文档分类 (location)
+ */
+export function batchUpdateLocation(ids, location) {
+  if (!ids || ids.length === 0) return;
+  const db = getDatabase();
+  const stmt = db.prepare('UPDATE documents SET location = ?, updated_at = ? WHERE id = ?');
+  const now = new Date().toISOString();
+  
+  const updateMany = db.transaction((docIds) => {
+    for (const id of docIds) {
+      stmt.run(location, now, id);
+    }
+  });
+  
+  updateMany(ids);
+}

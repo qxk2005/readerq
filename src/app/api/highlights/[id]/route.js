@@ -19,10 +19,21 @@ export async function PATCH(request, { params }) {
 
     upsertHighlight(updated);
 
-    // Readwise v2 don't have a simple PUT for highlight update, 
-    // but if syncToReadwise is true, we might re-post it or just warn user.
-    // For now, we update local db. Inline tagging would re-sync if we re-created it,
-    // but readwise api doesn't dedupe perfectly. We will just update locally.
+    // 同步更新到 Readwise (upsert)
+    try {
+      const client = getServerReadwiseClient();
+      const { getCachedDocument } = await import('@/lib/db');
+      const doc = getCachedDocument(updated.document_id);
+      if (doc) {
+        await client.createReadwiseHighlight({
+          ...updated,
+          title: doc.title,
+          source_url: doc.source_url || doc.url,
+        });
+      }
+    } catch (syncError) {
+      console.error('同步更新到 Readwise 失败:', syncError.message);
+    }
     
     return NextResponse.json({ success: true, highlight: updated });
   } catch (error) {

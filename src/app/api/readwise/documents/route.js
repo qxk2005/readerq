@@ -26,7 +26,9 @@ export async function GET(request) {
         const data = await client.listDocuments({ id, withHtmlContent: true });
         const doc = data.results && data.results.find(d => d.id === id);
         if (doc) {
-          if (doc.html_content === undefined || doc.html_content === null) {
+          if (doc.content) {
+            doc.html_content = doc.content;
+          } else if (doc.html_content === undefined || doc.html_content === null) {
             doc.html_content = '';
           }
           upsertDocuments([doc]);

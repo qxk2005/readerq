@@ -6,9 +6,21 @@ import { useTheme } from '@/context/ThemeContext';
 import { formatDate, extractDomain, CATEGORY_LABELS } from '@/lib/utils';
 import { getTextOffset, restoreHighlights } from '@/lib/highlight';
 import GhostReader from '@/components/ai/GhostReader';
+import HighlightEditor from '@/components/HighlightEditor';
+import TagInput from '@/components/TagInput';
 
 export default function ReadingPane() {
-  const { selectedDoc, rightPanelTab, setRightPanelTab, isContentLoading, contentError, fetchDocumentDetails } = useApp();
+  const { 
+    selectedDoc, 
+    rightPanelTab, 
+    setRightPanelTab, 
+    isContentLoading, 
+    contentError, 
+    fetchDocumentDetails, 
+    updateDocumentLocally,
+    tags: allTags 
+  } = useApp();
+  
   const { fontSize, lineHeight, contentWidth, fontFamily } = useTheme();
 
   const [highlights, setHighlights] = useState([]);
@@ -16,8 +28,11 @@ export default function ReadingPane() {
   const [selection, setSelection] = useState(null);
   const [editingHighlight, setEditingHighlight] = useState(null);
   const [editingTags, setEditingTags] = useState(false);
-  const [newTag, setNewTag] = useState('');
+  const [verifyingHlId, setVerifyingHlId] = useState(null);
+  const [verifyStatus, setVerifyStatus] = useState({}); // { [id]: { synced: boolean, message: string } }
   const [docTags, setDocTags] = useState([]);
+  const [docNote, setDocNote] = useState('');
+  const [isSavingDocMetadata, setIsSavingDocMetadata] = useState(false);
   const [highlightsError, setHighlightsError] = useState(null);
   
   // 在渲染阶段同步检测文档切换，瞬间进入 Loading 状态并重置高亮，防止闪烁
@@ -31,11 +46,13 @@ export default function ReadingPane() {
 
   const articleRef = useRef(null);
 
-  // 加载文档的标签
+  // 加载文档的标签和备注
   useEffect(() => {
     if (selectedDoc) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setDocTags(selectedDoc.tags ? Object.keys(selectedDoc.tags) : []);
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setDocNote(selectedDoc.notes || '');
     }
   }, [selectedDoc]);
 
@@ -134,6 +151,7 @@ export default function ReadingPane() {
     if (!selection || !selectedDoc) return;
     
     const newHl = {
+      id: crypto.randomUUID(),
       document_id: selectedDoc.id,
       text: selection.text,
       title: selectedDoc.title,
@@ -159,7 +177,6 @@ export default function ReadingPane() {
         setHighlights([...highlights, data.highlight]);
         // Show edit UI immediately after creation
         setEditingHighlight({ ...data.highlight, rect: selection.rect });
-        fetchDocumentDetails(selectedDoc.id);
       }
     } catch (e) {
       console.error('保存高亮失败', e);
@@ -177,9 +194,6 @@ export default function ReadingPane() {
       if (data.success) {
         setHighlights(highlights.map(h => h.id === id ? data.highlight : h));
         setEditingHighlight(prev => prev ? { ...prev, ...data.highlight } : null);
-        if (updates.color) {
-          fetchDocumentDetails(selectedDoc.id); // re-render colors
-        }
       }
     } catch (e) {
       console.error(e);
@@ -191,8 +205,6 @@ export default function ReadingPane() {
       await fetch(`/api/highlights/${id}`, { method: 'DELETE' });
       setHighlights(highlights.filter(h => h.id !== id));
       setEditingHighlight(null);
-      // 触发重绘，最简单是重新获取文章，或者前端状态重构。此处复用现有的获取机制。
-      fetchDocumentDetails(selectedDoc.id);
     } catch (e) {
       console.error(e);
     }
@@ -313,73 +325,18 @@ export default function ReadingPane() {
         </div>
       )}
 
-      <div style={{ flex: 1, overflowY: 'auto', position: 'relative' }} className="article-scroll-container" id="article-scroll-container">
-        {/* 编辑已有高亮工具栏 */}
-        {editingHighlight && (
-        <div 
-          className="highlight-toolbar" 
-          style={{ 
-            top: editingHighlight.rect.top, 
-            left: editingHighlight.rect.left + editingHighlight.rect.width / 2,
-            flexDirection: 'column',
-            width: '250px'
-          }}
-          onMouseUp={(e) => e.stopPropagation()}
-        >
-          <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%'}}>
-            <span style={{fontSize: '12px', color: 'var(--color-text-secondary)'}}>修改高亮</span>
-            <button className="btn btn-ghost btn-sm" onClick={() => setEditingHighlight(null)}>✕</button>
-          </div>
-          
-          <div style={{display: 'flex', gap: '8px', padding: '4px 0'}}>
-            {['yellow', 'green', 'blue', 'purple', 'red'].map(c => (
-              <button 
-                key={c}
-                className="highlight-color-btn" 
-                style={{
-                  backgroundColor: `var(--highlight-${c})`, 
-                  border: editingHighlight.color === c ? '2px solid var(--color-text-primary)' : '1px solid rgba(0,0,0,0.1)'
-                }} 
-                onClick={() => handleUpdateHighlight(editingHighlight.id, { color: c })} 
-              />
-            ))}
-          </div>
-
-          <textarea 
-            className="input" 
-            placeholder="添加笔记..." 
-            defaultValue={editingHighlight.note || ''}
-            onBlur={(e) => {
-              if (e.target.value !== editingHighlight.note) {
-                handleUpdateHighlight(editingHighlight.id, { note: e.target.value });
-              }
-            }}
-            style={{ width: '100%', minHeight: '60px', marginTop: '8px', padding: '8px', fontSize: '12px' }}
-          />
-
-          <input 
-            className="input" 
-            placeholder="添加标签 (空格分隔)..." 
-            defaultValue={editingHighlight.tags ? Object.keys(editingHighlight.tags).join(' ') : ''}
-            onBlur={(e) => {
-              const tagsArray = e.target.value.split(/\s+/).filter(Boolean);
-              const tagsObj = {};
-              tagsArray.forEach(t => tagsObj[t] = 1);
-              // Simple check if changed
-              const oldTags = Object.keys(editingHighlight.tags || {}).join(' ');
-              const newTags = tagsArray.join(' ');
-              if (oldTags !== newTags) {
-                handleUpdateHighlight(editingHighlight.id, { tags: tagsObj });
-              }
-            }}
-            style={{ width: '100%', marginTop: '8px', padding: '8px', fontSize: '12px' }}
-          />
-
-          <button className="btn btn-ghost btn-sm" style={{color: 'var(--color-danger)', width: '100%', marginTop: '8px'}} onClick={() => handleDeleteHighlight(editingHighlight.id)}>
-            🗑️ 删除高亮
-          </button>
-        </div>
+      {/* 编辑已有高亮工具栏 */}
+      {editingHighlight && (
+        <HighlightEditor 
+          highlight={editingHighlight} 
+          onUpdate={handleUpdateHighlight}
+          onDelete={handleDeleteHighlight}
+          onClose={() => setEditingHighlight(null)}
+          allTags={allTags}
+        />
       )}
+
+      <div style={{ flex: 1, overflowY: 'auto', position: 'relative' }} className="article-scroll-container" id="article-scroll-container">
 
       {/* 阅读头部 */}
       <div className="reading-header">
@@ -647,15 +604,61 @@ export default function ReadingPane() {
           {/* Notebook Tab */}
           {rightPanelTab === 'notebook' && (
             <div style={{ padding: 'var(--space-4)', display: 'flex', flexDirection: 'column', gap: 'var(--space-6)', flex: 1, overflowY: 'auto' }}>
-              {/* Document Note Textarea */}
-              <div>
-                <h3 style={{ fontSize: '11px', fontWeight: '600', color: 'var(--color-text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 'var(--space-3)' }}>Document Note</h3>
-                <textarea
-                  placeholder="Add a document note..."
-                  readOnly
-                  style={{ width: '100%', minHeight: '80px', padding: 'var(--space-3)', fontSize: '13px', borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)', backgroundColor: 'var(--color-bg-primary)', resize: 'vertical', color: 'var(--color-text-primary)' }}
-                  value={selectedDoc.notes || ''}
-                />
+              {/* Document Metadata Form */}
+              <div style={{ backgroundColor: 'var(--color-bg-primary)', padding: 'var(--space-3)', borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)', display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+                <div>
+                  <h3 style={{ fontSize: '11px', fontWeight: '600', color: 'var(--color-text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 'var(--space-2)' }}>Document Note</h3>
+                  <textarea
+                    placeholder="Add a document note..."
+                    style={{ width: '100%', minHeight: '60px', padding: 'var(--space-2)', fontSize: '13px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-border)', backgroundColor: 'var(--color-bg-secondary)', resize: 'vertical', color: 'var(--color-text-primary)' }}
+                    value={docNote}
+                    onChange={(e) => setDocNote(e.target.value)}
+                  />
+                </div>
+                
+                <div>
+                  <h3 style={{ fontSize: '11px', fontWeight: '600', color: 'var(--color-text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 'var(--space-2)' }}>Document Tags</h3>
+                  <TagInput 
+                    value={docTags}
+                    onChange={setDocTags}
+                    allTags={allTags.map(t => t.name)}
+                    placeholder="添加文档标签..."
+                  />
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 'var(--space-2)' }}>
+                  <button 
+                    className="btn btn-primary btn-sm"
+                    disabled={isSavingDocMetadata}
+                    onClick={async () => {
+                      setIsSavingDocMetadata(true);
+                      try {
+                        let finalTags = [...docTags];
+                        if (!finalTags.includes('readerq')) {
+                          finalTags.push('readerq');
+                          setDocTags(finalTags);
+                        }
+                        
+                        await fetch(`/api/documents/${selectedDoc.id}`, {
+                          method: 'PATCH',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ notes: docNote, tags: finalTags })
+                        });
+                        
+                        // Update locally immediately to avoid Readwise API eventual consistency race condition
+                        const tagsObj = {};
+                        finalTags.forEach(t => tagsObj[t] = { name: t });
+                        updateDocumentLocally(selectedDoc.id, { notes: docNote, tags: tagsObj });
+                      } catch (err) {
+                        console.error('Save doc metadata failed:', err);
+                      } finally {
+                        setIsSavingDocMetadata(false);
+                      }
+                    }}
+                  >
+                    {isSavingDocMetadata ? '保存中...' : '保存文档信息'}
+                  </button>
+                </div>
               </div>
 
               {/* Highlights List */}
@@ -692,6 +695,45 @@ export default function ReadingPane() {
                       }}>
                         {hl.text}
                       </div>
+                      
+                      {/* Verify Sync Status */}
+                      <div style={{ marginTop: 'var(--space-2)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        {verifyStatus[hl.id] ? (
+                          <span style={{ fontSize: '11px', color: verifyStatus[hl.id].synced ? 'var(--color-success)' : 'var(--color-danger)' }}>
+                            {verifyStatus[hl.id].synced ? '✅ 已同步至 Readwise' : `❌ ${verifyStatus[hl.id].message}`}
+                          </span>
+                        ) : (
+                          <span style={{ fontSize: '11px', color: 'var(--color-text-tertiary)' }}>未验证同步</span>
+                        )}
+                        
+                        <button 
+                          className="btn btn-ghost btn-sm" 
+                          style={{ fontSize: '11px', padding: '2px 6px', height: 'auto', minHeight: 'auto' }}
+                          disabled={verifyingHlId === hl.id}
+                          onClick={async (e) => {
+                            e.stopPropagation();
+                            setVerifyingHlId(hl.id);
+                            try {
+                              const res = await fetch(`/api/highlights/${hl.id}/verify`);
+                              const data = await res.json();
+                              setVerifyStatus(prev => ({
+                                ...prev,
+                                [hl.id]: data.synced ? { synced: true } : { synced: false, message: data.message || '未找到' }
+                              }));
+                            } catch (err) {
+                              setVerifyStatus(prev => ({
+                                ...prev,
+                                [hl.id]: { synced: false, message: '验证请求失败' }
+                              }));
+                            } finally {
+                              setVerifyingHlId(null);
+                            }
+                          }}
+                        >
+                          {verifyingHlId === hl.id ? '正在验证...' : '验证同步状态'}
+                        </button>
+                      </div>
+
                       {hl.note && (
                         <div style={{ marginTop: 'var(--space-2)', fontSize: '12px', color: 'var(--color-text-secondary)', fontStyle: 'italic' }}>
                           📝 {hl.note}

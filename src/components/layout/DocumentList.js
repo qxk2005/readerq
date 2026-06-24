@@ -4,10 +4,24 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import { useApp } from '@/context/AppContext';
 import { LOCATION_LABELS, CATEGORY_ICONS, formatDate, truncateText, extractDomain } from '@/lib/utils';
 
-function DocumentCard({ doc, isActive, onClick }) {
+function DocumentCard({ doc, isActive, onClick, isSelectionMode, isSelected, onToggleSelect }) {
+  const handleClick = (e) => {
+    if (isSelectionMode) {
+      e.preventDefault();
+      onToggleSelect(doc.id);
+    } else {
+      onClick();
+    }
+  };
+
   return (
-    <div className={`doc-card ${isActive ? 'active' : ''}`} onClick={onClick}>
+    <div className={`doc-card ${isActive ? 'active' : ''} ${isSelected ? 'selected' : ''}`} onClick={handleClick}>
       <div className="doc-card-header">
+        {isSelectionMode && (
+          <div style={{ marginRight: '12px', display: 'flex', alignItems: 'center' }}>
+            <input type="checkbox" checked={isSelected} readOnly style={{ width: '16px', height: '16px', accentColor: 'var(--color-primary)', pointerEvents: 'none' }} />
+          </div>
+        )}
         {doc.image_url ? (
           <img
             className="doc-card-image"
@@ -58,7 +72,11 @@ export default function DocumentList() {
     searchQuery, setSearchQuery,
     isLoading, fetchDocuments,
     page, hasMore, isFetchingMore,
+    batchMoveDocuments
   } = useApp();
+
+  const [isSelectionMode, setIsSelectionMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState(new Set());
 
   const observerTarget = useRef(null);
 
@@ -131,25 +149,41 @@ export default function DocumentList() {
       </div>
 
       <div className="doclist-toolbar">
-        <span>{sortedDocs.length} 篇文档</span>
-        <span style={{ marginLeft: 'auto' }}>
-          排序：
-          <select
-            value={sortBy}
-            onChange={(e) => setSortBy(e.target.value)}
-            style={{
-              background: 'transparent',
-              border: 'none',
-              color: 'inherit',
-              cursor: 'pointer',
-              fontSize: 'inherit',
-            }}
-          >
-            <option value="updated">最近更新</option>
-            <option value="title">标题</option>
-            <option value="progress">阅读进度</option>
-          </select>
-        </span>
+        {isSelectionMode ? (
+          <>
+            <span style={{ cursor: 'pointer', color: 'var(--color-accent)' }} onClick={() => setSelectedIds(new Set(sortedDocs.map(d => d.id)))}>全选</span>
+            <span style={{ marginLeft: '12px', cursor: 'pointer', color: 'var(--color-text-secondary)' }} onClick={() => setSelectedIds(new Set())}>清空</span>
+            <span style={{ marginLeft: '12px' }}>已选 {selectedIds.size} 篇</span>
+            <span style={{ marginLeft: 'auto' }}>
+              <button className="btn btn-ghost btn-sm" onClick={() => { setIsSelectionMode(false); setSelectedIds(new Set()); }}>取消</button>
+            </span>
+          </>
+        ) : (
+          <>
+            <span>{sortedDocs.length} 篇文档</span>
+            <span style={{ marginLeft: '12px', cursor: 'pointer', color: 'var(--color-text-secondary)', fontSize: '12px' }} onClick={() => setIsSelectionMode(true)}>
+              多选
+            </span>
+            <span style={{ marginLeft: 'auto' }}>
+              排序：
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value)}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: 'inherit',
+                  cursor: 'pointer',
+                  fontSize: 'inherit',
+                }}
+              >
+                <option value="updated">最近更新</option>
+                <option value="title">标题</option>
+                <option value="progress">阅读进度</option>
+              </select>
+            </span>
+          </>
+        )}
       </div>
 
       <div className="doclist-content">
@@ -169,6 +203,14 @@ export default function DocumentList() {
                 doc={doc}
                 isActive={selectedDoc?.id === doc.id}
                 onClick={() => setSelectedDoc(doc)}
+                isSelectionMode={isSelectionMode}
+                isSelected={selectedIds.has(doc.id)}
+                onToggleSelect={(id) => {
+                  const newSet = new Set(selectedIds);
+                  if (newSet.has(id)) newSet.delete(id);
+                  else newSet.add(id);
+                  setSelectedIds(newSet);
+                }}
               />
             ))}
             {/* Observer Target for Infinite Scroll */}
@@ -189,6 +231,20 @@ export default function DocumentList() {
           </div>
         )}
       </div>
+
+      {isSelectionMode && selectedIds.size > 0 && (
+        <div className="batch-action-bar" style={{
+          position: 'absolute', bottom: '24px', left: '50%', transform: 'translateX(-50%)',
+          background: 'var(--color-bg-primary)', padding: '8px 16px', borderRadius: '32px',
+          boxShadow: '0 8px 24px rgba(0,0,0,0.2)', display: 'flex', gap: '8px', zIndex: 100,
+          border: '1px solid var(--color-border)', alignItems: 'center'
+        }}>
+          <span style={{ fontSize: '12px', color: 'var(--color-text-secondary)', marginRight: '8px', whiteSpace: 'nowrap' }}>移动到</span>
+          <button className="btn btn-ghost btn-sm" onClick={async () => { await batchMoveDocuments(Array.from(selectedIds), 'new'); setIsSelectionMode(false); setSelectedIds(new Set()); }}>📥 收件箱</button>
+          <button className="btn btn-ghost btn-sm" onClick={async () => { await batchMoveDocuments(Array.from(selectedIds), 'later'); setIsSelectionMode(false); setSelectedIds(new Set()); }}>⏳ 稍后阅读</button>
+          <button className="btn btn-ghost btn-sm" onClick={async () => { await batchMoveDocuments(Array.from(selectedIds), 'archive'); setIsSelectionMode(false); setSelectedIds(new Set()); }}>🗄️ 归档</button>
+        </div>
+      )}
     </div>
   );
 }
