@@ -1,5 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { useApp } from '@/context/AppContext';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 export default function GhostReader() {
   const { showAiPanel, setShowAiPanel, selectedDoc, updateDocumentLocally } = useApp();
@@ -286,8 +288,8 @@ export default function GhostReader() {
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                <div style={{ whiteSpace: 'pre-wrap', lineHeight: '1.6' }}>
-                  {actionResult}
+                <div className="markdown-body" style={{ lineHeight: '1.6', fontSize: 'var(--text-sm)', wordBreak: 'break-word' }}>
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{actionResult}</ReactMarkdown>
                 </div>
                 {typeof actionResult === 'string' && !actionResult.startsWith('✅') && (
                   <button 
@@ -360,6 +362,7 @@ export default function GhostReader() {
         {/* 聊天消息 */}
         <div className="chat-messages">
           {/* 微动画 CSS 注入 */}
+          {/* 微动画和 Markdown CSS 注入 */}
           <style>{`
             @keyframes spin-loading {
               0% { transform: rotate(0deg); }
@@ -369,6 +372,22 @@ export default function GhostReader() {
               0%, 100% { opacity: 0.6; }
               50% { opacity: 1; }
             }
+            .markdown-body p { margin-bottom: 0.8em; margin-top: 0; }
+            .markdown-body p:last-child { margin-bottom: 0; }
+            .markdown-body ul, .markdown-body ol { margin-left: 1.5em; margin-bottom: 0.8em; margin-top: 0; padding-left: 0; }
+            .markdown-body li { margin-bottom: 0.3em; }
+            .markdown-body pre { background: var(--color-bg-secondary); padding: 8px; border-radius: 4px; overflow-x: auto; font-family: monospace; font-size: 0.9em; margin-top: 0; margin-bottom: 0.8em; }
+            .markdown-body code { background: var(--color-bg-secondary); padding: 2px 4px; border-radius: 3px; font-family: monospace; font-size: 0.9em; }
+            .markdown-body h1, .markdown-body h2, .markdown-body h3, .markdown-body h4 { margin-top: 1em; margin-bottom: 0.5em; font-weight: 600; line-height: 1.2; }
+            .markdown-body h1 { font-size: 1.5em; }
+            .markdown-body h2 { font-size: 1.3em; }
+            .markdown-body h3 { font-size: 1.1em; }
+            .markdown-body blockquote { border-left: 3px solid var(--color-border); margin: 0 0 0.8em 0; padding-left: 1em; color: var(--color-text-secondary); }
+            .markdown-body a { color: var(--color-accent); text-decoration: none; }
+            .markdown-body a:hover { text-decoration: underline; }
+            .markdown-body table { border-collapse: collapse; width: 100%; margin-bottom: 0.8em; }
+            .markdown-body th, .markdown-body td { border: 1px solid var(--color-border); padding: 6px 8px; }
+            .markdown-body th { background: var(--color-bg-secondary); font-weight: 600; }
           `}</style>
 
           {messages.length === 0 && !actionResult && (
@@ -387,7 +406,10 @@ export default function GhostReader() {
                   <span>🤖 GhostReader 正在思考...</span>
                 </div>
               ) : (
-                msg.content
+                <div className="markdown-body" style={{ lineHeight: '1.6', fontSize: 'var(--text-sm)', wordBreak: 'break-word' }}>
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
+                  {msg.isStreaming && <span style={{ display: 'inline-block', width: '8px', height: '16px', background: 'var(--color-accent)', animation: 'pulse-think 1s infinite', marginLeft: '4px', verticalAlign: 'middle' }} />}
+                </div>
               )}
             </div>
           ))}
