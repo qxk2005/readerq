@@ -16,7 +16,11 @@ export function AppProvider({ children }) {
   const [isLoading, setIsLoading] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncError, setSyncError] = useState(null);
-  const [showAiPanel, setShowAiPanel] = useState(false);
+  const [rightPanelTab, setRightPanelTab] = useState('notebook'); // 'info', 'notebook', 'chat'
+  
+  // 兼容现有的 showAiPanel 逻辑
+  const showAiPanel = rightPanelTab === 'chat';
+  const setShowAiPanel = (show) => setRightPanelTab(show ? 'chat' : 'notebook');
   const [showCommandPalette, setShowCommandPalette] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showAddUrl, setShowAddUrl] = useState(false);
@@ -179,6 +183,8 @@ export function AppProvider({ children }) {
     setShowAiPanel,
     showCommandPalette,
     setShowCommandPalette,
+    rightPanelTab,
+    setRightPanelTab,
     showSettings,
     setShowSettings,
     showAddUrl,

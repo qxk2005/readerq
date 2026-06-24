@@ -7,7 +7,7 @@ import Sidebar from '@/components/layout/Sidebar';
 import DocumentList from '@/components/layout/DocumentList';
 import ReadingPane from '@/components/layout/ReadingPane';
 import CommandPalette from '@/components/layout/CommandPalette';
-import GhostReader from '@/components/ai/GhostReader';
+
 import SettingsModal from '@/components/settings/SettingsModal';
 import AddUrlModal from '@/components/ui/AddUrlModal';
 
@@ -86,7 +86,6 @@ export default function HomePage() {
         <Sidebar />
         <DocumentList />
         <ReadingPane />
-        {showAiPanel && <GhostReader />}
       </div>
 
       {/* 同步状态通知 */}

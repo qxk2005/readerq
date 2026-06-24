@@ -80,6 +80,7 @@ function initSchema(db) {
       location_start INTEGER,
       location_end INTEGER,
       created_at TEXT,
+      tags_json TEXT DEFAULT '{}',
       FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE CASCADE
     );
 
@@ -98,6 +99,15 @@ function initSchema(db) {
     CREATE INDEX IF NOT EXISTS idx_documents_updated_at ON documents(updated_at);
     CREATE INDEX IF NOT EXISTS idx_highlights_document_id ON highlights(document_id);
   `);
+
+  try {
+    const tableInfo = db.prepare('PRAGMA table_info(highlights)').all();
+    if (!tableInfo.find(c => c.name === 'tags_json')) {
+      db.prepare("ALTER TABLE highlights ADD COLUMN tags_json TEXT DEFAULT '{}'").run();
+    }
+  } catch (e) {
+    console.error('Migration error (highlights.tags_json):', e);
+  }
 }
 
 /**
@@ -106,7 +116,7 @@ function initSchema(db) {
 export function upsertDocument(doc) {
   const db = getDatabase();
   const stmt = db.prepare(`
-    INSERT OR REPLACE INTO documents
+    INSERT INTO documents
     (id, url, source_url, title, author, source, category, location,
      site_name, word_count, reading_time, created_at, updated_at,
      published_date, summary, notes, image_url, parent_id,
@@ -118,6 +128,32 @@ export function upsertDocument(doc) {
      @published_date, @summary, @notes, @image_url, @parent_id,
      @reading_progress, @first_opened_at, @last_opened_at, @saved_at,
      @last_moved_at, @html_content, @tags_json, @synced_at)
+    ON CONFLICT(id) DO UPDATE SET
+      url = excluded.url,
+      source_url = excluded.source_url,
+      title = excluded.title,
+      author = excluded.author,
+      source = excluded.source,
+      category = excluded.category,
+      location = excluded.location,
+      site_name = excluded.site_name,
+      word_count = excluded.word_count,
+      reading_time = excluded.reading_time,
+      created_at = excluded.created_at,
+      updated_at = excluded.updated_at,
+      published_date = excluded.published_date,
+      summary = excluded.summary,
+      notes = excluded.notes,
+      image_url = excluded.image_url,
+      parent_id = excluded.parent_id,
+      reading_progress = excluded.reading_progress,
+      first_opened_at = excluded.first_opened_at,
+      last_opened_at = excluded.last_opened_at,
+      saved_at = excluded.saved_at,
+      last_moved_at = excluded.last_moved_at,
+      html_content = excluded.html_content,
+      tags_json = excluded.tags_json,
+      synced_at = excluded.synced_at
   `);
 
   stmt.run({
@@ -298,9 +334,89 @@ export function upsertHighlight(highlight) {
   const db = getDatabase();
   db.prepare(`
     INSERT OR REPLACE INTO highlights
-    (id, document_id, text, note, color, location_start, location_end, created_at)
-    VALUES (@id, @document_id, @text, @note, @color, @location_start, @location_end, @created_at)
-  `).run(highlight);
+    (id, document_id, text, note, color, location_start, location_end, created_at, tags_json)
+    VALUES (@id, @document_id, @text, @note, @color, @location_start, @location_end, @created_at, @tags_json)
+  `).run({
+    ...highlight,
+    tags_json: JSON.stringify(highlight.tags || {})
+  });
+}
+
+/**
+ * 批量保存高亮
+ */
+export function upsertHighlights(highlights) {
+  const db = getDatabase();
+  const transaction = db.transaction((hlList) => {
+    for (const hl of hlList) {
+      upsertHighlight(hl);
+    }
+  });
+  transaction(highlights);
+}
+
+/**
+ * 将 Readwise API v3 返回的 highlight 类型文档转换为本地 highlights 表格式
+ * Readwise Reader 中 highlights 以独立文档形式存在，带有 parent_id 指向父文档
+ *
+ * 经 API 实测，v3 highlight 文档的实际字段：
+ * - content: 字符串类型，包含高亮文本（title 和 summary 通常为空）
+ * - notes: 用户备注
+ * - tags: 标签对象 (v3 格式: { "tag_name": tag_id })
+ * - 没有 highlight_color / color 字段
+ */
+export function convertReadwiseDocToHighlight(doc) {
+  // 高亮文本内容：
+  // v3 API 中 content 是字符串类型，直接包含高亮文本
+  // title 和 summary 通常为空
+  let text = '';
+  if (typeof doc.content === 'string') {
+    text = doc.content;
+  } else if (doc.content?.text) {
+    text = doc.content.text;
+  }
+  // 回退到 summary/title
+  if (!text) {
+    text = doc.summary || doc.title || '';
+  }
+
+  // v3 API 不提供颜色信息，使用默认值
+  const color = 'yellow';
+
+  // 标签：Readwise v3 的 tags 是 { "tag_name": tag_id } 格式
+  const tags = doc.tags || {};
+
+  return {
+    id: doc.id,
+    document_id: doc.parent_id,
+    text: text,
+    note: doc.notes || '',
+    color: color,
+    location_start: null,
+    location_end: null,
+    created_at: doc.created_at || new Date().toISOString(),
+    tags: tags,
+  };
+}
+
+/**
+ * 获取单个高亮
+ */
+export function getHighlight(id) {
+  const db = getDatabase();
+  const hl = db.prepare('SELECT * FROM highlights WHERE id = ?').get(id);
+  if (hl) {
+    hl.tags = JSON.parse(hl.tags_json || '{}');
+  }
+  return hl;
+}
+
+/**
+ * 删除高亮
+ */
+export function deleteHighlight(id) {
+  const db = getDatabase();
+  db.prepare('DELETE FROM highlights WHERE id = ?').run(id);
 }
 
 /**
@@ -308,5 +424,9 @@ export function upsertHighlight(highlight) {
  */
 export function getDocumentHighlights(documentId) {
   const db = getDatabase();
-  return db.prepare('SELECT * FROM highlights WHERE document_id = ? ORDER BY location_start').all(documentId);
+  const highlights = db.prepare('SELECT * FROM highlights WHERE document_id = ? ORDER BY location_start').all(documentId);
+  return highlights.map(h => ({
+    ...h,
+    tags: JSON.parse(h.tags_json || '{}')
+  }));
 }

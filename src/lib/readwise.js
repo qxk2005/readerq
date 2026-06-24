@@ -128,10 +128,17 @@ class ReadwiseAPI {
    * 更新文档
    */
   async updateDocument(id, updates) {
-    return this.fetchWithRetry(`${this.baseUrl}/update/${id}`, {
+    return this.fetchWithRetry(`${this.baseUrl}/update/${id}/`, {
       method: 'PATCH',
       body: JSON.stringify(updates),
     });
+  }
+
+  /**
+   * 专门用于更新文档标签的方法
+   */
+  async updateDocumentTags(id, tags) {
+    return this.updateDocument(id, { tags });
   }
 
   /**
@@ -148,9 +155,46 @@ class ReadwiseAPI {
    * 删除文档
    */
   async deleteDocument(id) {
-    return this.fetchWithRetry(`${this.baseUrl}/delete/${id}`, {
+    return this.fetchWithRetry(`${this.baseUrl}/delete/${id}/`, {
       method: 'DELETE',
     });
+  }
+
+  /**
+   * 创建高亮并发送到 Readwise
+   * 使用 Readwise API v2 接口
+   */
+  async createReadwiseHighlight(highlight) {
+    // 处理高亮的 Inline Tagging
+    // 如果高亮包含 tags，则将其以 .tag 形式追加到 note 中
+    let finalNote = highlight.note || '';
+    if (highlight.tags && Object.keys(highlight.tags).length > 0) {
+      const tagString = Object.keys(highlight.tags).map(tag => `.${tag}`).join(' ');
+      finalNote = finalNote ? `${finalNote}\n\n${tagString}` : tagString;
+    }
+
+    const payload = {
+      highlights: [{
+        text: highlight.text,
+        title: highlight.title,
+        source_url: highlight.source_url,
+        note: finalNote,
+        location: highlight.location_start,
+      }]
+    };
+
+    const response = await fetch('https://readwise.io/api/v2/highlights/', {
+      method: 'POST',
+      headers: this.headers,
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Readwise API v2 高亮错误 (${response.status}): ${errorText}`);
+    }
+
+    return response.json();
   }
 
   /**
@@ -177,6 +221,67 @@ class ReadwiseAPI {
     } while (nextPageCursor);
 
     return allResults;
+  }
+
+  /**
+   * 通过 Readwise v2 Export API 获取指定文档的高亮
+   * v2 API 比 v3 list 更适合获取高亮，因为：
+   * 1. 可以按 ids (user_book_id) 筛选特定文档
+   * 2. 返回完整的 text, note, color, tags 信息
+   * 3. 只需 1 次 API 调用
+   * 
+   * @param {string} externalId - v3 API 的文档 ID（documents 表中的 id）
+   * @returns {Array} 高亮数组
+   */
+  async fetchDocumentHighlightsV2(externalId) {
+    // 方法1: 先尝试用 v2 export API 分页搜索包含该 external_id 的 book
+    // v2 export 的 ids 参数需要 user_book_id（整数），不是 v3 的文档 ID
+    // 所以我们需要遍历 export 数据找到匹配的 book
+    const allHighlights = [];
+    let nextPageCursor = null;
+
+    do {
+      const params = new URLSearchParams();
+      if (nextPageCursor) params.append('pageCursor', nextPageCursor);
+
+      const data = await this.fetchWithRetry(
+        `https://readwise.io/api/v2/export/?${params.toString()}`
+      );
+
+      for (const book of (data.results || [])) {
+        if (book.external_id === externalId) {
+          // 找到匹配的书/文档，返回其高亮
+          return (book.highlights || []).map(h => ({
+            id: h.external_id || `readwise-v2-${h.id}`,
+            readwise_id: h.id,
+            text: h.text || '',
+            note: h.note || '',
+            color: h.color || 'yellow',
+            tags: this._convertV2Tags(h.tags),
+            location: h.location || null,
+            created_at: h.highlighted_at || h.created_at || new Date().toISOString(),
+          }));
+        }
+      }
+
+      nextPageCursor = data.nextPageCursor;
+    } while (nextPageCursor);
+
+    return allHighlights; // empty if not found
+  }
+
+  /**
+   * 转换 v2 tags 格式为本地格式
+   * v2: [{id: 123, name: "tag1"}, ...]
+   * 本地: {"tag1": "123", ...}
+   */
+  _convertV2Tags(tags) {
+    if (!tags || !Array.isArray(tags)) return {};
+    const result = {};
+    for (const t of tags) {
+      result[t.name] = String(t.id);
+    }
+    return result;
   }
 
   /**

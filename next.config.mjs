@@ -9,5 +9,4 @@ const nextConfig = {
   // 服务端使用 better-sqlite3 需要
   serverExternalPackages: ['better-sqlite3'],
 };
-
 export default nextConfig;

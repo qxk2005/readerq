@@ -181,18 +181,8 @@ export default function GhostReader() {
     }
   }, [input, messages, isLoading, selectedDoc]);
 
-  if (!showAiPanel) return null;
-
   return (
-    <div className="ai-panel">
-      <div className="ai-panel-header">
-        <div className="ai-panel-title">
-          <span>🤖</span>
-          <span>GhostReader AI 助手</span>
-        </div>
-        <button className="btn-icon" onClick={() => setShowAiPanel(false)}>✕</button>
-      </div>
-
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', width: '100%' }}>
       <div className="ai-panel-content">
         {/* 快速操作 */}
         <div className="ai-actions">

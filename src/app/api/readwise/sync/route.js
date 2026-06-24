@@ -5,7 +5,7 @@
 
 import { NextResponse } from 'next/server';
 import { getServerReadwiseClient } from '@/lib/readwise';
-import { upsertDocuments, upsertTags, setSyncState, getSyncState } from '@/lib/db';
+import { upsertDocuments, upsertTags, upsertHighlights, convertReadwiseDocToHighlight, setSyncState, getSyncState } from '@/lib/db';
 
 export async function POST(request) {
   try {
@@ -26,14 +26,33 @@ export async function POST(request) {
     // 获取上次同步时间
     const lastSyncedAt = fullSync ? null : getSyncState('lastDocumentSync');
 
-    // 获取文档
-    const documents = await client.fetchAllDocuments({
+    // 获取文档（包含 highlights 和 notes 类型的子文档）
+    const allDocuments = await client.fetchAllDocuments({
       updatedAfter: lastSyncedAt,
     });
 
-    // 缓存文档
-    if (documents.length > 0) {
-      upsertDocuments(documents);
+    // 分离普通文档和 highlight 类型子文档
+    const regularDocs = [];
+    const highlightDocs = [];
+
+    for (const doc of allDocuments) {
+      if (doc.parent_id && doc.category === 'highlight') {
+        highlightDocs.push(doc);
+      } else if (!doc.parent_id) {
+        regularDocs.push(doc);
+      }
+      // note 类型的子文档暂不处理
+    }
+
+    // 缓存普通文档
+    if (regularDocs.length > 0) {
+      upsertDocuments(regularDocs);
+    }
+
+    // 将 highlight 类型文档转换并写入 highlights 表
+    if (highlightDocs.length > 0) {
+      const highlights = highlightDocs.map(convertReadwiseDocToHighlight);
+      upsertHighlights(highlights);
     }
 
     // 同步标签
@@ -47,7 +66,8 @@ export async function POST(request) {
 
     return NextResponse.json({
       success: true,
-      synced: documents.length,
+      synced: regularDocs.length,
+      highlights: highlightDocs.length,
       tags: tags.length,
       fullSync,
       timestamp: new Date().toISOString(),
@@ -60,3 +80,4 @@ export async function POST(request) {
     );
   }
 }
+
