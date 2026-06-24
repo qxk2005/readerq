@@ -20,6 +20,7 @@ export default function SettingsModal() {
   const [envInfo, setEnvInfo] = useState({});
   const [testLoading, setTestLoading] = useState(false);
   const [testResult, setTestResult] = useState(null);
+  const [testStages, setTestStages] = useState(null);
   const [openaiMaxTokens, setOpenaiMaxTokens] = useState('');
 
   // 加载当前配置
@@ -50,6 +51,7 @@ export default function SettingsModal() {
       setConfigSaved(false);
       setConfigError(null);
       setTestResult(null);
+      setTestStages(null);
     }
   }, [showSettings, loadSettings]);
 
@@ -85,11 +87,31 @@ export default function SettingsModal() {
     }
   };
 
+  const handleTestError = (errorMessage) => {
+    setTestStages(prev => {
+      if (!prev) return null;
+      let updated = false;
+      return prev.map(stage => {
+        if (!updated && (stage.status === 'running' || stage.status === 'pending')) {
+          updated = true;
+          return { ...stage, status: 'failed', message: errorMessage };
+        }
+        return stage;
+      });
+    });
+    setTestResult({ success: false, error: errorMessage });
+  };
+
   // 测试 AI 配置
   const testConfig = async () => {
     setTestLoading(true);
     setTestResult(null);
     setConfigError(null);
+    setTestStages([
+      { id: 'validate', name: '配置参数校验', status: 'pending', message: '等待开始...' },
+      { id: 'connect', name: '服务器连通性测试', status: 'pending', message: '等待开始...' },
+      { id: 'chat', name: '对话模型可用性测试', status: 'pending', message: '等待开始...' },
+    ]);
 
     try {
       const res = await fetch('/api/ai/test', {
@@ -102,18 +124,47 @@ export default function SettingsModal() {
           openai_max_tokens: openaiMaxTokens,
         }),
       });
-      const data = await res.json();
-      setTestResult({
-        success: data.success,
-        duration: data.duration,
-        reply: data.reply,
-        error: data.error,
-      });
+
+      if (!res.ok) {
+        throw new Error(`请求失败 (状态码: ${res.status})`);
+      }
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop(); // 保留最后一个不完整行
+
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          try {
+            const data = JSON.parse(line);
+            if (data.type === 'stage') {
+              setTestStages(prev => prev ? prev.map(stage => 
+                stage.id === data.id ? { ...stage, status: data.status, message: data.message } : stage
+              ) : null);
+            } else if (data.type === 'done') {
+              setTestResult({
+                success: data.success,
+                duration: data.duration,
+                reply: data.reply,
+              });
+            } else if (data.type === 'error') {
+              handleTestError(data.error);
+            }
+          } catch (e) {
+            console.error('解析流数据失败:', line, e);
+          }
+        }
+      }
     } catch (err) {
-      setTestResult({
-        success: false,
-        error: err.message || '网络请求失败，请检查本地网络连接',
-      });
+      handleTestError(err.message || '网络请求失败，请检查本地网络连接与地址配置。');
     } finally {
       setTestLoading(false);
     }
@@ -297,32 +348,148 @@ export default function SettingsModal() {
           </div>
 
           {/* 测试连接结果显示 */}
-          {testResult && (
+          {(testStages || testResult) && (
             <div style={{
-              padding: 'var(--space-3)',
-              background: testResult.success ? 'rgba(16, 185, 129, 0.08)' : 'rgba(239, 68, 68, 0.08)',
-              border: `1px solid ${testResult.success ? 'var(--color-success)' : 'var(--color-danger)'}`,
-              borderRadius: 'var(--radius-md)',
+              padding: 'var(--space-4)',
+              background: 'var(--color-bg-secondary)',
+              border: '1px solid var(--color-border)',
+              borderRadius: 'var(--radius-lg)',
               fontSize: 'var(--text-xs)',
               marginBottom: 'var(--space-4)',
               lineHeight: '1.6',
             }}>
-              {testResult.success ? (
-                <div>
-                  <span style={{ color: 'var(--color-success)', fontWeight: 'bold' }}>✓ 测试连接成功！</span>
-                  <span style={{ marginLeft: 'var(--space-2)', color: 'var(--color-text-secondary)' }}>
-                    (耗时: {testResult.duration}ms)
-                  </span>
-                  <div style={{ marginTop: 'var(--space-1)', color: 'var(--color-text-secondary)' }}>
-                    <strong>模型响应:</strong> "{testResult.reply}"
-                  </div>
-                </div>
-              ) : (
-                <div>
-                  <span style={{ color: 'var(--color-danger)', fontWeight: 'bold' }}>✗ 测试连接失败</span>
-                  <div style={{ marginTop: 'var(--space-1)', color: 'var(--color-text-secondary)', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
-                    {testResult.error}
-                  </div>
+              <h4 style={{ fontSize: 'var(--text-sm)', fontWeight: '600', marginBottom: 'var(--space-3)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                ⚡️ 连接测试诊断详情
+                {testLoading && (
+                  <span className="loading-spinner" style={{ width: '12px', height: '12px', display: 'inline-block', border: '2px solid var(--color-accent)', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin-loading 1s linear infinite' }} />
+                )}
+              </h4>
+              
+              {/* 步骤时间轴 */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)', position: 'relative', paddingLeft: 'var(--space-4)', marginBottom: 'var(--space-2)' }}>
+                {/* 时间轴左侧竖线 */}
+                <div style={{
+                  position: 'absolute',
+                  left: '6px',
+                  top: '8px',
+                  bottom: '8px',
+                  width: '2px',
+                  background: 'var(--color-border)',
+                  zIndex: 0
+                }} />
+
+                {testStages && testStages.map((stage) => {
+                  let icon = '⚪';
+                  let iconColor = 'var(--color-text-tertiary)';
+                  let textColor = 'var(--color-text-secondary)';
+                  let isCurrent = false;
+
+                  if (stage.status === 'running') {
+                    icon = '🌀';
+                    iconColor = 'var(--color-accent)';
+                    textColor = 'var(--color-text-primary)';
+                    isCurrent = true;
+                  } else if (stage.status === 'success') {
+                    icon = '✓';
+                    iconColor = 'var(--color-success)';
+                    textColor = 'var(--color-text-secondary)';
+                  } else if (stage.status === 'failed') {
+                    icon = '✗';
+                    iconColor = 'var(--color-danger)';
+                    textColor = 'var(--color-danger)';
+                  }
+
+                  return (
+                    <div key={stage.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 'var(--space-2)', position: 'relative', zIndex: 1 }}>
+                      {/* 节点圆形背景图标 */}
+                      <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        width: '16px',
+                        height: '16px',
+                        borderRadius: '50%',
+                        background: stage.status === 'running' ? 'var(--color-accent-light)' : 'var(--color-bg-secondary)',
+                        border: `1px solid ${iconColor}`,
+                        color: iconColor,
+                        fontSize: '10px',
+                        fontWeight: 'bold',
+                        marginLeft: '-14px',
+                        animation: isCurrent ? 'spin-loading 2s linear infinite' : 'none'
+                      }}>
+                        {icon === '🌀' ? '' : icon}
+                      </div>
+                      
+                      <div style={{ flex: 1, marginLeft: 'var(--space-1)' }}>
+                        <div style={{ fontWeight: '600', color: textColor, display: 'flex', justifyContent: 'space-between' }}>
+                          <span>{stage.name}</span>
+                          {stage.status === 'running' && (
+                            <span style={{ fontSize: '10px', color: 'var(--color-accent)', fontWeight: 'normal' }}>进行中...</span>
+                          )}
+                          {stage.status === 'success' && (
+                            <span style={{ fontSize: '10px', color: 'var(--color-success)', fontWeight: 'normal' }}>已完成</span>
+                          )}
+                          {stage.status === 'failed' && (
+                            <span style={{ fontSize: '10px', color: 'var(--color-danger)', fontWeight: 'normal' }}>失败</span>
+                          )}
+                        </div>
+                        <div style={{ color: stage.status === 'failed' ? 'var(--color-danger)' : 'var(--color-text-tertiary)', fontSize: '11px', marginTop: '2px' }}>
+                          {stage.message}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* 最终结果卡片 */}
+              {testResult && (
+                <div style={{
+                  marginTop: 'var(--space-4)',
+                  paddingTop: 'var(--space-3)',
+                  borderTop: '1px solid var(--color-border-light)',
+                }}>
+                  {testResult.success ? (
+                    <div style={{
+                      padding: 'var(--space-3)',
+                      background: 'rgba(34, 197, 94, 0.06)',
+                      borderRadius: 'var(--radius-md)',
+                      border: '1px solid rgba(34, 197, 94, 0.2)',
+                    }}>
+                      <div style={{ color: 'var(--color-success)', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        🎉 测试连接成功！(总耗时: {testResult.duration}ms)
+                      </div>
+                      <div style={{ marginTop: 'var(--space-2)', color: 'var(--color-text-secondary)', padding: 'var(--space-2)', background: 'var(--color-bg-primary)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-border-light)' }}>
+                        <strong style={{ fontSize: '10px', color: 'var(--color-text-tertiary)', display: 'block', marginBottom: '2px' }}>AI 响应内容:</strong>
+                        <span style={{ fontFamily: 'var(--font-mono)' }}>"{testResult.reply}"</span>
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={{
+                      padding: 'var(--space-3)',
+                      background: 'rgba(239, 68, 68, 0.06)',
+                      borderRadius: 'var(--radius-md)',
+                      border: '1px solid rgba(239, 68, 68, 0.2)',
+                    }}>
+                      <div style={{ color: 'var(--color-danger)', fontWeight: 'bold' }}>
+                        ❌ 测试连接失败
+                      </div>
+                      <div style={{ marginTop: 'var(--space-2)', color: 'var(--color-text-secondary)', whiteSpace: 'pre-wrap', wordBreak: 'break-all', fontSize: '11px', background: 'var(--color-bg-primary)', padding: 'var(--space-2)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-border-light)' }}>
+                        {testResult.error}
+                      </div>
+                      
+                      {/* 智能排障建议 */}
+                      <div style={{ marginTop: 'var(--space-3)', padding: 'var(--space-3)', background: 'var(--color-bg-tertiary)', borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)' }}>
+                        <div style={{ fontWeight: '600', color: 'var(--color-text-primary)', marginBottom: 'var(--space-1)', fontSize: '11px' }}>🛠️ 排障小贴士：</div>
+                        <ul style={{ paddingLeft: 'var(--space-4)', margin: 0, color: 'var(--color-text-secondary)', fontSize: '11px', lineHeight: '1.6' }}>
+                          <li>检查 API Key 是否完整，确保开头没有多余空格。</li>
+                          <li>如果使用的是国内代理或第三方 API，请确保服务器地址包含协议头（<code>http://</code> 或 <code>https://</code>）并以 <code>/v1</code> 结尾（如 <code>https://api.yourproxy.com/v1</code>）。</li>
+                          <li>对于 Ollama，本地默认地址通常是 <code>http://127.0.0.1:11434/v1</code>，请确认 Ollama 已启动。</li>
+                          <li>请确认<b>模型名称</b>与您服务器上配置的完全一致（如 <code>gpt-4o-mini</code> 或 <code>deepseek-chat</code>）。</li>
+                        </ul>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
