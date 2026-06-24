@@ -18,6 +18,7 @@ export default function ReadingPane() {
   const [editingTags, setEditingTags] = useState(false);
   const [newTag, setNewTag] = useState('');
   const [docTags, setDocTags] = useState([]);
+  const [highlightsError, setHighlightsError] = useState(null);
   
   // 在渲染阶段同步检测文档切换，瞬间进入 Loading 状态并重置高亮，防止闪烁
   const [prevDocId, setPrevDocId] = useState(null);
@@ -25,6 +26,7 @@ export default function ReadingPane() {
     setPrevDocId(selectedDoc?.id);
     setIsLoadingHighlights(true);
     setHighlights([]);
+    setHighlightsError(null);
   }
 
   const articleRef = useRef(null);
@@ -37,26 +39,41 @@ export default function ReadingPane() {
     }
   }, [selectedDoc]);
 
+  // 内部的高亮获取函数，提取出来以便可以手动重试
+  const fetchHighlights = async (docId, isMounted = { current: true }) => {
+    console.log('[DEBUG] fetchHighlights running for:', docId);
+    setIsLoadingHighlights(true);
+    setHighlightsError(null);
+    try {
+      const res = await fetch(`/api/highlights?documentId=${docId}`);
+      if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+      const data = await res.json();
+      console.log('[DEBUG] fetchHighlights data received:', data.highlights?.length);
+      if (isMounted.current && data.highlights) {
+        setHighlights(data.highlights);
+      }
+    } catch (e) {
+      console.error('获取高亮失败', e);
+      if (isMounted.current) {
+        setHighlightsError(e.message || '获取高亮失败');
+      }
+    } finally {
+      if (isMounted.current) setIsLoadingHighlights(false);
+    }
+  };
+
   // 获取高亮
   useEffect(() => {
+    console.log('[DEBUG] useEffect for fetchHighlights triggered. selectedDoc:', selectedDoc?.id);
     if (!selectedDoc) return;
-    const fetchHighlights = async () => {
-      setIsLoadingHighlights(true);
-      setHighlights([]); // 清除旧高亮
-      try {
-        const res = await fetch(`/api/highlights?documentId=${selectedDoc.id}`);
-        const data = await res.json();
-        if (data.highlights) {
-          setHighlights(data.highlights);
-        }
-      } catch (e) {
-        console.error('获取高亮失败', e);
-      } finally {
-        setIsLoadingHighlights(false);
-      }
+    const isMounted = { current: true };
+    fetchHighlights(selectedDoc.id, isMounted);
+    
+    return () => {
+      console.log('[DEBUG] useEffect cleanup for selectedDoc:', selectedDoc?.id);
+      isMounted.current = false;
     };
-    fetchHighlights();
-  }, [selectedDoc]);
+  }, [selectedDoc?.id]);
 
   // 渲染高亮
   useEffect(() => {
@@ -691,14 +708,31 @@ export default function ReadingPane() {
                       )}
                     </div>
                   ))}
-                  {highlights.length === 0 && (
+                  {isLoadingHighlights ? (
+                    <div style={{ textAlign: 'center', color: 'var(--color-text-tertiary)', fontSize: '13px', marginTop: 'var(--space-4)' }}>
+                      <div className="loading-spinner" style={{ width: '16px', height: '16px', margin: '0 auto var(--space-2)' }}></div>
+                      加载中...
+                    </div>
+                  ) : highlightsError ? (
+                    <div style={{ textAlign: 'center', color: 'var(--color-danger)', fontSize: '13px', marginTop: 'var(--space-4)', display: 'flex', flexDirection: 'column', gap: 'var(--space-3)', alignItems: 'center' }}>
+                      <div>获取高亮失败</div>
+                      <div style={{ fontSize: '12px', opacity: 0.8 }}>{highlightsError}</div>
+                      <button 
+                        className="btn btn-secondary btn-sm"
+                        onClick={() => fetchHighlights(selectedDoc.id, { current: true })}
+                        style={{ fontSize: '12px' }}
+                      >
+                        🔄 重新加载
+                      </button>
+                    </div>
+                  ) : highlights.length === 0 ? (
                     <div style={{ textAlign: 'center', color: 'var(--color-text-tertiary)', fontSize: '13px', marginTop: 'var(--space-4)', display: 'flex', flexDirection: 'column', gap: 'var(--space-3)', alignItems: 'center' }}>
                       <div>暂无高亮。在左侧正文中划词即可添加。</div>
                       <div style={{ fontSize: '12px', color: 'var(--color-text-tertiary)' }}>
                         如有 Readwise 高亮，请先点击左侧栏的 🔄 同步按钮同步数据。
                       </div>
                     </div>
-                  )}
+                  ) : null}
                 </div>
               </div>
             </div>

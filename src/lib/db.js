@@ -151,7 +151,7 @@ export function upsertDocument(doc) {
       last_opened_at = excluded.last_opened_at,
       saved_at = excluded.saved_at,
       last_moved_at = excluded.last_moved_at,
-      html_content = excluded.html_content,
+      html_content = COALESCE(excluded.html_content, documents.html_content),
       tags_json = excluded.tags_json,
       synced_at = excluded.synced_at
   `);
@@ -328,10 +328,24 @@ export function getDocumentStats() {
 }
 
 /**
+ * 获取本地文档总数（包含文档和高亮，以对齐云端 Readwise 的统计口径）
+ */
+export function getDocumentCount() {
+  const db = getDatabase();
+  const docs = db.prepare('SELECT COUNT(*) as count FROM documents').get();
+  const highlights = db.prepare('SELECT COUNT(*) as count FROM highlights').get();
+  return docs.count + highlights.count;
+}
+
+/**
  * 保存高亮
  */
 export function upsertHighlight(highlight) {
   const db = getDatabase();
+  
+  // 插入一个占位 document 防止外键约束失败（增量同步时可能会遇到子元素先于父元素被处理或只返回子元素）
+  db.prepare(`INSERT OR IGNORE INTO documents (id) VALUES (?)`).run(highlight.document_id);
+
   db.prepare(`
     INSERT OR REPLACE INTO highlights
     (id, document_id, text, note, color, location_start, location_end, created_at, tags_json)
@@ -429,4 +443,18 @@ export function getDocumentHighlights(documentId) {
     ...h,
     tags: JSON.parse(h.tags_json || '{}')
   }));
+}
+
+/**
+ * 清空所有数据 (用于全量覆盖同步)
+ */
+export function clearAllData() {
+  const db = getDatabase();
+  const transaction = db.transaction(() => {
+    db.prepare('DELETE FROM highlights').run();
+    db.prepare('DELETE FROM documents').run();
+    db.prepare('DELETE FROM tags').run();
+    db.prepare("DELETE FROM sync_state WHERE key IN ('remote_doc_count', 'lastDocumentSync')").run();
+  });
+  transaction();
 }

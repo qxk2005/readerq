@@ -69,12 +69,19 @@ class ReadwiseAPI {
 
   /**
    * 获取所有文档 (自动分页)
+   * 支持传入 onProgress 回调和 checkCancel 函数
    */
-  async fetchAllDocuments({ updatedAfter, location, category, tag, withHtmlContent } = {}) {
+  async fetchAllDocuments({ updatedAfter, location, category, tag, withHtmlContent } = {}, onProgress = null, checkCancel = null, onBatch = null) {
     const allResults = [];
     let nextPageCursor = null;
+    let totalCount = 0;
+    let fetchedCount = 0;
 
     do {
+      if (checkCancel && checkCancel()) {
+        throw new Error('Sync cancelled by user');
+      }
+
       const data = await this.listDocuments({
         updatedAfter,
         location,
@@ -83,11 +90,27 @@ class ReadwiseAPI {
         pageCursor: nextPageCursor,
         withHtmlContent,
       });
-      allResults.push(...data.results);
+      
+      if (data.count !== undefined && totalCount === 0) {
+        totalCount = data.count;
+      }
+      
+      if (onBatch) {
+        // 分批处理，不占用全局内存
+        await onBatch(data.results);
+      } else {
+        allResults.push(...data.results);
+      }
+      
+      fetchedCount += data.results.length;
       nextPageCursor = data.nextPageCursor;
+
+      if (onProgress) {
+        onProgress({ fetched: fetchedCount, total: totalCount });
+      }
     } while (nextPageCursor);
 
-    return allResults;
+    return { results: allResults, totalCount, fetchedCount };
   }
 
   /**
@@ -210,17 +233,38 @@ class ReadwiseAPI {
   /**
    * 获取所有标签
    */
-  async fetchAllTags() {
+  async fetchAllTags(onProgress = null, checkCancel = null, onBatch = null) {
     const allResults = [];
     let nextPageCursor = null;
+    let totalCount = 0;
+    let fetchedCount = 0;
 
     do {
+      if (checkCancel && checkCancel()) {
+        throw new Error('Sync cancelled by user');
+      }
+
       const data = await this.listTags({ pageCursor: nextPageCursor });
-      allResults.push(...data.results);
+      
+      if (data.count !== undefined && totalCount === 0) {
+        totalCount = data.count;
+      }
+      
+      if (onBatch) {
+        await onBatch(data.results);
+      } else {
+        allResults.push(...data.results);
+      }
+      
+      fetchedCount += data.results.length;
       nextPageCursor = data.nextPageCursor;
+      
+      if (onProgress) {
+        onProgress({ fetched: fetchedCount, total: totalCount });
+      }
     } while (nextPageCursor);
 
-    return allResults;
+    return { results: allResults, totalCount, fetchedCount };
   }
 
   /**

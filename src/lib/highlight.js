@@ -36,6 +36,10 @@ export function findFuzzyOffset(fullText, query) {
   // 因为 Readwise 高亮中包含了嵌套的长 URL，而网页 DOM 的 textContent 不会包含这些 URL
   let cleanQuery = query.replace(/!\[[\s\S]*?\]\([\s\S]*?\)/g, '');
   cleanQuery = cleanQuery.replace(/\[([\s\S]*?)\]\([\s\S]*?\)/g, '$1');
+  
+  // 移除列表开头的数字序号，例如 "1. " 或 "12. "
+  // 这可以解决 Readwise 会带上序号而正文 HTML 只包含纯文本（序号由浏览器渲染）的情况
+  cleanQuery = cleanQuery.replace(/^\s*\d+\.\s+/gm, '');
 
   const exact = fullText.indexOf(cleanQuery);
   if (exact !== -1) return { start: exact, end: exact + cleanQuery.length };

@@ -5,9 +5,11 @@ import { useApp } from '@/context/AppContext';
 import { useTheme } from '@/context/ThemeContext';
 
 export default function SettingsModal() {
-  const { showSettings, setShowSettings, syncData, isSyncing } = useApp();
+  const { showSettings, setShowSettings, syncData, isSyncing, syncStatus: globalSyncStatus, syncProgress, syncCounts, syncError, cancelSync } = useApp();
   const { theme, setTheme, fontSize, setFontSize, lineHeight, setLineHeight, contentWidth, setContentWidth, fontFamily, setFontFamily } = useTheme();
-  const [syncStatus, setSyncStatus] = useState(null);
+  
+  // Local status for UI feedback not covered by global status
+  const [localSyncStatus, setLocalSyncStatus] = useState(null);
 
   // API 配置表单状态
   const [readwiseToken, setReadwiseToken] = useState('');
@@ -170,14 +172,7 @@ export default function SettingsModal() {
     }
   };
 
-  const handleFullSync = async () => {
-    try {
-      const result = await syncData(true);
-      setSyncStatus(`全量同步完成：同步了 ${result.synced} 篇文档和 ${result.tags} 个标签`);
-    } catch (err) {
-      setSyncStatus(`同步失败：${err.message}`);
-    }
-  };
+
 
   if (!showSettings) return null;
 
@@ -584,29 +579,134 @@ export default function SettingsModal() {
           </h3>
 
           <div className="form-group">
-            <button
-              className="btn btn-primary"
-              onClick={handleFullSync}
-              disabled={isSyncing}
-              style={{ width: '100%' }}
-            >
-              {isSyncing ? '同步中...' : '📥 全量同步 Readwise 数据'}
-            </button>
-            <div className="form-hint">
-              从 Readwise 同步所有文档和标签到本地缓存
+            {/* Sync Status Display */}
+            <div style={{
+              marginBottom: 'var(--space-4)',
+              padding: 'var(--space-3)',
+              background: 'var(--color-bg-secondary)',
+              borderRadius: 'var(--radius-lg)',
+              border: '1px solid var(--color-border)',
+              fontSize: '13px'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 'var(--space-2)' }}>
+                <span style={{ color: 'var(--color-text-secondary)' }}>上次同步</span>
+                <span style={{ color: 'var(--color-text-primary)', fontWeight: '500' }}>
+                  {syncCounts?.lastSync ? new Date(syncCounts.lastSync).toLocaleString() : '从未同步'}
+                </span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 'var(--space-2)' }}>
+                <span style={{ color: 'var(--color-text-secondary)' }}>本地文档总数</span>
+                <span style={{ color: 'var(--color-text-primary)', fontWeight: '500' }}>
+                  {syncCounts?.local || 0} 篇
+                </span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 'var(--space-2)' }}>
+                <span style={{ color: 'var(--color-text-secondary)' }}>云端记录总数</span>
+                <span style={{ color: 'var(--color-text-primary)', fontWeight: '500' }}>
+                  {syncCounts?.remote ? `${syncCounts.remote} 篇` : '未知'}
+                </span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ color: 'var(--color-text-secondary)' }}>当前状态</span>
+                <span style={{ 
+                  color: globalSyncStatus === 'error' ? 'var(--color-danger)' : 
+                         globalSyncStatus === 'syncing' ? 'var(--color-accent)' : 
+                         'var(--color-text-primary)', 
+                  fontWeight: '500',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px'
+                }}>
+                  {globalSyncStatus === 'syncing' && <span className="loading-spinner" style={{ width: '10px', height: '10px' }} />}
+                  {globalSyncStatus === 'syncing' ? '同步中...' :
+                   globalSyncStatus === 'canceling' ? '正在取消...' :
+                   globalSyncStatus === 'error' ? '同步失败' :
+                   globalSyncStatus === 'canceled' ? '已取消' : '空闲'}
+                </span>
+              </div>
+
+              {/* Progress Display */}
+              {isSyncing && syncProgress && (
+                <div style={{ marginTop: 'var(--space-3)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: 'var(--color-text-secondary)', marginBottom: '4px' }}>
+                    <span>
+                      {syncProgress.phase === 'documents' ? '拉取文档中...' :
+                       syncProgress.phase === 'tags' ? '拉取标签中...' :
+                       syncProgress.phase === 'done' ? '处理完成' : '准备中...'}
+                    </span>
+                    <span>
+                      {syncProgress.total > 0 ? `${syncProgress.fetched} / ${syncProgress.total}` : `${syncProgress.fetched}`}
+                    </span>
+                  </div>
+                  {syncProgress.total > 0 && (
+                    <div style={{ width: '100%', height: '4px', background: 'var(--color-bg-tertiary)', borderRadius: '2px', overflow: 'hidden' }}>
+                      <div style={{ 
+                        height: '100%', 
+                        width: `${Math.min(100, Math.round((syncProgress.fetched / syncProgress.total) * 100))}%`, 
+                        background: 'var(--color-accent)',
+                        transition: 'width 0.3s ease'
+                      }} />
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
-            {syncStatus && (
+
+            {syncError && (
               <div style={{
-                marginTop: 'var(--space-2)',
+                marginBottom: 'var(--space-3)',
                 padding: 'var(--space-2) var(--space-3)',
-                background: 'var(--color-bg-tertiary)',
+                background: 'rgba(239, 68, 68, 0.1)',
+                color: 'var(--color-danger)',
                 borderRadius: 'var(--radius-md)',
-                fontSize: 'var(--text-xs)',
-                color: 'var(--color-text-secondary)',
+                fontSize: '12px',
+                border: '1px solid rgba(239, 68, 68, 0.2)'
               }}>
-                {syncStatus}
+                ❌ {syncError}
               </div>
             )}
+
+            <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+              {!isSyncing ? (
+                <>
+                  <button
+                    className="btn btn-primary"
+                    onClick={async () => {
+                      setLocalSyncStatus(null);
+                      await syncData(false); // 增量同步
+                    }}
+                    style={{ flex: 2 }}
+                  >
+                    ⚡️ 增量同步更新
+                  </button>
+                  <button
+                    className="btn btn-secondary"
+                    onClick={async () => {
+                      if (confirm('全量覆盖同步将从头开始拉取所有文档和标签，可能需要较长时间，确认继续吗？')) {
+                        setLocalSyncStatus(null);
+                        await syncData(true); // 全量同步
+                      }
+                    }}
+                    style={{ flex: 1, fontSize: '11px' }}
+                  >
+                    📥 全量覆盖同步
+                  </button>
+                </>
+              ) : (
+                <button
+                  className="btn btn-secondary"
+                  onClick={cancelSync}
+                  disabled={globalSyncStatus === 'canceling'}
+                  style={{ flex: 1, borderColor: 'var(--color-danger)', color: 'var(--color-danger)' }}
+                >
+                  {globalSyncStatus === 'canceling' ? '取消中...' : '⏹ 终止同步'}
+                </button>
+              )}
+            </div>
+            
+            <div className="form-hint" style={{ marginTop: 'var(--space-2)' }}>
+              从 Readwise 同步所有文档和标签到本地缓存。进度显示取决于云端数据量。
+            </div>
           </div>
 
           <hr style={{ border: 'none', borderTop: '1px solid var(--color-border-light)', margin: 'var(--space-6) 0' }} />

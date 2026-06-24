@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { useApp } from '@/context/AppContext';
 import { LOCATION_LABELS, CATEGORY_ICONS, formatDate, truncateText, extractDomain } from '@/lib/utils';
 
@@ -57,7 +57,27 @@ export default function DocumentList() {
     currentView, currentCategory, currentTag,
     searchQuery, setSearchQuery,
     isLoading, fetchDocuments,
+    page, hasMore, isFetchingMore,
   } = useApp();
+
+  const observerTarget = useRef(null);
+
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      entries => {
+        if (entries[0].isIntersecting && hasMore && !isLoading && !isFetchingMore) {
+          fetchDocuments({ page: page + 1 });
+        }
+      },
+      { threshold: 0.1 }
+    );
+
+    if (observerTarget.current) {
+      observer.observe(observerTarget.current);
+    }
+
+    return () => observer.disconnect();
+  }, [hasMore, isLoading, isFetchingMore, page, fetchDocuments]);
 
   const [sortBy, setSortBy] = useState('updated');
 
@@ -142,14 +162,20 @@ export default function DocumentList() {
             ))}
           </div>
         ) : sortedDocs.length > 0 ? (
-          sortedDocs.map(doc => (
-            <DocumentCard
-              key={doc.id}
-              doc={doc}
-              isActive={selectedDoc?.id === doc.id}
-              onClick={() => setSelectedDoc(doc)}
-            />
-          ))
+          <>
+            {sortedDocs.map(doc => (
+              <DocumentCard
+                key={doc.id}
+                doc={doc}
+                isActive={selectedDoc?.id === doc.id}
+                onClick={() => setSelectedDoc(doc)}
+              />
+            ))}
+            {/* Observer Target for Infinite Scroll */}
+            <div ref={observerTarget} style={{ height: '20px', margin: '10px 0', display: 'flex', justifyContent: 'center' }}>
+              {isFetchingMore && <span className="loading-spinner" style={{ width: '20px', height: '20px' }}></span>}
+            </div>
+          </>
         ) : (
           <div className="empty-state" style={{ paddingTop: '60px' }}>
             <div className="empty-state-icon">📭</div>

@@ -15,6 +15,9 @@ export function AppProvider({ children }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [syncStatus, setSyncStatus] = useState('idle');
+  const [syncProgress, setSyncProgress] = useState(null);
+  const [syncCounts, setSyncCounts] = useState({ local: 0, remote: 0, lastSync: null });
   const [syncError, setSyncError] = useState(null);
   const [rightPanelTab, setRightPanelTab] = useState('notebook'); // 'info', 'notebook', 'chat'
   
@@ -62,9 +65,20 @@ export function AppProvider({ children }) {
     }
   }, [fetchDocumentDetails]);
 
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
+  const [isFetchingMore, setIsFetchingMore] = useState(false);
+
   // 获取文档
   const fetchDocuments = useCallback(async (options = {}) => {
-    setIsLoading(true);
+    const currentPage = options.page || 1;
+    
+    if (currentPage === 1) {
+      setIsLoading(true);
+    } else {
+      setIsFetchingMore(true);
+    }
+    
     try {
       const params = new URLSearchParams();
       const location = options.location || currentView;
@@ -73,25 +87,83 @@ export function AppProvider({ children }) {
       if (options.tag || currentTag) params.set('tag', options.tag || currentTag);
       if (options.search || searchQuery) params.set('search', options.search || searchQuery);
       if (options.sync) params.set('sync', 'true');
+      params.set('page', currentPage);
+      params.set('limit', 50);
 
       const res = await fetch(`/api/readwise/documents?${params.toString()}`);
       const data = await res.json();
 
       if (data.error) throw new Error(data.error);
 
-      setDocuments(data.documents || []);
-      if (data.stats) setStats(data.stats);
+      if (currentPage === 1) {
+        setDocuments(data.documents || []);
+      } else {
+        setDocuments(prev => {
+          // 去重合并
+          const existingIds = new Set(prev.map(d => d.id));
+          const newDocs = (data.documents || []).filter(d => !existingIds.has(d.id));
+          return [...prev, ...newDocs];
+        });
+      }
+      
+      setHasMore((data.documents || []).length === 50);
+      setPage(currentPage);
+      
+      if (data.stats && currentPage === 1) setStats(data.stats);
     } catch (err) {
       console.error('获取文档失败:', err);
     } finally {
       setIsLoading(false);
+      setIsFetchingMore(false);
     }
   }, [currentView, currentCategory, currentTag, searchQuery]);
 
-  // 同步数据
+  // 检查同步状态
+  const checkSyncStatus = useCallback(async () => {
+    try {
+      const res = await fetch('/api/readwise/sync/status');
+      const data = await res.json();
+      
+      setSyncStatus(data.status);
+      setSyncProgress(data.progress);
+      setSyncError(data.error);
+      setSyncCounts({
+        local: data.localCount,
+        remote: data.remoteCount,
+        lastSync: data.lastSyncTime
+      });
+
+      if (data.status === 'syncing' || data.status === 'canceling') {
+        setIsSyncing(true);
+      } else {
+        if (isSyncing) {
+          // 如果刚从 syncing 变为 idle/canceled/error，触发文档刷新
+          fetchDocuments();
+        }
+        setIsSyncing(false);
+      }
+    } catch (e) {
+      console.error('获取同步状态失败:', e);
+    }
+  }, [isSyncing, fetchDocuments]);
+
+  // 定期轮询同步状态
+  useEffect(() => {
+    // 首次加载检查一次状态
+    checkSyncStatus();
+
+    // 如果正在同步，每秒轮询一次；如果空闲，为了防止其他端发起同步，每 10 秒轮询一次
+    const interval = setInterval(checkSyncStatus, isSyncing ? 1000 : 10000);
+    return () => clearInterval(interval);
+  }, [isSyncing, checkSyncStatus]);
+
+  // 同步数据 (修改为后台执行模式)
   const syncData = useCallback(async (full = false) => {
+    if (isSyncing) return;
     setIsSyncing(true);
+    setSyncStatus('syncing');
     setSyncError(null);
+
     try {
       const res = await fetch('/api/readwise/sync', {
         method: 'POST',
@@ -99,24 +171,31 @@ export function AppProvider({ children }) {
         body: JSON.stringify({ full }),
       });
       const data = await res.json();
-      if (data.error) throw new Error(data.error);
-
-      // 同步后刷新文档
-      await fetchDocuments();
-
-      // 刷新标签
-      const tagsRes = await fetch('/api/readwise/tags');
-      const tagsData = await tagsRes.json();
-      if (tagsData.tags) setTags(tagsData.tags);
-
-      return data;
-    } catch (err) {
-      setSyncError(err.message);
-      throw err;
-    } finally {
+      
+      if (!data.success) {
+        throw new Error(data.error || '同步启动失败');
+      }
+      
+      // 触发一次立即状态检查
+      checkSyncStatus();
+    } catch (error) {
+      console.error('同步错误:', error);
+      setSyncError(error.message);
       setIsSyncing(false);
+      setSyncStatus('error');
     }
-  }, [fetchDocuments]);
+  }, [isSyncing, checkSyncStatus]);
+
+  // 取消同步
+  const cancelSync = useCallback(async () => {
+    if (!isSyncing || syncStatus === 'canceling') return;
+    setSyncStatus('canceling');
+    try {
+      await fetch('/api/readwise/sync/cancel', { method: 'POST' });
+    } catch (e) {
+      console.error('取消同步发送失败:', e);
+    }
+  }, [isSyncing, syncStatus]);
 
   // 保存新文档
   const saveDocument = useCallback(async (url) => {
@@ -178,7 +257,13 @@ export function AppProvider({ children }) {
     setSearchQuery,
     isLoading,
     isSyncing,
+    syncStatus,
+    syncProgress,
+    syncCounts,
     syncError,
+    page,
+    hasMore,
+    isFetchingMore,
     showAiPanel,
     setShowAiPanel,
     showCommandPalette,
@@ -196,6 +281,7 @@ export function AppProvider({ children }) {
     fetchDocuments,
     fetchDocumentDetails,
     syncData,
+    cancelSync,
     saveDocument,
     switchView,
     switchCategory,
