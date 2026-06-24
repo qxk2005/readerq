@@ -205,11 +205,19 @@ export function createReadwiseClient(token) {
 
 /**
  * 获取服务端 Readwise 客户端
+ * 优先使用环境变量，回退到数据库中用户设置的值
  */
 export function getServerReadwiseClient() {
-  const token = process.env.READWISE_API_TOKEN;
+  let token = process.env.READWISE_API_TOKEN;
   if (!token) {
-    throw new Error('未配置 READWISE_API_TOKEN 环境变量');
+    // 从数据库读取用户在 WebUI 中设置的 token
+    try {
+      const { getSetting } = require('@/lib/db');
+      token = getSetting('readwise_token');
+    } catch { /* ignore */ }
+  }
+  if (!token) {
+    throw new Error('未配置 Readwise API Token。请在设置中填入你的 Token，或在 .env.local 中配置 READWISE_API_TOKEN');
   }
   return createReadwiseClient(token);
 }

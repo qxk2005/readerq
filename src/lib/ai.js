@@ -6,14 +6,25 @@
 import OpenAI from 'openai';
 
 /**
+ * 从数据库读取设置（回退）
+ */
+function getDbSetting(key) {
+  try {
+    const { getSetting } = require('@/lib/db');
+    return getSetting(key);
+  } catch { return null; }
+}
+
+/**
  * 创建 OpenAI 客户端
+ * 优先使用环境变量，回退到数据库中用户设置的值
  */
 export function createAIClient() {
-  const apiKey = process.env.OPENAI_API_KEY;
-  const baseURL = process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1';
+  const apiKey = process.env.OPENAI_API_KEY || getDbSetting('openai_api_key');
+  const baseURL = process.env.OPENAI_BASE_URL || getDbSetting('openai_base_url') || 'https://api.openai.com/v1';
 
   if (!apiKey) {
-    throw new Error('未配置 OPENAI_API_KEY 环境变量');
+    throw new Error('未配置 OpenAI API Key。请在设置中填入你的 API Key，或在 .env.local 中配置 OPENAI_API_KEY');
   }
 
   return new OpenAI({ apiKey, baseURL });
@@ -23,7 +34,7 @@ export function createAIClient() {
  * 获取配置的模型名称
  */
 export function getModelName() {
-  return process.env.OPENAI_MODEL || 'gpt-4o-mini';
+  return process.env.OPENAI_MODEL || getDbSetting('openai_model') || 'gpt-4o-mini';
 }
 
 /**
