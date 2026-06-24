@@ -60,11 +60,17 @@ export default function GhostReader() {
           break;
         case 'translate':
           endpoint = '/api/ai/translate';
-          body = { text: selectedDoc.summary || selectedDoc.title };
+          const translateText = selectedDoc.html_content 
+            ? selectedDoc.html_content.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().substring(0, 4000)
+            : (selectedDoc.summary || selectedDoc.title);
+          body = { text: translateText || selectedDoc.title };
           break;
         case 'simplify':
           endpoint = '/api/ai/simplify';
-          body = { text: selectedDoc.summary || selectedDoc.title };
+          const simplifyText = selectedDoc.html_content 
+            ? selectedDoc.html_content.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().substring(0, 4000)
+            : (selectedDoc.summary || selectedDoc.title);
+          body = { text: simplifyText || selectedDoc.title };
           break;
         case 'define':
           endpoint = '/api/ai/define';
