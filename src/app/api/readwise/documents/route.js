@@ -23,13 +23,17 @@ export async function GET(request) {
     if (id) {
       try {
         const client = getServerReadwiseClient();
-        const data = await client.listDocuments({ withHtmlContent: true });
-        const doc = data.results.find(d => d.id === id);
+        const data = await client.listDocuments({ id, withHtmlContent: true });
+        const doc = data.results && data.results.find(d => d.id === id);
         if (doc) {
+          if (doc.html_content === undefined || doc.html_content === null) {
+            doc.html_content = '';
+          }
           upsertDocuments([doc]);
           return NextResponse.json(doc);
         }
-      } catch {
+      } catch (err) {
+        console.error('从 Readwise 同步单篇文档失败:', err);
         // 从缓存获取
       }
       const { getCachedDocument } = await import('@/lib/db');

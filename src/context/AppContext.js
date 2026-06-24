@@ -6,7 +6,7 @@ const AppContext = createContext(null);
 
 export function AppProvider({ children }) {
   const [documents, setDocuments] = useState([]);
-  const [selectedDoc, setSelectedDoc] = useState(null);
+  const [selectedDoc, _setSelectedDoc] = useState(null);
   const [currentView, setCurrentView] = useState('new'); // location filter
   const [currentCategory, setCurrentCategory] = useState(null);
   const [currentTag, setCurrentTag] = useState(null);
@@ -21,6 +21,42 @@ export function AppProvider({ children }) {
   const [showSettings, setShowSettings] = useState(false);
   const [showAddUrl, setShowAddUrl] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [isContentLoading, setIsContentLoading] = useState(false);
+  const [contentError, setContentError] = useState(null);
+
+  // 单篇文档正文按需同步
+  const fetchDocumentDetails = useCallback(async (id) => {
+    setIsContentLoading(true);
+    setContentError(null);
+    try {
+      const res = await fetch(`/api/readwise/documents?id=${id}`);
+      const fullDoc = await res.json();
+      if (fullDoc && !fullDoc.error) {
+        _setSelectedDoc(prev => (prev && prev.id === id ? fullDoc : prev));
+        // 更新列表中的正文缓存，以便下次直接秒开
+        setDocuments(prevDocs =>
+          prevDocs.map(doc => (doc.id === id ? { ...doc, html_content: fullDoc.html_content } : doc))
+        );
+      } else {
+        throw new Error(fullDoc.error || '获取文档内容失败');
+      }
+    } catch (err) {
+      console.error('按需同步文档正文失败:', err);
+      setContentError(err.message || '获取文档正文失败，请稍后重试');
+    } finally {
+      setIsContentLoading(false);
+    }
+  }, []);
+
+  const setSelectedDoc = useCallback((doc) => {
+    _setSelectedDoc(doc);
+    if (doc && doc.html_content === null) {
+      fetchDocumentDetails(doc.id);
+    } else {
+      setIsContentLoading(false);
+      setContentError(null);
+    }
+  }, [fetchDocumentDetails]);
 
   // 获取文档
   const fetchDocuments = useCallback(async (options = {}) => {
@@ -149,7 +185,10 @@ export function AppProvider({ children }) {
     setShowAddUrl,
     sidebarCollapsed,
     setSidebarCollapsed,
+    isContentLoading,
+    contentError,
     fetchDocuments,
+    fetchDocumentDetails,
     syncData,
     saveDocument,
     switchView,

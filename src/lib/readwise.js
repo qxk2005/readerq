@@ -53,8 +53,9 @@ class ReadwiseAPI {
   /**
    * 获取文档列表 (支持分页)
    */
-  async listDocuments({ updatedAfter, location, category, tag, limit, pageCursor, withHtmlContent } = {}) {
+  async listDocuments({ id, updatedAfter, location, category, tag, limit, pageCursor, withHtmlContent } = {}) {
     const params = new URLSearchParams();
+    if (id) params.append('id', id);
     if (updatedAfter) params.append('updatedAfter', updatedAfter);
     if (location) params.append('location', location);
     if (category) params.append('category', category);

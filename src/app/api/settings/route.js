@@ -12,6 +12,7 @@ const SETTING_KEYS = [
   'openai_api_key',
   'openai_base_url',
   'openai_model',
+  'openai_max_tokens',
 ];
 
 export async function GET() {
@@ -36,6 +37,7 @@ export async function GET() {
     settings.env_openai_api_key = !!process.env.OPENAI_API_KEY;
     settings.env_openai_base_url = process.env.OPENAI_BASE_URL || '';
     settings.env_openai_model = process.env.OPENAI_MODEL || '';
+    settings.env_openai_max_tokens = process.env.OPENAI_MAX_TOKENS || '';
 
     return NextResponse.json(settings);
   } catch (error) {

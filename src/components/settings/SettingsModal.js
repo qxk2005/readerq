@@ -18,6 +18,9 @@ export default function SettingsModal() {
   const [configSaved, setConfigSaved] = useState(false);
   const [configError, setConfigError] = useState(null);
   const [envInfo, setEnvInfo] = useState({});
+  const [testLoading, setTestLoading] = useState(false);
+  const [testResult, setTestResult] = useState(null);
+  const [openaiMaxTokens, setOpenaiMaxTokens] = useState('');
 
   // 加载当前配置
   const loadSettings = useCallback(async () => {
@@ -30,11 +33,13 @@ export default function SettingsModal() {
       setOpenaiApiKey(data.openai_api_key || '');
       setOpenaiBaseUrl(data.openai_base_url || '');
       setOpenaiModel(data.openai_model || '');
+      setOpenaiMaxTokens(data.openai_max_tokens || '');
       setEnvInfo({
         readwiseFromEnv: data.env_readwise_token,
         openaiFromEnv: data.env_openai_api_key,
         envBaseUrl: data.env_openai_base_url,
         envModel: data.env_openai_model,
+        envMaxTokens: data.env_openai_max_tokens,
       });
     } catch { /* ignore */ }
   }, []);
@@ -44,6 +49,7 @@ export default function SettingsModal() {
       loadSettings();
       setConfigSaved(false);
       setConfigError(null);
+      setTestResult(null);
     }
   }, [showSettings, loadSettings]);
 
@@ -62,6 +68,7 @@ export default function SettingsModal() {
           openai_api_key: openaiApiKey,
           openai_base_url: openaiBaseUrl,
           openai_model: openaiModel,
+          openai_max_tokens: openaiMaxTokens,
         }),
       });
       const data = await res.json();
@@ -75,6 +82,40 @@ export default function SettingsModal() {
       setConfigError(err.message);
     } finally {
       setConfigLoading(false);
+    }
+  };
+
+  // 测试 AI 配置
+  const testConfig = async () => {
+    setTestLoading(true);
+    setTestResult(null);
+    setConfigError(null);
+
+    try {
+      const res = await fetch('/api/ai/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          openai_api_key: openaiApiKey,
+          openai_base_url: openaiBaseUrl,
+          openai_model: openaiModel,
+          openai_max_tokens: openaiMaxTokens,
+        }),
+      });
+      const data = await res.json();
+      setTestResult({
+        success: data.success,
+        duration: data.duration,
+        reply: data.reply,
+        error: data.error,
+      });
+    } catch (err) {
+      setTestResult({
+        success: false,
+        error: err.message || '网络请求失败，请检查本地网络连接',
+      });
+    } finally {
+      setTestLoading(false);
     }
   };
 
@@ -112,7 +153,7 @@ export default function SettingsModal() {
             marginBottom: 'var(--space-4)',
             lineHeight: '1.6',
           }}>
-            💡 在此处配置的值会保存到本地数据库。如果你已在 <code style={{ background: 'var(--color-bg-hover)', padding: '1px 4px', borderRadius: '3px' }}>.env.local</code> 文件中设置了环境变量，则环境变量优先。
+            💡 在此处配置的值会保存到本地数据库并优先使用。如果你在此处留空，系统将自动回退使用 <code style={{ background: 'var(--color-bg-hover)', padding: '1px 4px', borderRadius: '3px' }}>.env.local</code> 或环境变量配置。
           </div>
 
           {/* Readwise Token */}
@@ -202,15 +243,46 @@ export default function SettingsModal() {
             </div>
           </div>
 
-          {/* 保存按钮 */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', marginBottom: 'var(--space-4)' }}>
+          {/* OpenAI Max Tokens */}
+          <div className="form-group">
+            <label className="form-label">
+              最大回答 Token 限制 (max_tokens)
+              {envInfo.envMaxTokens && (
+                <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-tertiary)', marginLeft: 'var(--space-2)' }}>
+                  环境变量: {envInfo.envMaxTokens}
+                </span>
+              )}
+            </label>
+            <input
+              type="number"
+              min="1"
+              className="form-input"
+              placeholder="4096"
+              value={openaiMaxTokens}
+              onChange={(e) => setOpenaiMaxTokens(e.target.value)}
+            />
+            <div className="form-hint">
+              AI 接口单次生成（含思考过程）的最大 Token 限制。对于 DeepSeek 等推理模型，建议设置为 4096 或更大。
+            </div>
+          </div>
+
+          {/* 保存与测试按钮组 */}
+          <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 'var(--space-3)', marginBottom: 'var(--space-4)' }}>
             <button
               className="btn btn-primary"
               onClick={saveConfig}
-              disabled={configLoading}
+              disabled={configLoading || testLoading}
               style={{ minWidth: '120px' }}
             >
               {configLoading ? '保存中...' : '💾 保存配置'}
+            </button>
+            <button
+              className="btn btn-secondary"
+              onClick={testConfig}
+              disabled={configLoading || testLoading}
+              style={{ minWidth: '120px' }}
+            >
+              {testLoading ? '测试中...' : '⚡️ 测试连接'}
             </button>
             {configSaved && (
               <span style={{ fontSize: 'var(--text-sm)', color: 'var(--color-success)', animation: 'fadeIn 0.3s ease' }}>
@@ -219,10 +291,42 @@ export default function SettingsModal() {
             )}
             {configError && (
               <span style={{ fontSize: 'var(--text-sm)', color: 'var(--color-danger)' }}>
-                ❌ {configError}
+                ❌ 保存失败: {configError}
               </span>
             )}
           </div>
+
+          {/* 测试连接结果显示 */}
+          {testResult && (
+            <div style={{
+              padding: 'var(--space-3)',
+              background: testResult.success ? 'rgba(16, 185, 129, 0.08)' : 'rgba(239, 68, 68, 0.08)',
+              border: `1px solid ${testResult.success ? 'var(--color-success)' : 'var(--color-danger)'}`,
+              borderRadius: 'var(--radius-md)',
+              fontSize: 'var(--text-xs)',
+              marginBottom: 'var(--space-4)',
+              lineHeight: '1.6',
+            }}>
+              {testResult.success ? (
+                <div>
+                  <span style={{ color: 'var(--color-success)', fontWeight: 'bold' }}>✓ 测试连接成功！</span>
+                  <span style={{ marginLeft: 'var(--space-2)', color: 'var(--color-text-secondary)' }}>
+                    (耗时: {testResult.duration}ms)
+                  </span>
+                  <div style={{ marginTop: 'var(--space-1)', color: 'var(--color-text-secondary)' }}>
+                    <strong>模型响应:</strong> "{testResult.reply}"
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  <span style={{ color: 'var(--color-danger)', fontWeight: 'bold' }}>✗ 测试连接失败</span>
+                  <div style={{ marginTop: 'var(--space-1)', color: 'var(--color-text-secondary)', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
+                    {testResult.error}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           <hr style={{ border: 'none', borderTop: '1px solid var(--color-border-light)', margin: 'var(--space-6) 0' }} />
 

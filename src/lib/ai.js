@@ -17,11 +17,14 @@ function getDbSetting(key) {
 
 /**
  * 创建 OpenAI 客户端
- * 优先使用环境变量，回退到数据库中用户设置的值
+ * 优先使用数据库中用户设置的值，回退到环境变量配置
  */
 export function createAIClient() {
-  const apiKey = process.env.OPENAI_API_KEY || getDbSetting('openai_api_key');
-  const baseURL = process.env.OPENAI_BASE_URL || getDbSetting('openai_base_url') || 'https://api.openai.com/v1';
+  let apiKey = getDbSetting('openai_api_key') || process.env.OPENAI_API_KEY;
+  let baseURL = getDbSetting('openai_base_url') || process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1';
+
+  if (apiKey) apiKey = apiKey.trim();
+  if (baseURL) baseURL = baseURL.trim();
 
   if (!apiKey) {
     throw new Error('未配置 OpenAI API Key。请在设置中填入你的 API Key，或在 .env.local 中配置 OPENAI_API_KEY');
@@ -34,7 +37,23 @@ export function createAIClient() {
  * 获取配置的模型名称
  */
 export function getModelName() {
-  return process.env.OPENAI_MODEL || getDbSetting('openai_model') || 'gpt-4o-mini';
+  const model = getDbSetting('openai_model') || process.env.OPENAI_MODEL || 'gpt-4o-mini';
+  return model ? model.trim() : 'gpt-4o-mini';
+}
+
+/**
+ * 获取配置的最大 Token 限制
+ */
+export function getMaxTokens() {
+  const val = getDbSetting('openai_max_tokens') || process.env.OPENAI_MAX_TOKENS;
+  if (val) {
+    const valStr = String(val).trim();
+    const parsed = parseInt(valStr, 10);
+    if (!isNaN(parsed) && parsed > 0) {
+      return parsed;
+    }
+  }
+  return 4096; // 默认值
 }
 
 /**
@@ -57,10 +76,10 @@ export async function summarizeDocument(title, content) {
       }
     ],
     temperature: 0.3,
-    max_tokens: 800,
+    max_tokens: getMaxTokens(),
   });
 
-  return response.choices[0]?.message?.content || '无法生成摘要';
+  return extractAIResponse(response.choices[0]) || '无法生成摘要';
 }
 
 /**
@@ -85,10 +104,10 @@ export async function defineText(text, context) {
       }
     ],
     temperature: 0.3,
-    max_tokens: 500,
+    max_tokens: getMaxTokens(),
   });
 
-  return response.choices[0]?.message?.content || '无法生成定义';
+  return extractAIResponse(response.choices[0]) || '无法生成定义';
 }
 
 /**
@@ -111,10 +130,10 @@ export async function translateText(text, targetLang = '简体中文') {
       }
     ],
     temperature: 0.2,
-    max_tokens: 2000,
+    max_tokens: getMaxTokens(),
   });
 
-  return response.choices[0]?.message?.content || '无法翻译';
+  return extractAIResponse(response.choices[0]) || '无法翻译';
 }
 
 /**
@@ -137,10 +156,10 @@ export async function simplifyText(text) {
       }
     ],
     temperature: 0.3,
-    max_tokens: 1000,
+    max_tokens: getMaxTokens(),
   });
 
-  return response.choices[0]?.message?.content || '无法简化';
+  return extractAIResponse(response.choices[0]) || '无法简化';
 }
 
 /**
@@ -161,7 +180,7 @@ export async function* chatStream(messages, documentContext) {
       ...messages
     ],
     temperature: 0.5,
-    max_tokens: 2000,
+    max_tokens: getMaxTokens(),
     stream: true,
   });
 
@@ -191,8 +210,29 @@ export async function chat(messages, documentContext) {
       ...messages
     ],
     temperature: 0.5,
-    max_tokens: 2000,
+    max_tokens: getMaxTokens(),
   });
 
-  return response.choices[0]?.message?.content || '无法生成回复';
+  return extractAIResponse(response.choices[0]) || '无法生成回复';
+}
+
+/**
+ * 安全提取 AI 响应正文
+ * 兼容带有推理思考链（Reasoning）的兼容模型在被截断时的回退处理
+ */
+function extractAIResponse(choice) {
+  if (!choice || !choice.message) return '';
+  
+  const content = choice.message.content;
+  if (content && content.trim()) {
+    return content.trim();
+  }
+  
+  // 回退提取推理过程，防止在被截断时返回空内容
+  const reasoning = choice.message.reasoning_content || choice.message.reasoning;
+  if (reasoning && reasoning.trim()) {
+    return `[模型推理被截断，输出思考过程]:\n${reasoning.trim()}`;
+  }
+  
+  return '';
 }

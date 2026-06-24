@@ -144,7 +144,7 @@ export function upsertDocument(doc) {
     last_opened_at: doc.last_opened_at || null,
     saved_at: doc.saved_at || null,
     last_moved_at: doc.last_moved_at || null,
-    html_content: doc.html_content || null,
+    html_content: doc.html_content !== undefined ? doc.html_content : null,
     tags_json: JSON.stringify(doc.tags || {}),
     synced_at: new Date().toISOString(),
   });
