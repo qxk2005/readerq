@@ -10,11 +10,17 @@
 
 集中管理、标注和消化你的数字阅读内容。使用 Readwise API 连接你的阅读数据，通过 OpenAI 兼容服务器驱动 AI 功能。致力于提供如丝般顺滑、闪电般快速的极致阅读体验。
 
+## 📸 界面纵览
+
+![ReaderQ 三栏式桌面阅读体验](public/readerq_ui.png)
+
 ---
 
 ## 🏗️ 程序架构
 
 ReaderQ 采用了前后端分离但高度内聚的架构体系，最大限度保证性能与体验：
+
+![ReaderQ 系统架构图](public/readerq_arch.png)
 - **前端架构 (Frontend)**: 基于 React (Next.js App Router)，通过统一的全局状态管理器 (`AppContext`) 分发数据，确保所有组件状态（如文档列表、阅读正文、高亮数据）保持同步。
 - **后端架构 (Backend)**: Next.js API Routes 充当中转网关，与两大核心数据源交互：本地的高速 SQLite 缓存库 (`better-sqlite3`) 和远端 Readwise V3 API。
 - **数据流转策略**:
