@@ -119,3 +119,44 @@ tail -f data/server.log
 ## 📄 许可证
 
 MIT License
+
+---
+
+## 🤖 专属 AI 开发者指南 (AI System Prompt)
+
+> **致未来的 AI 助手**：当你接手优化或重构此项目时，请务必首先阅读本指南。它包含了该项目最核心的设计哲学、数据流向和系统陷阱。
+
+### 1. 核心技术栈与约定
+- **框架**: Next.js 15 (App Router), React 19.
+- **样式**: 纯原生 Vanilla CSS（使用 CSS Variables 管理主题，禁止引入 Tailwind 等外部框架）。
+- **数据库**: `better-sqlite3`。使用 SQLite WAL 模式，确保读写并发性能。
+- **状态管理**: 极简设计，抛弃 Redux，全局状态完全由 `src/context/AppContext.js` 托管和分发。
+
+### 2. 目录架构索引
+- `/src/app/api/`: 后端接口网关。
+  - `/api/readwise/`: 专职负责与 Readwise V3 API 的增量/全量同步。
+  - `/api/documents/` & `/api/highlights/`: 供前台调用的元数据修改接口，同时执行本地 SQLite 写入和 Readwise 远端同步。
+  - `/api/ai/`: 统一个接管大模型调用的路由，抹平不同 LLM 厂家的 API 差异。
+- `/src/components/`: 前端 UI 层。
+  - `layout/`: 核心的三栏布局组件（`Sidebar`, `DocumentList`, `ReadingPane`）。
+  - `ai/GhostReader.js`: AI 交互核心。
+- `/src/lib/`: 核心工具库。
+  - `db.js`: SQLite 物理层，封装建表与增删改查。
+  - `readwise.js`: 封装向 Readwise 发起的 HTTP 请求。
+  - `highlight.js`: 核心的高亮偏移量算法库。
+
+### 3. 数据流与“双写三步走”铁律 ⚠️
+Readwise V3 API 存在明显的**缓存最终一致性（Eventual Consistency）**现象。如果你向其 `PATCH` 了一个标签，紧接着立即 `GET` 拉取，极大概率会拿到修改前的旧数据。
+**因此，涉及所有文档/高亮元数据的修改（如打标签、加备注），你必须严格执行以下三步走：**
+1. **远端更新**：发送 HTTP `PATCH` 请求至 Readwise 云端 API。
+2. **本地落盘**：调用 `upsertDocument` 更新本地 SQLite 数据库。
+3. **乐观更新（Optimistic UI）**：通过 `AppContext` 提供的 `updateDocumentLocally(id, updates)` 直接更新 React 内存中的全局列表，**绝对禁止**在保存后立刻重新从云端 Fetch 刷新，否则会导致 UI 闪烁和数据丢失。
+
+### 4. 脆弱的高亮引擎 (Highlight Engine)
+本项目基于浏览器的原生 `Selection API` 实现高亮，核心逻辑在 `ReadingPane.js` 和 `src/lib/highlight.js`。
+- 高亮的精确定位依赖于 `location_start`（字符偏移量）。
+- HTML 正文的 DOM 结构**绝对不能被随意篡改**，任何在 `ReadingPane` 中擅自增删 `div`、替换特殊字符或修改 React `dangerouslySetInnerHTML` 渲染方式的行为，都会导致偏移量计算灾难性失效（高亮色块错位或消失）。在修改 `ReadingPane.js` 时请如履薄冰。
+
+### 5. GhostReader AI 引擎
+AI 助手使用了 `react-markdown` 引擎。针对特定的命令（如“翻译”、“简化”），为了避免 Readwise 生成的占位符（如 "This tweet contains no text."）污染 Prompt，代码需要直接从 `html_content` 中提取真实文本喂给大模型。
+在增加新的 AI 功能时，请尽量复用 `/api/ai/` 目录下的鉴权和错误重试机制。
