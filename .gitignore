@@ -21,6 +21,10 @@
 # misc
 .DS_Store
 *.pem
+scratch-data.json
+fix_count.js
+test_*.cjs
+*.cjs
 
 # debug
 npm-debug.log*
