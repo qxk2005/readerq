@@ -27,8 +27,6 @@ export default function ReadingPane() {
   const [isLoadingHighlights, setIsLoadingHighlights] = useState(true);
   const [selection, setSelection] = useState(null);
   const [editingHighlight, setEditingHighlight] = useState(null);
-  const [editingTags, setEditingTags] = useState(false);
-  const [verifyingHlId, setVerifyingHlId] = useState(null);
   const [verifyStatus, setVerifyStatus] = useState({}); // { [id]: { synced: boolean, message: string } }
   const [docTags, setDocTags] = useState([]);
   const [docNote, setDocNote] = useState('');
@@ -210,35 +208,19 @@ export default function ReadingPane() {
     }
   };
 
-  const handleAddDocumentTag = async () => {
-    if (!newTag.trim() || !selectedDoc) return;
-    const tag = newTag.trim();
-    if (docTags.includes(tag)) return;
-    
-    const newTags = [...docTags, tag];
+  const handleTagsChange = async (newTags) => {
+    if (!selectedDoc) return;
     setDocTags(newTags);
-    setNewTag('');
-    
     try {
-      await fetch(`/api/documents/${selectedDoc.id}/tags`, {
-        method: 'POST',
+      await fetch(`/api/documents/${selectedDoc.id}`, {
+        method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ tags: newTags })
       });
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
-  const handleRemoveDocumentTag = async (tagToRemove) => {
-    const newTags = docTags.filter(t => t !== tagToRemove);
-    setDocTags(newTags);
-    try {
-      await fetch(`/api/documents/${selectedDoc.id}/tags`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tags: newTags })
-      });
+      
+      const tagsObj = {};
+      newTags.forEach(t => tagsObj[t] = 1);
+      updateDocumentLocally(selectedDoc.id, { tags: tagsObj });
     } catch (e) {
       console.error(e);
     }
@@ -557,51 +539,14 @@ export default function ReadingPane() {
               </div>
               
               {/* Document Tags */}
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 'var(--space-3)' }}>
-                  <h3 style={{ fontSize: '11px', fontWeight: '600', color: 'var(--color-text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.05em', margin: 0 }}>Document Tags</h3>
-                  <button 
-                    className="btn btn-ghost btn-sm"
-                    onClick={() => setEditingTags(!editingTags)}
-                    style={{ fontSize: '12px', padding: '2px 8px' }}
-                  >
-                    {editingTags ? '完成' : '编辑'}
-                  </button>
-                </div>
-                
-                <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
-                  {docTags.map(tag => (
-                    <span key={tag} className="tag-pill" style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12px' }}>
-                      {tag}
-                      {editingTags && (
-                        <button 
-                          onClick={() => handleRemoveDocumentTag(tag)}
-                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-text-tertiary)', padding: '0 2px' }}
-                        >×</button>
-                      )}
-                    </span>
-                  ))}
-                  {docTags.length === 0 && !editingTags && (
-                    <span style={{ color: 'var(--color-text-tertiary)', fontSize: '12px' }}>暂无标签</span>
-                  )}
-                </div>
-
-                {editingTags && (
-                  <div className="tag-input-container" style={{ marginTop: 'var(--space-3)' }}>
-                    <input 
-                      type="text" 
-                      className="input" 
-                      placeholder="输入新标签..." 
-                      value={newTag}
-                      onChange={(e) => setNewTag(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') handleAddDocumentTag();
-                      }}
-                      style={{ flex: 1, padding: '6px 8px', fontSize: '12px' }}
-                    />
-                    <button className="btn btn-primary btn-sm" onClick={handleAddDocumentTag} style={{ fontSize: '12px' }}>添加</button>
-                  </div>
-                )}
+              <div style={{ marginTop: 'var(--space-6)' }}>
+                <h3 style={{ fontSize: '11px', fontWeight: '600', color: 'var(--color-text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 'var(--space-3)' }}>Document Tags</h3>
+                <TagInput 
+                  value={docTags}
+                  onChange={handleTagsChange}
+                  allTags={allTags.map(t => t.name)}
+                  placeholder="添加文档标签..."
+                />
               </div>
             </div>
           )}
@@ -621,16 +566,6 @@ export default function ReadingPane() {
                   />
                 </div>
                 
-                <div>
-                  <h3 style={{ fontSize: '11px', fontWeight: '600', color: 'var(--color-text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 'var(--space-2)' }}>Document Tags</h3>
-                  <TagInput 
-                    value={docTags}
-                    onChange={setDocTags}
-                    allTags={allTags.map(t => t.name)}
-                    placeholder="添加文档标签..."
-                  />
-                </div>
-
                 <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 'var(--space-2)' }}>
                   <button 
                     className="btn btn-primary btn-sm"
