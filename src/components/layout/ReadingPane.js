@@ -99,8 +99,8 @@ export default function ReadingPane() {
       articleRef.current.innerHTML = selectedDoc.html_content;
       setTimeout(() => {
         if (!articleRef.current) return;
-        restoreHighlights(articleRef.current, highlights, (hl, target) => {
-          const rect = target.getBoundingClientRect();
+        restoreHighlights(articleRef.current, highlights, (hl, e) => {
+          const rect = e.target.getBoundingClientRect();
           setEditingHighlight({ ...hl, rect });
         });
       }, 50);
@@ -132,7 +132,7 @@ export default function ReadingPane() {
           text,
           location_start,
           location_end,
-          rect: { top: rect.top, left: rect.left + rect.width / 2, width: rect.width }
+          rect: { top: rect.top, bottom: rect.bottom, left: rect.left, width: rect.width }
         });
       }
     }
@@ -274,8 +274,12 @@ export default function ReadingPane() {
           display: flex;
           gap: var(--space-2);
           z-index: 1000;
-          transform: translate(-50%, -100%);
-          margin-top: -10px;
+          transform: translate(-50%, 0);
+          margin-top: 8px;
+        }
+        .selection-toolbar {
+          transform: translate(-50%, -100%) !important;
+          margin-top: -10px !important;
         }
         .highlight-color-btn {
           width: 24px;
@@ -314,8 +318,9 @@ export default function ReadingPane() {
       {/* 选中文本高亮工具栏 */}
       {selection && (
         <div 
-          className="highlight-toolbar" 
-          style={{ top: selection.rect.top, left: selection.rect.left }}
+          className="highlight-toolbar selection-toolbar" 
+          style={{ top: selection.rect.top, left: selection.rect.left + selection.rect.width / 2 }}
+          onMouseUp={(e) => e.stopPropagation()}
         >
           <button className="highlight-color-btn" style={{backgroundColor: '#fef08a'}} onClick={() => handleCreateHighlight('yellow')} />
           <button className="highlight-color-btn" style={{backgroundColor: '#bbf7d0'}} onClick={() => handleCreateHighlight('green')} />

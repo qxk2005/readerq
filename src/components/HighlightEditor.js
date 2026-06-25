@@ -22,7 +22,7 @@ export default function HighlightEditor({ highlight, onUpdate, onDelete, onClose
     <div 
       className="highlight-toolbar" 
       style={{ 
-        top: highlight.rect.top, 
+        top: highlight.rect.bottom, 
         left: highlight.rect.left + highlight.rect.width / 2,
         flexDirection: 'column',
         width: '250px'
