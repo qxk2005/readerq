@@ -27,6 +27,7 @@ export default function ReadingPane() {
   const [isLoadingHighlights, setIsLoadingHighlights] = useState(true);
   const [selection, setSelection] = useState(null);
   const [editingHighlight, setEditingHighlight] = useState(null);
+  const [verifyingHlId, setVerifyingHlId] = useState(null);
   const [verifyStatus, setVerifyStatus] = useState({}); // { [id]: { synced: boolean, message: string } }
   const [docTags, setDocTags] = useState([]);
   const [docNote, setDocNote] = useState('');
@@ -514,7 +515,7 @@ export default function ReadingPane() {
                 textTransform: 'capitalize'
               }}
             >
-              {tab === 'info' ? 'Info' : tab === 'notebook' ? 'Notebook' : 'Chat'}
+              {tab === 'info' ? '信息' : tab === 'notebook' ? `笔记 (${highlights.length})` : 'AI助手'}
             </button>
           ))}
         </div>
