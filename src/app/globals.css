@@ -623,6 +623,15 @@ textarea:focus {
   font-size: var(--text-lg);
   line-height: 1.8;
   color: var(--color-text-primary);
+  overflow-wrap: break-word;
+  word-break: break-word;
+  overflow-x: hidden;
+}
+
+/* 防止文章内嵌内容溢出容器 */
+.reading-article-body * {
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 .reading-article-body p {

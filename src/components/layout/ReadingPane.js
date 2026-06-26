@@ -91,11 +91,23 @@ export default function ReadingPane() {
     };
   }, [selectedDoc?.id]);
 
+  // 清理文章 HTML：移除可能破坏全局布局的 <style> 和 <script> 标签
+  const sanitizeArticleHtml = (html) => {
+    if (!html) return html;
+    // 移除 <style> 标签及其内容（防止文章内嵌 CSS 覆盖全局变量和 body 样式）
+    let cleaned = html.replace(/<style[\s\S]*?<\/style>/gi, '');
+    // 移除 <script> 标签及其内容（安全防护）
+    cleaned = cleaned.replace(/<script[\s\S]*?<\/script>/gi, '');
+    // 移除 <link rel="stylesheet"> 标签（防止加载外部样式表）
+    cleaned = cleaned.replace(/<link[^>]*rel=["']stylesheet["'][^>]*\/?>/gi, '');
+    return cleaned;
+  };
+
   // 渲染高亮
   useEffect(() => {
     if (articleRef.current && !isContentLoading && !isLoadingHighlights && selectedDoc?.html_content) {
       // 必须先重置 DOM 避免多次添加 <mark> 导致文本 offset 计算错误
-      articleRef.current.innerHTML = selectedDoc.html_content;
+      articleRef.current.innerHTML = sanitizeArticleHtml(selectedDoc.html_content);
       setTimeout(() => {
         if (!articleRef.current) return;
         restoreHighlights(articleRef.current, highlights, (hl, e) => {
