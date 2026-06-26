@@ -66,7 +66,7 @@ export default function HighlightEditor({ highlight, onUpdate, onDelete, onClose
         flexDirection: 'column',
         width: '250px'
       }}
-      onMouseUp={(e) => e.stopPropagation()}
+      onMouseDown={(e) => e.stopPropagation()}
     >
       <div 
         style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', cursor: isDragging ? 'grabbing' : 'grab'}}
