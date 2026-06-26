@@ -4,7 +4,7 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import { useApp } from '@/context/AppContext';
 import { LOCATION_LABELS, CATEGORY_ICONS, formatDate, truncateText, extractDomain } from '@/lib/utils';
 
-function DocumentCard({ doc, isActive, onClick, isSelectionMode, isSelected, onToggleSelect }) {
+function DocumentCard({ doc, isActive, onClick, isSelectionMode, isSelected, onToggleSelect, onMoveDoc }) {
   const handleClick = (e) => {
     if (isSelectionMode) {
       e.preventDefault();
