@@ -371,8 +371,24 @@ export default function ReadingPane() {
         <div className="reading-header-right">
           <button
             className="btn-icon"
-            onClick={() => setRightPanelTab(rightPanelTab === 'chat' ? 'notebook' : 'chat')}
-            data-tooltip={rightPanelTab === 'chat' ? '关闭 AI 助手' : '打开 AI 助手'}
+            onClick={() => setRightPanelTab(rightPanelTab === 'info' ? null : 'info')}
+            data-tooltip="文档信息"
+            style={rightPanelTab === 'info' ? { color: 'var(--color-accent)' } : {}}
+          >
+            ℹ️
+          </button>
+          <button
+            className="btn-icon"
+            onClick={() => setRightPanelTab(rightPanelTab === 'notebook' ? null : 'notebook')}
+            data-tooltip="笔记"
+            style={rightPanelTab === 'notebook' ? { color: 'var(--color-accent)' } : {}}
+          >
+            📝
+          </button>
+          <button
+            className="btn-icon"
+            onClick={() => setRightPanelTab(rightPanelTab === 'chat' ? null : 'chat')}
+            data-tooltip="AI助手"
             style={rightPanelTab === 'chat' ? { color: 'var(--color-accent)' } : {}}
           >
             🤖
@@ -511,7 +527,8 @@ export default function ReadingPane() {
       </div> {/* Close article-scroll-container */}
 
       {/* 右侧边栏 (Tabs: Info, Notebook, Chat) */}
-      <div className="right-sidebar" style={{ width: '320px', minWidth: '320px', borderLeft: '1px solid var(--color-border)', backgroundColor: 'var(--color-bg-secondary)', display: 'flex', flexDirection: 'column', overflowY: 'hidden' }}>
+      {rightPanelTab && (
+        <div className="right-sidebar" style={{ width: '320px', minWidth: '320px', borderLeft: '1px solid var(--color-border)', backgroundColor: 'var(--color-bg-secondary)', display: 'flex', flexDirection: 'column', overflowY: 'hidden' }}>
         
         {/* Tab Header */}
         <div style={{ display: 'flex', borderBottom: '1px solid var(--color-border)', padding: '0 var(--space-4)' }}>
@@ -745,6 +762,7 @@ export default function ReadingPane() {
 
         </div>
       </div>
+      )}
     </div>
   );
 }

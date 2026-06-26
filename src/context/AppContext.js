@@ -19,11 +19,11 @@ export function AppProvider({ children }) {
   const [syncProgress, setSyncProgress] = useState(null);
   const [syncCounts, setSyncCounts] = useState({ local: 0, remote: 0, lastSync: null });
   const [syncError, setSyncError] = useState(null);
-  const [rightPanelTab, setRightPanelTab] = useState('notebook'); // 'info', 'notebook', 'chat'
+  const [rightPanelTab, setRightPanelTab] = useState(null); // 'info', 'notebook', 'chat', null
   
   // 兼容现有的 showAiPanel 逻辑
   const showAiPanel = rightPanelTab === 'chat';
-  const setShowAiPanel = (show) => setRightPanelTab(show ? 'chat' : 'notebook');
+  const setShowAiPanel = (show) => setRightPanelTab(show ? 'chat' : null);
   const [showCommandPalette, setShowCommandPalette] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showAddUrl, setShowAddUrl] = useState(false);
