@@ -61,6 +61,13 @@ function DocumentCard({ doc, isActive, onClick, isSelectionMode, isSelected, onT
           />
         </div>
       )}
+      {!isSelectionMode && (
+        <div className="doc-card-actions">
+          <button className="doc-card-action-btn" title="Inbox" onClick={(e) => { e.stopPropagation(); onMoveDoc(doc.id, 'new'); }}>📥</button>
+          <button className="doc-card-action-btn" title="Later" onClick={(e) => { e.stopPropagation(); onMoveDoc(doc.id, 'later'); }}>⏱️</button>
+          <button className="doc-card-action-btn" title="Archive" onClick={(e) => { e.stopPropagation(); onMoveDoc(doc.id, 'archive'); }}>📦</button>
+        </div>
+      )}
     </div>
   );
 }
@@ -102,6 +109,10 @@ export default function DocumentList() {
   const handleSearch = useCallback((e) => {
     setSearchQuery(e.target.value);
   }, [setSearchQuery]);
+
+  const handleMoveDoc = useCallback(async (docId, location) => {
+    await batchMoveDocuments([docId], location);
+  }, [batchMoveDocuments]);
 
   const getViewTitle = () => {
     if (currentTag) return `🏷️ ${currentTag}`;
@@ -211,6 +222,7 @@ export default function DocumentList() {
                   else newSet.add(id);
                   setSelectedIds(newSet);
                 }}
+                onMoveDoc={handleMoveDoc}
               />
             ))}
             {/* Observer Target for Infinite Scroll */}
