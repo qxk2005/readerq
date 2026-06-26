@@ -171,9 +171,26 @@ export default function ReadingPane() {
     return parts.join('').trim();
   };
 
-  // 监听选中文本
-  const handleMouseUp = () => {
-    // If we are clicking inside the editing toolbar, ignore
+  // 监听选中文本 & 高亮点击（事件委托）
+  const handleMouseUp = (e) => {
+    // 检测是否点击了已有的高亮 <mark> 元素（事件委托模式）
+    const clickedMark = e.target.closest('mark[data-highlight-id]');
+    if (clickedMark && articleRef.current?.contains(clickedMark)) {
+      const sel = window.getSelection();
+      // 只有简单点击（未拖选文本）才打开编辑器
+      if (sel && sel.isCollapsed) {
+        const hlId = clickedMark.dataset.highlightId;
+        const hl = highlights.find(h => h.id === hlId);
+        if (hl) {
+          const rect = clickedMark.getBoundingClientRect();
+          setEditingHighlight({ ...hl, rect });
+          setSelection(null);
+          return;
+        }
+      }
+    }
+
+    // 非高亮点击：处理文本选区（新建高亮）
     const sel = window.getSelection();
     if (!sel || sel.isCollapsed || !articleRef.current) {
       if (selection) setSelection(null);
