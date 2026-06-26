@@ -119,6 +119,58 @@ export default function ReadingPane() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedDoc?.id, isContentLoading, isLoadingHighlights, highlights]);
 
+  // 从选区中提取文本，保留块级元素边界的换行
+  const extractSelectionText = (range) => {
+    const BLOCK_ELEMENTS = new Set([
+      'P', 'DIV', 'LI', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6',
+      'BR', 'HR', 'BLOCKQUOTE', 'PRE', 'TR', 'DT', 'DD',
+      'SECTION', 'ARTICLE', 'HEADER', 'FOOTER', 'FIGURE', 'FIGCAPTION'
+    ]);
+    
+    const fragment = range.cloneContents();
+    const parts = [];
+    
+    const walk = (node, olCounter = null) => {
+      if (node.nodeType === Node.TEXT_NODE) {
+        parts.push(node.textContent);
+      } else if (node.nodeType === Node.ELEMENT_NODE) {
+        const tagName = node.tagName;
+        if (tagName === 'BR') {
+          parts.push('\n');
+          return;
+        }
+        const isBlock = BLOCK_ELEMENTS.has(tagName);
+        // 在块级元素开头插入换行（如果前面已经有内容）
+        if (isBlock && parts.length > 0 && parts[parts.length - 1] !== '\n') {
+          parts.push('\n');
+        }
+        // 为列表项添加标记符号
+        if (tagName === 'LI') {
+          if (olCounter) {
+            parts.push(`${olCounter.value++}. `);
+          } else {
+            parts.push('• ');
+          }
+        }
+        // 有序列表：传递计数器给子节点
+        const childCounter = (tagName === 'OL') ? { value: 1 } : olCounter;
+        for (const child of node.childNodes) {
+          walk(child, childCounter);
+        }
+        // 在块级元素结尾插入换行
+        if (isBlock && parts.length > 0 && parts[parts.length - 1] !== '\n') {
+          parts.push('\n');
+        }
+      }
+    };
+    
+    for (const child of fragment.childNodes) {
+      walk(child);
+    }
+    
+    return parts.join('').trim();
+  };
+
   // 监听选中文本
   const handleMouseUp = () => {
     // If we are clicking inside the editing toolbar, ignore
@@ -132,7 +184,7 @@ export default function ReadingPane() {
 
     const range = sel.getRangeAt(0);
     const rect = range.getBoundingClientRect();
-    const text = sel.toString().trim();
+    const text = extractSelectionText(range);
 
     if (text) {
       const location_start = getTextOffset(articleRef.current, range.startContainer, range.startOffset);
@@ -678,7 +730,8 @@ export default function ReadingPane() {
                         paddingLeft: 'var(--space-2)',
                         fontSize: '13px',
                         lineHeight: '1.5',
-                        color: 'var(--color-text-primary)'
+                        color: 'var(--color-text-primary)',
+                        whiteSpace: 'pre-line'
                       }}>
                         {hl.text}
                       </div>
