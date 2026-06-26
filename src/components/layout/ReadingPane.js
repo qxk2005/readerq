@@ -341,8 +341,8 @@ export default function ReadingPane() {
         />
       )}
 
-      <div style={{ display: 'flex', flexDirection: 'row', flex: 1, overflow: 'hidden' }}>
-        <div style={{ flex: 1, overflowY: 'auto', position: 'relative' }} className="article-scroll-container" id="article-scroll-container">
+      <div style={{ display: 'flex', flexDirection: 'row', flex: 1, overflow: 'hidden', minWidth: 0 }}>
+        <div style={{ flex: 1, overflowY: 'auto', position: 'relative', minWidth: 0 }} className="article-scroll-container" id="article-scroll-container">
       {/* 阅读头部 */}
       <div className="reading-header">
         <div className="reading-header-left">
