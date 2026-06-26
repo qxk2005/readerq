@@ -47,8 +47,11 @@ export async function GET(request) {
     // 强制同步或首次加载
     if (forceSync) {
       try {
+        const { getLatestDocumentDate } = await import('@/lib/db');
+        const updatedAfter = getLatestDocumentDate({ location, category, tag });
+        
         const client = getServerReadwiseClient();
-        const documents = await client.fetchAllDocuments({ location, category, tag });
+        const documents = await client.fetchAllDocuments({ location, category, tag, updatedAfter });
         upsertDocuments(documents);
       } catch (err) {
         console.error('同步失败:', err.message);

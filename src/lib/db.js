@@ -476,3 +476,28 @@ export function batchUpdateLocation(ids, location) {
   
   updateMany(ids);
 }
+
+/**
+ * 获取符合条件的文档中最新的更新时间
+ */
+export function getLatestDocumentDate({ location, category, tag } = {}) {
+  const db = getDatabase();
+  let query = 'SELECT MAX(updated_at) as max_date FROM documents WHERE parent_id IS NULL';
+  const params = {};
+
+  if (location) {
+    query += ' AND location = @location';
+    params.location = location;
+  }
+  if (category) {
+    query += ' AND category = @category';
+    params.category = category;
+  }
+  if (tag) {
+    query += ' AND tags_json LIKE @tag';
+    params.tag = `%"${tag}"%`;
+  }
+
+  const result = db.prepare(query).get(params);
+  return result?.max_date || null;
+}
