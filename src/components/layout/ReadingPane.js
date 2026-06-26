@@ -193,6 +193,23 @@ export default function ReadingPane() {
       if (data.success) {
         setHighlights(highlights.map(h => h.id === id ? data.highlight : h));
         setEditingHighlight(prev => prev ? { ...prev, ...data.highlight } : null);
+        
+        if (updates.tags) {
+          const newHlTags = Object.keys(updates.tags);
+          if (newHlTags.length > 0) {
+            const currentDocTags = new Set(docTags);
+            let hasNew = false;
+            for (const t of newHlTags) {
+              if (!currentDocTags.has(t)) {
+                currentDocTags.add(t);
+                hasNew = true;
+              }
+            }
+            if (hasNew) {
+              handleTagsChange(Array.from(currentDocTags));
+            }
+          }
+        }
       }
     } catch (e) {
       console.error(e);
