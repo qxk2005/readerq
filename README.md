@@ -63,14 +63,41 @@ ReaderQ 采用经典的“三栏式”桌面级效率工具布局（可使用 `[
 
 ## 🚀 部署与启停命令
 
-你可以使用配套的 CLI 工具或 npm 命令来启停项目。
+支持 **macOS / Linux / Windows 11** 跨平台部署。
+
+### 环境要求
+
+| 依赖项 | 版本要求 | 说明 |
+|--------|---------|------|
+| Node.js | v20+ LTS | 推荐使用 LTS 版本 |
+| npm | v9+ | 随 Node.js 一起安装 |
+| Python | 3.x | Windows 编译原生模块时需要 |
+
+> **🪟 Windows 用户额外要求**：`better-sqlite3` 是原生 C++ 模块，首次 `npm install` 时需要编译环境。请确保已安装以下工具之一：
+> - **方式一（推荐）**：安装 [Visual Studio Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/)，勾选 **"使用 C++ 的桌面开发"** 工作负载
+> - **方式二**：在管理员 PowerShell 中运行 `npm install -g windows-build-tools`
+>
+> 安装后如遇问题，可尝试设置：
+> ```powershell
+> npm config set msvs_version 2022
+> ```
 
 ### 初始化项目
+
+**macOS / Linux:**
 ```bash
 git clone https://github.com/qxk2005/readerq.git
 cd readerq
 npm install
 cp .env.example .env.local
+```
+
+**Windows (PowerShell):**
+```powershell
+git clone https://github.com/qxk2005/readerq.git
+cd readerq
+npm install
+Copy-Item .env.example .env.local
 ```
 
 ### 环境配置 (`.env.local`)
@@ -85,7 +112,7 @@ OPENAI_MODEL=gpt-4o-mini
 ```
 
 ### 启停命令 (CLI 工具)
-系统内置了便捷的快捷脚本用于服务生命周期管理：
+系统内置了跨平台的快捷脚本用于服务生命周期管理：
 ```bash
 # 启动或重启后台服务，自动清理被占用的 3000 端口
 readerq --restart
@@ -93,10 +120,13 @@ readerq --restart
 # 服务成功启动后，将在后台持续运行，你可以访问:
 # http://localhost:3000
 
-# 所有的后端日志与报错信息会实时输出至：
+# 查看后台日志 (macOS/Linux)
 tail -f data/server.log
+
+# 查看后台日志 (Windows PowerShell)
+Get-Content data\server.log -Wait
 ```
-*(你也可以使用传统的 `npm run dev` 在前台启动开发服务器)*
+*(你也可以使用传统的 `npm run dev` 在前台启动开发服务器，此方式在所有平台上均适用)*
 
 ## ⌨️ 快捷键速查
 

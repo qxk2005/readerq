@@ -1,19 +1,21 @@
 #!/usr/bin/env node
 
 /**
- * ReaderQ CLI - 服务管理工具
+ * ReaderQ CLI - 服务管理工具（跨平台版，支持 macOS / Linux / Windows）
  * 用法: readerq --restart | --start | --stop | --status
  */
 
 const { execSync, spawn } = require('child_process');
 const { existsSync, readFileSync, writeFileSync, unlinkSync, mkdirSync } = require('fs');
 const { join } = require('path');
+const os = require('os');
 
 const ROOT_DIR = join(__dirname, '..');
 const PID_FILE = join(ROOT_DIR, 'data', '.readerq.pid');
 const PORT = 3000;
+const IS_WIN = os.platform() === 'win32';
 
-// ---- 颜色 ----
+// ---- 颜色（Windows cmd 支持 ANSI 转义码，PowerShell / Windows Terminal 均支持） ----
 const C = {
   R: '\x1b[0m', G: '\x1b[32m', E: '\x1b[31m',
   Y: '\x1b[33m', B: '\x1b[36m', D: '\x1b[1m',
@@ -39,30 +41,70 @@ function isRunning(pid) {
   try { process.kill(pid, 0); return true; } catch { return false; }
 }
 
+// ---- 跨平台：查找占用端口的进程 ----
+function findProcessOnPort(port) {
+  try {
+    if (IS_WIN) {
+      // Windows: 使用 netstat 查找占用端口的 PID
+      const output = execSync(`netstat -ano | findstr :${port} | findstr LISTENING`, {
+        encoding: 'utf-8',
+        stdio: ['pipe', 'pipe', 'pipe']
+      }).trim();
+      if (!output) return [];
+      const pids = new Set();
+      output.split('\n').forEach(line => {
+        const parts = line.trim().split(/\s+/);
+        const pid = parseInt(parts[parts.length - 1], 10);
+        if (pid && !isNaN(pid)) pids.add(pid);
+      });
+      return [...pids];
+    } else {
+      // macOS / Linux: 使用 lsof
+      const pids = execSync(`lsof -ti:${port} 2>/dev/null`, { encoding: 'utf-8' }).trim();
+      if (!pids) return [];
+      return pids.split('\n').map(p => parseInt(p, 10)).filter(p => !isNaN(p));
+    }
+  } catch {
+    return [];
+  }
+}
+
+// ---- 跨平台：杀掉进程 ----
+function killProcess(pid) {
+  try {
+    if (IS_WIN) {
+      // Windows: 使用 taskkill 强制终止进程树
+      execSync(`taskkill /PID ${pid} /T /F`, { stdio: 'ignore' });
+    } else {
+      // Unix: 先尝试杀掉进程组，再 fallback 到单进程
+      try {
+        process.kill(-pid, 'SIGTERM');
+      } catch {
+        process.kill(pid, 'SIGTERM');
+      }
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 // ---- 停止 ----
 function stopServer() {
   const pid = getSavedPid();
 
   if (pid && isRunning(pid)) {
-    try {
-      // 杀掉进程组（detached 模式启动的子进程组）
-      process.kill(-pid, 'SIGTERM');
+    if (killProcess(pid)) {
       log(`  ✓ 已停止服务 (PID: ${pid})`, 'Y');
-    } catch {
-      try { process.kill(pid, 'SIGTERM'); } catch { /* ignore */ }
     }
   }
 
   // 兜底：杀掉所有占用端口的进程
-  try {
-    const pids = execSync(`lsof -ti:${PORT} 2>/dev/null`, { encoding: 'utf-8' }).trim();
-    if (pids) {
-      pids.split('\n').forEach(p => {
-        try { process.kill(parseInt(p, 10), 'SIGTERM'); } catch { /* ignore */ }
-      });
-      log(`  ✓ 已清理端口 ${PORT}`, 'Y');
-    }
-  } catch { /* 端口空闲 */ }
+  const portPids = findProcessOnPort(PORT);
+  if (portPids.length > 0) {
+    portPids.forEach(p => killProcess(p));
+    log(`  ✓ 已清理端口 ${PORT}`, 'Y');
+  }
 
   // 清理 PID 文件
   try { if (existsSync(PID_FILE)) unlinkSync(PID_FILE); } catch { /* ignore */ }
@@ -77,25 +119,35 @@ function startServer() {
 
   const logFile = join(dataDir, 'server.log');
 
-  // 使用 shell 的 nohup 启动，避免 detached+pipe IO 阻塞问题
-  const child = spawn('sh', ['-c', `nohup npm run dev > "${logFile}" 2>&1 &\necho $!`], {
-    cwd: ROOT_DIR,
-    stdio: ['ignore', 'pipe', 'pipe'],
-  });
+  let child;
 
-  let pidStr = '';
-  child.stdout.on('data', (buf) => { pidStr += buf.toString(); });
+  if (IS_WIN) {
+    // Windows: 使用 cmd /c 启动，detached 模式在后台运行
+    child = spawn('cmd', ['/c', 'npm', 'run', 'dev'], {
+      cwd: ROOT_DIR,
+      detached: true,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true,
+    });
 
-  child.on('close', () => {
-    const pid = parseInt(pidStr.trim(), 10);
-    if (!pid || isNaN(pid)) {
+    const pid = child.pid;
+    if (!pid) {
       log('  ✗ 启动失败：无法获取 PID', 'E');
       process.exit(1);
     }
 
     writeFileSync(PID_FILE, String(pid));
 
-    // 轮询日志文件等待 "Ready"
+    // 收集 stdout 写入日志文件
+    const fs = require('fs');
+    const logStream = fs.createWriteStream(logFile, { flags: 'w' });
+    child.stdout.pipe(logStream);
+    child.stderr.pipe(logStream);
+
+    // 解除父子进程关联，允许 CLI 退出而服务继续运行
+    child.unref();
+
+    // 轮询等待启动
     let attempts = 0;
     const maxAttempts = 30;
     const poll = setInterval(() => {
@@ -107,7 +159,7 @@ function startServer() {
             clearInterval(poll);
             log(`  ✅ 服务已启动 (PID: ${pid})`, 'G');
             log(`  ✅ 访问地址: http://localhost:${PORT}`, 'G');
-            log(`  ✅ 日志文件: data/server.log`, 'G');
+            log(`  ✅ 日志文件: data\\server.log`, 'G');
             log('');
             process.exit(0);
           }
@@ -123,17 +175,70 @@ function startServer() {
         clearInterval(poll);
         log(`  ✅ 服务正在后台启动 (PID: ${pid})`, 'G');
         log(`  ✅ 请稍候访问: http://localhost:${PORT}`, 'G');
-        log(`  ✅ 日志文件: data/server.log`, 'G');
+        log(`  ✅ 日志文件: data\\server.log`, 'G');
         log('');
         process.exit(0);
       }
     }, 500);
-  });
+  } else {
+    // macOS / Linux: 使用 sh + nohup 启动
+    child = spawn('sh', ['-c', `nohup npm run dev > "${logFile}" 2>&1 &\necho $!`], {
+      cwd: ROOT_DIR,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
 
-  child.on('error', (err) => {
-    log(`  ✗ 启动失败: ${err.message}`, 'E');
-    process.exit(1);
-  });
+    let pidStr = '';
+    child.stdout.on('data', (buf) => { pidStr += buf.toString(); });
+
+    child.on('close', () => {
+      const pid = parseInt(pidStr.trim(), 10);
+      if (!pid || isNaN(pid)) {
+        log('  ✗ 启动失败：无法获取 PID', 'E');
+        process.exit(1);
+      }
+
+      writeFileSync(PID_FILE, String(pid));
+
+      // 轮询日志文件等待 "Ready"
+      let attempts = 0;
+      const maxAttempts = 30;
+      const poll = setInterval(() => {
+        attempts++;
+        try {
+          if (existsSync(logFile)) {
+            const content = readFileSync(logFile, 'utf-8');
+            if (content.includes('Ready')) {
+              clearInterval(poll);
+              log(`  ✅ 服务已启动 (PID: ${pid})`, 'G');
+              log(`  ✅ 访问地址: http://localhost:${PORT}`, 'G');
+              log(`  ✅ 日志文件: data/server.log`, 'G');
+              log('');
+              process.exit(0);
+            }
+            if (content.includes('EADDRINUSE')) {
+              clearInterval(poll);
+              log(`  ✗ 端口 ${PORT} 被占用，启动失败`, 'E');
+              process.exit(1);
+            }
+          }
+        } catch { /* ignore */ }
+
+        if (attempts >= maxAttempts) {
+          clearInterval(poll);
+          log(`  ✅ 服务正在后台启动 (PID: ${pid})`, 'G');
+          log(`  ✅ 请稍候访问: http://localhost:${PORT}`, 'G');
+          log(`  ✅ 日志文件: data/server.log`, 'G');
+          log('');
+          process.exit(0);
+        }
+      }, 500);
+    });
+
+    child.on('error', (err) => {
+      log(`  ✗ 启动失败: ${err.message}`, 'E');
+      process.exit(1);
+    });
+  }
 }
 
 // ---- 状态 ----
@@ -143,14 +248,10 @@ function showStatus() {
     log(`  ✅ 服务正在运行 (PID: ${pid})`, 'G');
     log(`  ✅ 地址: http://localhost:${PORT}`, 'G');
   } else {
-    try {
-      const p = execSync(`lsof -ti:${PORT} 2>/dev/null`, { encoding: 'utf-8' }).trim();
-      if (p) {
-        log(`  ⚠ 端口 ${PORT} 被占用 (PID: ${p})`, 'Y');
-      } else {
-        log('  ℹ 服务未运行', 'Y');
-      }
-    } catch {
+    const portPids = findProcessOnPort(PORT);
+    if (portPids.length > 0) {
+      log(`  ⚠ 端口 ${PORT} 被占用 (PID: ${portPids.join(', ')})`, 'Y');
+    } else {
       log('  ℹ 服务未运行', 'Y');
     }
   }
