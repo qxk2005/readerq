@@ -261,7 +261,7 @@ export default function ReadingPane() {
   const articleFont = fontFamily === 'serif' ? 'var(--font-reading)' : 'var(--font-ui)';
 
   return (
-    <div className="reading-panel" onMouseUp={handleMouseUp} style={{ flexDirection: 'row' }}>
+    <div className="reading-panel" onMouseUp={handleMouseUp}>
       {/* 动态注入微动画 */}
       <style>{`
         .highlight-toolbar {
@@ -341,8 +341,8 @@ export default function ReadingPane() {
         />
       )}
 
-      <div style={{ flex: 1, overflowY: 'auto', position: 'relative' }} className="article-scroll-container" id="article-scroll-container">
-
+      <div style={{ display: 'flex', flexDirection: 'row', flex: 1, overflow: 'hidden' }}>
+        <div style={{ flex: 1, overflowY: 'auto', position: 'relative' }} className="article-scroll-container" id="article-scroll-container">
       {/* 阅读头部 */}
       <div className="reading-header">
         <div className="reading-header-left">
@@ -763,6 +763,7 @@ export default function ReadingPane() {
         </div>
       </div>
       )}
+      </div>
     </div>
   );
 }

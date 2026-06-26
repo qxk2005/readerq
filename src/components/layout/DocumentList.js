@@ -79,7 +79,8 @@ export default function DocumentList() {
     searchQuery, setSearchQuery,
     isLoading, fetchDocuments,
     page, hasMore, isFetchingMore,
-    batchMoveDocuments
+    batchMoveDocuments,
+    syncData, isSyncing
   } = useApp();
 
   const [isSelectionMode, setIsSelectionMode] = useState(false);
@@ -141,8 +142,12 @@ export default function DocumentList() {
           <span>{getViewTitle()}</span>
           <button
             className="btn-icon"
-            onClick={() => fetchDocuments({ sync: true })}
-            data-tooltip="刷新"
+            onClick={() => {
+              if (!isSyncing) syncData({ full: false, location: currentView });
+            }}
+            disabled={isSyncing}
+            data-tooltip={isSyncing ? "同步中..." : "增量同步"}
+            style={isSyncing ? { animation: 'spin 1s linear infinite', opacity: 0.5 } : {}}
           >
             🔄
           </button>

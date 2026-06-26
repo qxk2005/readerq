@@ -159,7 +159,9 @@ export function AppProvider({ children }) {
   }, [isSyncing, checkSyncStatus]);
 
   // 同步数据 (修改为后台执行模式)
-  const syncData = useCallback(async (full = false) => {
+  const syncData = useCallback(async (options = {}) => {
+    const full = typeof options === 'boolean' ? options : !!options.full;
+    const location = typeof options === 'object' ? options.location : null;
     if (isSyncing) return;
     setIsSyncing(true);
     setSyncStatus('syncing');
@@ -169,7 +171,7 @@ export function AppProvider({ children }) {
       const res = await fetch('/api/readwise/sync', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ full }),
+        body: JSON.stringify({ full, location }),
       });
       const data = await res.json();
       

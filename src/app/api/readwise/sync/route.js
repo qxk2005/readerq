@@ -11,6 +11,7 @@ export async function POST(request) {
   try {
     const body = await request.json().catch(() => ({}));
     const fullSync = body.full === true;
+    const location = body.location;
 
     const client = getServerReadwiseClient();
 
@@ -30,7 +31,7 @@ export async function POST(request) {
     setSyncState('sync_progress', JSON.stringify({ phase: 'starting', fetched: 0, total: 0 }));
 
     // 启动后台任务 (不 await)
-    runSync(client, fullSync).catch(err => {
+    runSync(client, fullSync, location).catch(err => {
       console.error('后台同步异常:', err);
     });
 
@@ -47,12 +48,13 @@ export async function POST(request) {
   }
 }
 
-async function runSync(client, fullSync) {
+async function runSync(client, fullSync, location) {
   try {
     if (fullSync) {
       clearAllData();
     }
-    const lastSyncedAt = fullSync ? null : getSyncState('lastDocumentSync');
+    const stateKey = location ? `lastDocumentSync_${location}` : 'lastDocumentSync';
+    const lastSyncedAt = fullSync ? null : getSyncState(stateKey);
 
     // 定义检查取消的函数
     const checkCancel = () => {
@@ -65,7 +67,7 @@ async function runSync(client, fullSync) {
     let localHighlightsCount = 0;
     
     const { fetchedCount: totalFetchedDocs, totalCount: remoteDocCount } = await client.fetchAllDocuments(
-      { updatedAfter: lastSyncedAt },
+      { updatedAfter: lastSyncedAt, location: location && location !== 'all' ? location : undefined },
       (progress) => {
         setSyncState('sync_progress', JSON.stringify({ phase: 'documents', fetched: progress.fetched, total: progress.total }));
       },
@@ -114,7 +116,14 @@ async function runSync(client, fullSync) {
 
     // 更新最后同步时间
     const now = new Date().toISOString();
-    setSyncState('lastDocumentSync', now);
+    setSyncState(stateKey, now);
+    // 同时更新全局最后同步时间（如果不更新全局，会导致全量增量同步丢失这部分更新）
+    if (location && location !== 'all') {
+      const globalLastSync = getSyncState('lastDocumentSync');
+      if (!globalLastSync || new Date(now) > new Date(globalLastSync)) {
+        setSyncState('lastDocumentSync', now);
+      }
+    }
     
     // 更新云端总数记录
     if (fullSync) {
