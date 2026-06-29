@@ -5,11 +5,32 @@
   "bin": {
     "readerq": "./bin/readerq.js"
   },
+  "main": "electron/main.js",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "electron:dev": "concurrently -k \"next dev\" \"wait-on http://localhost:3000 && electron .\"",
+    "electron:build": "npm run build && node scripts/build-electron.js && electron-builder",
+    "postinstall": "electron-builder install-app-deps"
+  },
+  "build": {
+    "appId": "com.readerq.app",
+    "productName": "ReaderQ",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "electron/**/*",
+      ".next/standalone/**/*"
+    ],
+    "mac": {
+      "category": "public.app-category.productivity"
+    },
+    "win": {
+      "target": "nsis"
+    }
   },
   "dependencies": {
     "better-sqlite3": "^12.11.1",
@@ -23,7 +44,12 @@
     "swr": "^2.4.2"
   },
   "devDependencies": {
+    "concurrently": "^10.0.3",
+    "electron": "^42.5.0",
+    "electron-builder": "^26.15.3",
     "eslint": "^9",
-    "eslint-config-next": "16.2.9"
+    "eslint-config-next": "16.2.9",
+    "fs-extra": "^11.3.5",
+    "wait-on": "^9.0.10"
   }
 }
