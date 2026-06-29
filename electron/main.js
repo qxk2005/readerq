@@ -1,4 +1,4 @@
-const { app, BrowserWindow } = require('electron');
+const { app, BrowserWindow, shell } = require('electron');
 const path = require('path');
 const { spawn } = require('child_process');
 const net = require('net');
@@ -65,6 +65,26 @@ async function createWindow() {
   if (!fs.existsSync(dataDir)) {
     fs.mkdirSync(dataDir, { recursive: true });
   }
+
+  // 拦截外部链接，使用系统浏览器打开，防止在 Electron 窗口内加载外部网址
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    const isLocal = url.startsWith(`http://127.0.0.1:${port}`) || 
+                    url.startsWith(`http://localhost:${port}`) || 
+                    (!app.isPackaged && (url.startsWith('http://127.0.0.1:3000') || url.startsWith('http://localhost:3000')));
+    
+    if (!isLocal && (url.startsWith('http:') || url.startsWith('https:'))) {
+      event.preventDefault();
+      shell.openExternal(url);
+    }
+  });
+
+  // 拦截 target="_blank" 的外部链接打开请求，使用系统浏览器打开
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    if (url.startsWith('http:') || url.startsWith('https:')) {
+      shell.openExternal(url);
+    }
+    return { action: 'deny' };
+  });
 
   if (app.isPackaged) {
     ensureEnvFile();
