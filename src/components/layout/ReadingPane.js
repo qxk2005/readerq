@@ -8,6 +8,7 @@ import { getTextOffset, restoreHighlights } from '@/lib/highlight';
 import GhostReader from '@/components/ai/GhostReader';
 import HighlightEditor from '@/components/HighlightEditor';
 import TagInput from '@/components/TagInput';
+import { BookOpen, Link, Info, Edit3, Bot, Loader2, ClipboardList, AlertTriangle, RefreshCw, CheckCircle2, XCircle } from 'lucide-react';
 
 export default function ReadingPane() {
   const { 
@@ -329,7 +330,7 @@ export default function ReadingPane() {
     return (
       <div className="reading-panel">
         <div className="empty-state">
-          <div className="empty-state-icon">📖</div>
+          <div className="empty-state-icon"><BookOpen size={48} strokeWidth={1} /></div>
           <div className="empty-state-title">选择一篇文章开始阅读</div>
           <div className="empty-state-description">
             从左侧列表中选择一篇文章，或使用 Cmd+K 打开命令面板
@@ -435,7 +436,7 @@ export default function ReadingPane() {
               className="btn btn-ghost btn-sm"
               style={{ fontSize: 'var(--text-xs)' }}
             >
-              🔗 {extractDomain(selectedDoc.source_url)}
+              <Link size={14} style={{ display: 'inline', verticalAlign: 'middle', marginRight: '4px' }} /> {extractDomain(selectedDoc.source_url)}
             </a>
           )}
           {selectedDoc.category && (
@@ -456,7 +457,7 @@ export default function ReadingPane() {
             data-tooltip="文档信息"
             style={rightPanelTab === 'info' ? { color: 'var(--color-accent)' } : {}}
           >
-            ℹ️
+            <Info size={16} />
           </button>
           <button
             className="btn-icon"
@@ -464,7 +465,7 @@ export default function ReadingPane() {
             data-tooltip="笔记"
             style={rightPanelTab === 'notebook' ? { color: 'var(--color-accent)' } : {}}
           >
-            📝
+            <Edit3 size={16} />
           </button>
           <button
             className="btn-icon"
@@ -472,7 +473,7 @@ export default function ReadingPane() {
             data-tooltip="AI助手"
             style={rightPanelTab === 'chat' ? { color: 'var(--color-accent)' } : {}}
           >
-            🤖
+            <Bot size={16} />
           </button>
         </div>
       </div>
@@ -503,7 +504,7 @@ export default function ReadingPane() {
                   gap: 'var(--space-2)',
                   animation: 'pulse-banner 2s infinite ease-in-out'
                 }}>
-                  <span style={{ fontSize: 'var(--text-lg)', animation: 'spin-loading 2s linear infinite', display: 'inline-block' }}>🌀</span>
+                  <Loader2 size={18} style={{ animation: 'spin-loading 2s linear infinite' }} />
                   <span>正在同步并排版文章与高亮...</span>
                 </div>
                 <div style={{ height: '2.5em', width: '60%', borderRadius: '4px', animation: 'pulse-loading 1.5s infinite ease-in-out', backgroundColor: 'var(--color-border)', marginBottom: 'var(--space-6)' }} />
@@ -546,7 +547,7 @@ export default function ReadingPane() {
                   borderLeft: '3px solid var(--color-accent)',
                 }}>
                   <div style={{ fontWeight: '600', marginBottom: 'var(--space-2)', fontSize: 'var(--text-xs)', color: 'var(--color-text-tertiary)' }}>
-                    📋 摘要
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><ClipboardList size={16} /> 摘要</span>
                   </div>
                   {selectedDoc.summary}
                 </div>
@@ -566,7 +567,7 @@ export default function ReadingPane() {
                     </p>
                     {selectedDoc.notes && (
                       <div style={{ marginTop: 'var(--space-6)' }}>
-                        <h3>📝 笔记</h3>
+                        <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><Edit3 size={18} /> 笔记</h3>
                         <p>{selectedDoc.notes}</p>
                       </div>
                     )}
@@ -583,7 +584,7 @@ export default function ReadingPane() {
                     fontSize: 'var(--text-sm)',
                     marginBottom: 'var(--space-4)'
                   }}>
-                    <div style={{ fontWeight: '600', color: 'var(--color-danger)', marginBottom: 'var(--space-2)' }}>⚠️ 获取正文内容失败</div>
+                    <div style={{ fontWeight: '600', color: 'var(--color-danger)', marginBottom: 'var(--space-2)', display: 'flex', alignItems: 'center', gap: '6px' }}><AlertTriangle size={16} /> 获取正文内容失败</div>
                     <p style={{ margin: 0, fontSize: 'var(--text-xs)' }}>{contentError}</p>
                   </div>
                   <button
@@ -591,7 +592,7 @@ export default function ReadingPane() {
                     onClick={() => fetchDocumentDetails(selectedDoc.id)}
                     style={{ fontSize: 'var(--text-xs)', padding: 'var(--space-2) var(--space-4)' }}
                   >
-                    🔄 重新同步正文
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '6px', justifyContent: 'center' }}><RefreshCw size={14} /> 重新同步正文</span>
                   </button>
                 </div>
               ) : (
@@ -757,7 +758,7 @@ export default function ReadingPane() {
                       <div style={{ marginTop: 'var(--space-2)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         {verifyStatus[hl.id] ? (
                           <span style={{ fontSize: '11px', color: verifyStatus[hl.id].synced ? 'var(--color-success)' : 'var(--color-danger)' }}>
-                            {verifyStatus[hl.id].synced ? '✅ 已同步至 Readwise' : `❌ ${verifyStatus[hl.id].message}`}
+                            {verifyStatus[hl.id].synced ? <span style={{display:'flex', alignItems:'center', gap:'4px'}}><CheckCircle2 size={12}/>已同步至 Readwise</span> : <span style={{display:'flex', alignItems:'center', gap:'4px'}}><XCircle size={12}/>{verifyStatus[hl.id].message}</span>}
                           </span>
                         ) : (
                           <span style={{ fontSize: '11px', color: 'var(--color-text-tertiary)' }}>未验证同步</span>
@@ -793,7 +794,7 @@ export default function ReadingPane() {
 
                       {hl.note && (
                         <div style={{ marginTop: 'var(--space-2)', fontSize: '12px', color: 'var(--color-text-secondary)', fontStyle: 'italic' }}>
-                          📝 {hl.note}
+                          <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><Edit3 size={12} /> {hl.note}</span>
                         </div>
                       )}
                       {hl.tags && Object.keys(hl.tags).length > 0 && (
@@ -821,14 +822,14 @@ export default function ReadingPane() {
                         onClick={() => fetchHighlights(selectedDoc.id, { current: true })}
                         style={{ fontSize: '12px' }}
                       >
-                        🔄 重新加载
+                        <span style={{ display: 'flex', alignItems: 'center', gap: '6px', justifyContent: 'center' }}><RefreshCw size={12} /> 重新加载</span>
                       </button>
                     </div>
                   ) : highlights.length === 0 ? (
                     <div style={{ textAlign: 'center', color: 'var(--color-text-tertiary)', fontSize: '13px', marginTop: 'var(--space-4)', display: 'flex', flexDirection: 'column', gap: 'var(--space-3)', alignItems: 'center' }}>
                       <div>暂无高亮。在左侧正文中划词即可添加。</div>
                       <div style={{ fontSize: '12px', color: 'var(--color-text-tertiary)' }}>
-                        如有 Readwise 高亮，请先点击左侧栏的 🔄 同步按钮同步数据。
+                        如有 Readwise 高亮，请先点击左侧栏的 <RefreshCw size={12} style={{ display: 'inline', verticalAlign: 'middle' }} /> 同步按钮同步数据。
                       </div>
                     </div>
                   ) : null}

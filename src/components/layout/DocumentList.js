@@ -2,7 +2,9 @@
 
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { useApp } from '@/context/AppContext';
-import { LOCATION_LABELS, CATEGORY_ICONS, formatDate, truncateText, extractDomain } from '@/lib/utils';
+import { LOCATION_LABELS, formatDate, truncateText, extractDomain } from '@/lib/utils';
+import { CATEGORY_ICONS_SVG, getCategoryIcon } from '@/components/ui/icons';
+import { Search, Inbox, Clock, Archive, RefreshCw, FileText, Tag } from 'lucide-react';
 
 function DocumentCard({ doc, isActive, onClick, isSelectionMode, isSelected, onToggleSelect, onMoveDoc }) {
   const handleClick = (e) => {
@@ -32,7 +34,7 @@ function DocumentCard({ doc, isActive, onClick, isSelectionMode, isSelected, onT
           />
         ) : (
           <div className="doc-card-image-placeholder">
-            {CATEGORY_ICONS[doc.category] || '📄'}
+            {CATEGORY_ICONS_SVG[doc.category] || <FileText size={24} />}
           </div>
         )}
         <div className="doc-card-info">
@@ -63,9 +65,9 @@ function DocumentCard({ doc, isActive, onClick, isSelectionMode, isSelected, onT
       )}
       {!isSelectionMode && (
         <div className="doc-card-actions">
-          <button className="doc-card-action-btn" title="Inbox" onClick={(e) => { e.stopPropagation(); onMoveDoc(doc.id, 'new'); }}>📥</button>
-          <button className="doc-card-action-btn" title="Later" onClick={(e) => { e.stopPropagation(); onMoveDoc(doc.id, 'later'); }}>⏱️</button>
-          <button className="doc-card-action-btn" title="Archive" onClick={(e) => { e.stopPropagation(); onMoveDoc(doc.id, 'archive'); }}>📦</button>
+          <button className="doc-card-action-btn" title="Inbox" onClick={(e) => { e.stopPropagation(); onMoveDoc(doc.id, 'new'); }}><Inbox size={14} /></button>
+          <button className="doc-card-action-btn" title="Later" onClick={(e) => { e.stopPropagation(); onMoveDoc(doc.id, 'later'); }}><Clock size={14} /></button>
+          <button className="doc-card-action-btn" title="Archive" onClick={(e) => { e.stopPropagation(); onMoveDoc(doc.id, 'archive'); }}><Archive size={14} /></button>
         </div>
       )}
     </div>
@@ -116,10 +118,10 @@ export default function DocumentList() {
   }, [batchMoveDocuments]);
 
   const getViewTitle = () => {
-    if (currentTag) return `🏷️ ${currentTag}`;
-    if (currentCategory) return `${CATEGORY_ICONS[currentCategory] || ''} ${currentCategory}`;
-    if (currentView === 'all') return '📚 全部文档';
-    return `${LOCATION_LABELS[currentView] || currentView}`;
+    if (currentTag) return <span style={{display: 'flex', alignItems: 'center', gap: '8px'}}><Tag size={16} /> {currentTag}</span>;
+    if (currentCategory) return <span style={{display: 'flex', alignItems: 'center', gap: '8px'}}>{getCategoryIcon(currentCategory, 16)} {currentCategory}</span>;
+    if (currentView === 'all') return <span style={{display: 'flex', alignItems: 'center', gap: '8px'}}><FileText size={16} /> 全部文档</span>;
+    return LOCATION_LABELS[currentView] || currentView;
   };
 
   const sortedDocs = [...documents].sort((a, b) => {
@@ -149,24 +151,11 @@ export default function DocumentList() {
             data-tooltip={isSyncing ? "同步中..." : "增量同步"}
             style={{ opacity: isSyncing ? 0.7 : 1, cursor: isSyncing ? 'not-allowed' : 'pointer' }}
           >
-            <svg 
-              width="18" 
-              height="18" 
-              viewBox="0 0 24 24" 
-              fill="none" 
-              stroke="currentColor" 
-              strokeWidth="2" 
-              strokeLinecap="round" 
-              strokeLinejoin="round" 
-              style={isSyncing ? { animation: 'spin 1s linear infinite' } : {}}
-            >
-              <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
-              <path d="M3 3v5h5" />
-            </svg>
+            <RefreshCw size={18} style={isSyncing ? { animation: 'spin 1s linear infinite' } : {}} />
           </button>
         </div>
         <div className="doclist-search">
-          <span className="doclist-search-icon">🔍</span>
+          <span className="doclist-search-icon"><Search size={14} /></span>
           <input
             type="text"
             placeholder="搜索文档..."
@@ -250,12 +239,12 @@ export default function DocumentList() {
           </>
         ) : (
           <div className="empty-state" style={{ paddingTop: '60px' }}>
-            <div className="empty-state-icon">📭</div>
+            <div className="empty-state-icon"><Inbox size={48} strokeWidth={1} /></div>
             <div className="empty-state-title">暂无文档</div>
             <div className="empty-state-description">
               {searchQuery
                 ? '没有找到匹配的文档，试试其他关键词'
-                : '点击左下角 🔄 同步按钮从 Readwise 获取文档'
+                : <>点击左下角 <RefreshCw size={14} style={{ display: 'inline', verticalAlign: 'middle', margin: '0 4px' }} /> 同步按钮从 Readwise 获取文档</>
               }
             </div>
           </div>
@@ -270,9 +259,9 @@ export default function DocumentList() {
           border: '1px solid var(--color-border)', alignItems: 'center'
         }}>
           <span style={{ fontSize: '12px', color: 'var(--color-text-secondary)', marginRight: '8px', whiteSpace: 'nowrap' }}>移动到</span>
-          <button className="btn btn-ghost btn-sm" onClick={async () => { await batchMoveDocuments(Array.from(selectedIds), 'new'); setIsSelectionMode(false); setSelectedIds(new Set()); }}>📥 收件箱</button>
-          <button className="btn btn-ghost btn-sm" onClick={async () => { await batchMoveDocuments(Array.from(selectedIds), 'later'); setIsSelectionMode(false); setSelectedIds(new Set()); }}>⏳ 稍后阅读</button>
-          <button className="btn btn-ghost btn-sm" onClick={async () => { await batchMoveDocuments(Array.from(selectedIds), 'archive'); setIsSelectionMode(false); setSelectedIds(new Set()); }}>🗄️ 归档</button>
+          <button className="btn btn-ghost btn-sm" onClick={async () => { await batchMoveDocuments(Array.from(selectedIds), 'new'); setIsSelectionMode(false); setSelectedIds(new Set()); }}><Inbox size={14} style={{ marginRight: '4px', verticalAlign: 'middle' }} /> 收件箱</button>
+          <button className="btn btn-ghost btn-sm" onClick={async () => { await batchMoveDocuments(Array.from(selectedIds), 'later'); setIsSelectionMode(false); setSelectedIds(new Set()); }}><Clock size={14} style={{ marginRight: '4px', verticalAlign: 'middle' }} /> 稍后阅读</button>
+          <button className="btn btn-ghost btn-sm" onClick={async () => { await batchMoveDocuments(Array.from(selectedIds), 'archive'); setIsSelectionMode(false); setSelectedIds(new Set()); }}><Archive size={14} style={{ marginRight: '4px', verticalAlign: 'middle' }} /> 归档</button>
         </div>
       )}
     </div>

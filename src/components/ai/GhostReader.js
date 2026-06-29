@@ -2,6 +2,7 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { useApp } from '@/context/AppContext';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { ClipboardList, Globe, Sparkles, BookOpen, XCircle, Lightbulb, Settings, Bot, CheckCircle2 } from 'lucide-react';
 
 export default function GhostReader() {
   const { showAiPanel, setShowAiPanel, selectedDoc, updateDocumentLocally } = useApp();
@@ -232,15 +233,15 @@ export default function GhostReader() {
             onClick={() => runAction('summarize')}
             disabled={!selectedDoc || isLoading}
           >
-            <span className="ai-action-icon">📋</span>
-            <span>生成摘要</span>
+            <span className="ai-action-icon"><ClipboardList size={16} /></span>
+            <span>摘要</span>
           </button>
           <button
             className="ai-action-btn"
             onClick={() => runAction('translate')}
             disabled={!selectedDoc || isLoading}
           >
-            <span className="ai-action-icon">🌐</span>
+            <span className="ai-action-icon"><Globe size={16} /></span>
             <span>翻译</span>
           </button>
           <button
@@ -248,7 +249,7 @@ export default function GhostReader() {
             onClick={() => runAction('simplify')}
             disabled={!selectedDoc || isLoading}
           >
-            <span className="ai-action-icon">✨</span>
+            <span className="ai-action-icon"><Sparkles size={16} /></span>
             <span>简化</span>
           </button>
           <button
@@ -256,7 +257,7 @@ export default function GhostReader() {
             onClick={() => runAction('define')}
             disabled={!selectedDoc || isLoading}
           >
-            <span className="ai-action-icon">📖</span>
+            <span className="ai-action-icon"><BookOpen size={16} /></span>
             <span>解释</span>
           </button>
         </div>
@@ -265,10 +266,10 @@ export default function GhostReader() {
         {actionResult && activeAction !== 'chat' && (
           <div className="chat-message assistant" style={{ marginBottom: 'var(--space-4)' }}>
             <div style={{ fontWeight: '600', marginBottom: 'var(--space-2)', fontSize: 'var(--text-xs)', color: 'var(--color-text-tertiary)' }}>
-              {activeAction === 'summarize' && '📋 摘要'}
-              {activeAction === 'translate' && '🌐 翻译'}
-              {activeAction === 'simplify' && '✨ 简化'}
-              {activeAction === 'define' && '📖 解释'}
+              {activeAction === 'summarize' && <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><ClipboardList size={14} /> 摘要</span>}
+              {activeAction === 'translate' && <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><Globe size={14} /> 翻译</span>}
+              {activeAction === 'simplify' && <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><Sparkles size={14} /> 简化</span>}
+              {activeAction === 'define' && <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><BookOpen size={14} /> 解释</span>}
             </div>
             
             {actionResult.error ? (
@@ -280,16 +281,21 @@ export default function GhostReader() {
                 color: 'var(--color-danger)',
                 fontSize: 'var(--text-xs)',
               }}>
-                <div style={{ fontWeight: 'bold', marginBottom: 'var(--space-1)' }}>❌ 执行失败</div>
+                <div style={{ fontWeight: 'bold', marginBottom: 'var(--space-1)', display: 'flex', alignItems: 'center', gap: '4px' }}><XCircle size={14} /> 执行失败</div>
                 <div style={{ marginBottom: 'var(--space-2)', lineHeight: '1.5' }}>{actionResult.error}</div>
-                <div style={{ fontSize: '11px', color: 'var(--color-text-secondary)', padding: 'var(--space-2)', background: 'var(--color-bg-secondary)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-border)' }}>
-                  💡 <b>排障建议:</b> 请检查您的网络连接或代理设置。如需调整 AI 配置，可点击右上角<b>设置 ⚙️</b>，重新填写 API Key、Base URL 并测试连接。
+                <div style={{ fontSize: '11px', color: 'var(--color-text-secondary)', padding: 'var(--space-2)', background: 'var(--color-bg-secondary)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-border)', display: 'flex', alignItems: 'flex-start', gap: '4px' }}>
+                  <Lightbulb size={12} style={{ flexShrink: 0, marginTop: '2px' }} />
+                  <div><b>排障建议:</b> 请检查您的网络连接或代理设置。如需调整 AI 配置，可点击右上角<b>设置 <Settings size={12} style={{ display: 'inline', verticalAlign: 'middle' }} /></b>，重新填写 API Key、Base URL 并测试连接。</div>
                 </div>
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                 <div className="markdown-body" style={{ lineHeight: '1.6', fontSize: 'var(--text-sm)', wordBreak: 'break-word' }}>
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{actionResult}</ReactMarkdown>
+                  {typeof actionResult === 'string' && actionResult.startsWith('✅') ? (
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '4px', color: 'var(--color-success)', fontWeight: 'bold' }}><CheckCircle2 size={16} /> {actionResult.replace('✅ ', '')}</span>
+                  ) : (
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{actionResult}</ReactMarkdown>
+                  )}
                 </div>
                 {typeof actionResult === 'string' && !actionResult.startsWith('✅') && (
                   <button 
@@ -326,10 +332,10 @@ export default function GhostReader() {
         {isLoading && activeAction !== 'chat' && (
           <div className="chat-message assistant" style={{ marginBottom: 'var(--space-4)', borderLeft: '3px solid var(--color-accent)' }}>
             <div style={{ fontWeight: '600', marginBottom: 'var(--space-2)', fontSize: 'var(--text-xs)', color: 'var(--color-accent)' }}>
-              {activeAction === 'summarize' && '📋 正在生成摘要...'}
-              {activeAction === 'translate' && '🌐 正在翻译中...'}
-              {activeAction === 'simplify' && '✨ 正在简化文本...'}
-              {activeAction === 'define' && '📖 正在查询解释...'}
+              {activeAction === 'summarize' && <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><ClipboardList size={14} /> 正在生成摘要...</span>}
+              {activeAction === 'translate' && <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><Globe size={14} /> 正在翻译中...</span>}
+              {activeAction === 'simplify' && <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><Sparkles size={14} /> 正在简化文本...</span>}
+              {activeAction === 'define' && <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><BookOpen size={14} /> 正在查询解释...</span>}
             </div>
             
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: 'var(--text-xs)' }}>
@@ -403,7 +409,7 @@ export default function GhostReader() {
               {msg.role === 'assistant' && msg.content === '' && msg.isStreaming ? (
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--color-text-secondary)', fontSize: 'var(--text-xs)', animation: 'pulse-think 1.5s infinite ease-in-out' }}>
                   <span className="loading-spinner" style={{ width: '12px', height: '12px', display: 'inline-block', border: '2px solid var(--color-accent)', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin-loading 1s linear infinite' }} />
-                  <span>🤖 GhostReader 正在思考...</span>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><Bot size={16} /> GhostReader 正在思考...</span>
                 </div>
               ) : (
                 <div className="markdown-body" style={{ lineHeight: '1.6', fontSize: 'var(--text-sm)', wordBreak: 'break-word' }}>

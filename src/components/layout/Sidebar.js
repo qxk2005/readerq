@@ -2,7 +2,9 @@
 
 import { useApp } from '@/context/AppContext';
 import { useTheme } from '@/context/ThemeContext';
-import { LOCATION_LABELS, LOCATION_ICONS, CATEGORY_LABELS, CATEGORY_ICONS } from '@/lib/utils';
+import { LOCATION_LABELS, CATEGORY_LABELS } from '@/lib/utils';
+import { CATEGORY_ICONS_SVG, LOCATION_ICONS_SVG } from '@/components/ui/icons';
+import { Home, Tag, Plus, RefreshCw, Sun, Moon, Settings } from 'lucide-react';
 
 export default function Sidebar() {
   const {
@@ -14,21 +16,21 @@ export default function Sidebar() {
   const { theme, toggleTheme } = useTheme();
 
   const locations = [
-    { key: 'new', icon: LOCATION_ICONS.new, label: LOCATION_LABELS.new },
-    { key: 'later', icon: LOCATION_ICONS.later, label: LOCATION_LABELS.later },
-    { key: 'shortlist', icon: LOCATION_ICONS.shortlist, label: LOCATION_LABELS.shortlist },
-    { key: 'archive', icon: LOCATION_ICONS.archive, label: LOCATION_LABELS.archive },
-    { key: 'feed', icon: LOCATION_ICONS.feed, label: LOCATION_LABELS.feed },
+    { key: 'new', icon: LOCATION_ICONS_SVG.new, label: LOCATION_LABELS.new },
+    { key: 'later', icon: LOCATION_ICONS_SVG.later, label: LOCATION_LABELS.later },
+    { key: 'shortlist', icon: LOCATION_ICONS_SVG.shortlist, label: LOCATION_LABELS.shortlist },
+    { key: 'archive', icon: LOCATION_ICONS_SVG.archive, label: LOCATION_LABELS.archive },
+    { key: 'feed', icon: LOCATION_ICONS_SVG.feed, label: LOCATION_LABELS.feed },
   ];
 
   const categories = [
-    { key: 'article', icon: CATEGORY_ICONS.article, label: CATEGORY_LABELS.article },
-    { key: 'pdf', icon: CATEGORY_ICONS.pdf, label: CATEGORY_LABELS.pdf },
-    { key: 'epub', icon: CATEGORY_ICONS.epub, label: CATEGORY_LABELS.epub },
-    { key: 'email', icon: CATEGORY_ICONS.email, label: CATEGORY_LABELS.email },
-    { key: 'rss', icon: CATEGORY_ICONS.rss, label: CATEGORY_LABELS.rss },
-    { key: 'tweet', icon: CATEGORY_ICONS.tweet, label: CATEGORY_LABELS.tweet },
-    { key: 'video', icon: CATEGORY_ICONS.video, label: CATEGORY_LABELS.video },
+    { key: 'article', icon: CATEGORY_ICONS_SVG.article, label: CATEGORY_LABELS.article },
+    { key: 'pdf', icon: CATEGORY_ICONS_SVG.pdf, label: CATEGORY_LABELS.pdf },
+    { key: 'epub', icon: CATEGORY_ICONS_SVG.epub, label: CATEGORY_LABELS.epub },
+    { key: 'email', icon: CATEGORY_ICONS_SVG.email, label: CATEGORY_LABELS.email },
+    { key: 'rss', icon: CATEGORY_ICONS_SVG.rss, label: CATEGORY_LABELS.rss },
+    { key: 'tweet', icon: CATEGORY_ICONS_SVG.tweet, label: CATEGORY_LABELS.tweet },
+    { key: 'video', icon: CATEGORY_ICONS_SVG.video, label: CATEGORY_LABELS.video },
   ];
 
   return (
@@ -57,7 +59,7 @@ export default function Sidebar() {
             className={`sidebar-item ${currentView === 'all' && !currentCategory && !currentTag ? 'active' : ''}`}
             onClick={() => switchView('all')}
           >
-            <span className="sidebar-item-icon">🏠</span>
+            <span className="sidebar-item-icon"><Home size={16} /></span>
             {!sidebarCollapsed && (
               <>
                 <span className="sidebar-item-label">全部</span>
@@ -116,7 +118,7 @@ export default function Sidebar() {
                 className={`sidebar-item ${currentTag === tag.key ? 'active' : ''}`}
                 onClick={() => switchTag(tag.key)}
               >
-                <span className="sidebar-item-icon">🏷️</span>
+                <span className="sidebar-item-icon"><Tag size={16} /></span>
                 <span className="sidebar-item-label">{tag.name}</span>
               </button>
             ))}
@@ -130,7 +132,7 @@ export default function Sidebar() {
           onClick={() => setShowAddUrl(true)}
           data-tooltip="添加文章"
         >
-          ➕
+          <Plus size={18} />
         </button>
         <button
           className="btn-icon"
@@ -139,34 +141,21 @@ export default function Sidebar() {
           disabled={isSyncing}
           style={{ opacity: isSyncing ? 0.7 : 1, cursor: isSyncing ? 'not-allowed' : 'pointer' }}
         >
-          <svg 
-            width="18" 
-            height="18" 
-            viewBox="0 0 24 24" 
-            fill="none" 
-            stroke="currentColor" 
-            strokeWidth="2" 
-            strokeLinecap="round" 
-            strokeLinejoin="round" 
-            style={isSyncing ? { animation: 'spin 1s linear infinite' } : {}}
-          >
-            <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
-            <path d="M3 3v5h5" />
-          </svg>
+          <RefreshCw size={18} style={isSyncing ? { animation: 'spin 1s linear infinite' } : {}} />
         </button>
         <button
           className="btn-icon"
           onClick={toggleTheme}
           data-tooltip={theme === 'dark' ? '浅色模式' : '深色模式'}
         >
-          {theme === 'dark' ? '☀️' : '🌙'}
+          {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
         </button>
         <button
           className="btn-icon"
           onClick={() => setShowSettings(true)}
           data-tooltip="设置"
         >
-          ⚙️
+          <Settings size={18} />
         </button>
       </div>
     </aside>

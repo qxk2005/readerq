@@ -3,19 +3,21 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useApp } from '@/context/AppContext';
 
+import { RefreshCw, Inbox, Plus, Bot, Settings, Home, Clock, Archive, Rss, Search, Palette } from 'lucide-react';
+
 const COMMANDS = [
-  { id: 'sync', icon: '🔄', label: '同步 Readwise 数据', shortcut: ['Ctrl', 'Shift', 'S'], action: 'sync' },
-  { id: 'sync-full', icon: '📥', label: '全量同步数据', action: 'syncFull' },
-  { id: 'add-url', icon: '➕', label: '添加文章 URL', shortcut: ['Ctrl', 'N'], action: 'addUrl' },
-  { id: 'ai', icon: '🤖', label: '打开/关闭 AI 助手', shortcut: ['Ctrl', 'Shift', 'A'], action: 'toggleAi' },
-  { id: 'settings', icon: '⚙️', label: '打开设置', shortcut: ['Ctrl', ','], action: 'settings' },
-  { id: 'view-all', icon: '🏠', label: '查看全部文档', action: 'viewAll' },
-  { id: 'view-new', icon: '📥', label: '查看收件箱', action: 'viewNew' },
-  { id: 'view-later', icon: '🕐', label: '查看稍后阅读', action: 'viewLater' },
-  { id: 'view-archive', icon: '📦', label: '查看归档', action: 'viewArchive' },
-  { id: 'view-feed', icon: '📡', label: '查看订阅源', action: 'viewFeed' },
-  { id: 'search', icon: '🔍', label: '搜索文档', shortcut: ['Ctrl', 'F'], action: 'search' },
-  { id: 'theme', icon: '🎨', label: '切换深色/浅色模式', shortcut: ['Ctrl', 'Shift', 'L'], action: 'toggleTheme' },
+  { id: 'sync', icon: <RefreshCw size={16} />, label: '同步 Readwise 数据', shortcut: ['Ctrl', 'Shift', 'S'], action: 'sync' },
+  { id: 'sync-full', icon: <Inbox size={16} />, label: '全量同步数据', action: 'syncFull' },
+  { id: 'add-url', icon: <Plus size={16} />, label: '添加文章 URL', shortcut: ['Ctrl', 'N'], action: 'addUrl' },
+  { id: 'ai', icon: <Bot size={16} />, label: '打开/关闭 AI 助手', shortcut: ['Ctrl', 'Shift', 'A'], action: 'toggleAi' },
+  { id: 'settings', icon: <Settings size={16} />, label: '打开设置', shortcut: ['Ctrl', ','], action: 'settings' },
+  { id: 'view-all', icon: <Home size={16} />, label: '查看全部文档', action: 'viewAll' },
+  { id: 'view-new', icon: <Inbox size={16} />, label: '查看收件箱', action: 'viewNew' },
+  { id: 'view-later', icon: <Clock size={16} />, label: '查看稍后阅读', action: 'viewLater' },
+  { id: 'view-archive', icon: <Archive size={16} />, label: '查看归档', action: 'viewArchive' },
+  { id: 'view-feed', icon: <Rss size={16} />, label: '查看订阅源', action: 'viewFeed' },
+  { id: 'search', icon: <Search size={16} />, label: '搜索文档', shortcut: ['Ctrl', 'F'], action: 'search' },
+  { id: 'theme', icon: <Palette size={16} />, label: '切换深色/浅色模式', shortcut: ['Ctrl', 'Shift', 'L'], action: 'toggleTheme' },
 ];
 
 export default function CommandPalette() {

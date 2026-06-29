@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useApp } from '@/context/AppContext';
 import { useTheme } from '@/context/ThemeContext';
+import { Settings, Key, Palette, Keyboard, Info, RefreshCw, Lightbulb, Save, Zap, CheckCircle2, XCircle, Wrench, PartyPopper, Sun, Moon } from 'lucide-react';
 
 export default function SettingsModal() {
   const { showSettings, setShowSettings, syncData, isSyncing, syncStatus: globalSyncStatus, syncProgress, syncCounts, syncError, cancelSync } = useApp();
@@ -180,14 +181,14 @@ export default function SettingsModal() {
     <div className="modal-overlay" onClick={() => setShowSettings(false)}>
       <div className="modal" style={{ width: '560px', maxHeight: '85vh' }} onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
-          <h2 className="modal-title">⚙️ 设置</h2>
+          <h2 className="modal-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><Settings size={24} /> 设置</h2>
           <button className="btn-icon" onClick={() => setShowSettings(false)}>✕</button>
         </div>
 
         <div className="modal-body">
           {/* ===== API 配置 ===== */}
           <h3 style={{ fontSize: 'var(--text-base)', fontWeight: '600', marginBottom: 'var(--space-4)' }}>
-            🔑 API 配置
+            <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><Key size={18} /> API 配置</span>
           </h3>
 
           <div style={{
@@ -199,7 +200,10 @@ export default function SettingsModal() {
             marginBottom: 'var(--space-4)',
             lineHeight: '1.6',
           }}>
-            💡 在此处配置的值会保存到本地数据库并优先使用。如果你在此处留空，系统将自动回退使用 <code style={{ background: 'var(--color-bg-hover)', padding: '1px 4px', borderRadius: '3px' }}>.env.local</code> 或环境变量配置。
+            <div className="help-text" style={{ display: 'flex', alignItems: 'flex-start', gap: '4px' }}>
+              <Lightbulb size={14} style={{ flexShrink: 0, marginTop: '2px' }} />
+              <span>在此处配置的值会保存到本地数据库并优先使用。如果你在此处留空，系统将自动回退使用 <code style={{ background: 'var(--color-bg-hover)', padding: '1px 4px', borderRadius: '3px' }}>.env.local</code> 或环境变量配置。</span>
+            </div>
           </div>
 
           {/* Readwise Token */}
@@ -208,7 +212,7 @@ export default function SettingsModal() {
               Readwise API Token
               {envInfo.readwiseFromEnv && (
                 <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-success)', marginLeft: 'var(--space-2)' }}>
-                  ✓ 环境变量已设置
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><CheckCircle2 size={12} /> 环境变量已设置</span>
                 </span>
               )}
             </label>
@@ -231,7 +235,7 @@ export default function SettingsModal() {
               OpenAI API Key
               {envInfo.openaiFromEnv && (
                 <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-success)', marginLeft: 'var(--space-2)' }}>
-                  ✓ 环境变量已设置
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><CheckCircle2 size={12} /> 环境变量已设置</span>
                 </span>
               )}
             </label>
@@ -320,7 +324,10 @@ export default function SettingsModal() {
               disabled={configLoading || testLoading}
               style={{ minWidth: '120px' }}
             >
-              {configLoading ? '保存中...' : '💾 保存配置'}
+              <span style={{ display: 'flex', alignItems: 'center', gap: '6px', justifyContent: 'center' }}>
+                <Save size={16} />
+                {configLoading ? '保存中...' : '保存配置'}
+              </span>
             </button>
             <button
               className="btn btn-secondary"
@@ -328,16 +335,19 @@ export default function SettingsModal() {
               disabled={configLoading || testLoading}
               style={{ minWidth: '120px' }}
             >
-              {testLoading ? '测试中...' : '⚡️ 测试连接'}
+              <span style={{ display: 'flex', alignItems: 'center', gap: '6px', justifyContent: 'center' }}>
+                <Zap size={16} />
+                {testLoading ? '测试中...' : '测试连接'}
+              </span>
             </button>
             {configSaved && (
               <span style={{ fontSize: 'var(--text-sm)', color: 'var(--color-success)', animation: 'fadeIn 0.3s ease' }}>
-                ✅ 配置已保存
+                <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><CheckCircle2 size={14} /> 配置已保存</span>
               </span>
             )}
             {configError && (
               <span style={{ fontSize: 'var(--text-sm)', color: 'var(--color-danger)' }}>
-                ❌ 保存失败: {configError}
+                <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><XCircle size={14} /> 保存失败: {configError}</span>
               </span>
             )}
           </div>
@@ -353,12 +363,12 @@ export default function SettingsModal() {
               marginBottom: 'var(--space-4)',
               lineHeight: '1.6',
             }}>
-              <h4 style={{ fontSize: 'var(--text-sm)', fontWeight: '600', marginBottom: 'var(--space-3)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                ⚡️ 连接测试诊断详情
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', fontWeight: '600', color: 'var(--color-text-primary)', marginBottom: 'var(--space-3)' }}>
+                <Zap size={16} color="var(--color-accent)" /> 连接测试诊断详情
                 {testLoading && (
                   <span className="loading-spinner" style={{ width: '12px', height: '12px', display: 'inline-block', border: '2px solid var(--color-accent)', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin-loading 1s linear infinite' }} />
                 )}
-              </h4>
+              </div>
               
               {/* 步骤时间轴 */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)', position: 'relative', paddingLeft: 'var(--space-4)', marginBottom: 'var(--space-2)' }}>
@@ -374,22 +384,22 @@ export default function SettingsModal() {
                 }} />
 
                 {testStages && testStages.map((stage) => {
-                  let icon = '⚪';
+                  let icon = '';
                   let iconColor = 'var(--color-text-tertiary)';
                   let textColor = 'var(--color-text-secondary)';
                   let isCurrent = false;
 
                   if (stage.status === 'running') {
-                    icon = '🌀';
+                    icon = '';
                     iconColor = 'var(--color-accent)';
                     textColor = 'var(--color-text-primary)';
                     isCurrent = true;
                   } else if (stage.status === 'success') {
-                    icon = '✓';
+                    icon = <Check size={10} />;
                     iconColor = 'var(--color-success)';
                     textColor = 'var(--color-text-secondary)';
                   } else if (stage.status === 'failed') {
-                    icon = '✗';
+                    icon = <X size={10} />;
                     iconColor = 'var(--color-danger)';
                     textColor = 'var(--color-danger)';
                   }
@@ -412,7 +422,7 @@ export default function SettingsModal() {
                         marginLeft: '-14px',
                         animation: isCurrent ? 'spin-loading 2s linear infinite' : 'none'
                       }}>
-                        {icon === '🌀' ? '' : icon}
+                        {icon}
                       </div>
                       
                       <div style={{ flex: 1, marginLeft: 'var(--space-1)' }}>
@@ -452,7 +462,7 @@ export default function SettingsModal() {
                       border: '1px solid rgba(34, 197, 94, 0.2)',
                     }}>
                       <div style={{ color: 'var(--color-success)', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                        🎉 测试连接成功！(总耗时: {testResult.duration}ms)
+                        <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><PartyPopper size={14} /> 测试连接成功！(总耗时: {testResult.duration}ms)</span>
                       </div>
                       <div style={{ marginTop: 'var(--space-2)', color: 'var(--color-text-secondary)', padding: 'var(--space-2)', background: 'var(--color-bg-primary)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-border-light)' }}>
                         <strong style={{ fontSize: '10px', color: 'var(--color-text-tertiary)', display: 'block', marginBottom: '2px' }}>AI 响应内容:</strong>
@@ -467,7 +477,7 @@ export default function SettingsModal() {
                       border: '1px solid rgba(239, 68, 68, 0.2)',
                     }}>
                       <div style={{ color: 'var(--color-danger)', fontWeight: 'bold' }}>
-                        ❌ 测试连接失败
+                        <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><XCircle size={14} /> 测试连接失败</span>
                       </div>
                       <div style={{ marginTop: 'var(--space-2)', color: 'var(--color-text-secondary)', whiteSpace: 'pre-wrap', wordBreak: 'break-all', fontSize: '11px', background: 'var(--color-bg-primary)', padding: 'var(--space-2)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-border-light)' }}>
                         {testResult.error}
@@ -475,7 +485,7 @@ export default function SettingsModal() {
                       
                       {/* 智能排障建议 */}
                       <div style={{ marginTop: 'var(--space-3)', padding: 'var(--space-3)', background: 'var(--color-bg-tertiary)', borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)' }}>
-                        <div style={{ fontWeight: '600', color: 'var(--color-text-primary)', marginBottom: 'var(--space-1)', fontSize: '11px' }}>🛠️ 排障小贴士：</div>
+                        <div style={{ fontWeight: '600', color: 'var(--color-text-primary)', marginBottom: 'var(--space-1)', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px' }}><Wrench size={12} /> 排障小贴士：</div>
                         <ul style={{ paddingLeft: 'var(--space-4)', margin: 0, color: 'var(--color-text-secondary)', fontSize: '11px', lineHeight: '1.6' }}>
                           <li>检查 API Key 是否完整，确保开头没有多余空格。</li>
                           <li>如果使用的是国内代理或第三方 API，请确保服务器地址包含协议头（<code>http://</code> 或 <code>https://</code>）并以 <code>/v1</code> 结尾（如 <code>https://api.yourproxy.com/v1</code>）。</li>
@@ -494,7 +504,7 @@ export default function SettingsModal() {
 
           {/* ===== 外观设置 ===== */}
           <h3 style={{ fontSize: 'var(--text-base)', fontWeight: '600', marginBottom: 'var(--space-4)' }}>
-            🎨 外观
+            <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><Palette size={18} /> 外观</span>
           </h3>
 
           <div className="form-group">
@@ -504,13 +514,13 @@ export default function SettingsModal() {
                 className={`btn ${theme === 'light' ? 'btn-primary' : 'btn-secondary'} btn-sm`}
                 onClick={() => setTheme('light')}
               >
-                ☀️ 浅色
+                <Sun size={14} style={{ marginRight: '6px', verticalAlign: 'middle' }} /> 浅色
               </button>
               <button
                 className={`btn ${theme === 'dark' ? 'btn-primary' : 'btn-secondary'} btn-sm`}
                 onClick={() => setTheme('dark')}
               >
-                🌙 深色
+                <Moon size={14} style={{ marginRight: '6px', verticalAlign: 'middle' }} /> 深色
               </button>
             </div>
           </div>
@@ -575,7 +585,7 @@ export default function SettingsModal() {
 
           {/* ===== 数据同步 ===== */}
           <h3 style={{ fontSize: 'var(--text-base)', fontWeight: '600', marginBottom: 'var(--space-4)' }}>
-            🔄 数据同步
+            <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><RefreshCw size={18} /> 数据同步</span>
           </h3>
 
           <div className="form-group">
@@ -662,7 +672,7 @@ export default function SettingsModal() {
                 fontSize: '12px',
                 border: '1px solid rgba(239, 68, 68, 0.2)'
               }}>
-                ❌ {syncError}
+                <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><XCircle size={14} /> {syncError}</span>
               </div>
             )}
 
@@ -677,7 +687,7 @@ export default function SettingsModal() {
                     }}
                     style={{ flex: 2 }}
                   >
-                    ⚡️ 增量同步更新
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '6px', justifyContent: 'center' }}><Zap size={14} /> 增量同步更新</span>
                   </button>
                   <button
                     className="btn btn-secondary"
@@ -713,7 +723,7 @@ export default function SettingsModal() {
 
           {/* ===== 快捷键 ===== */}
           <h3 style={{ fontSize: 'var(--text-base)', fontWeight: '600', marginBottom: 'var(--space-4)' }}>
-            ⌨️ 快捷键
+            <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><Keyboard size={18} /> 快捷键</span>
           </h3>
           <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-secondary)' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
@@ -745,7 +755,7 @@ export default function SettingsModal() {
 
           {/* ===== 关于 ===== */}
           <h3 style={{ fontSize: 'var(--text-base)', fontWeight: '600', marginBottom: 'var(--space-4)' }}>
-            ℹ️ 关于
+            <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><Info size={18} /> 关于</span>
           </h3>
           <div style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-secondary)', lineHeight: '1.8' }}>
             <p><strong>ReaderQ</strong> v1.0.0</p>
