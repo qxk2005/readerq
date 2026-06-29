@@ -181,7 +181,7 @@ export default function ReadingPane() {
       // 只有简单点击（未拖选文本）才打开编辑器
       if (sel && sel.isCollapsed) {
         const hlId = clickedMark.dataset.highlightId;
-        const hl = highlights.find(h => h.id === hlId);
+        const hl = highlights.find(h => String(h.id) === String(hlId));
         if (hl) {
           const rect = clickedMark.getBoundingClientRect();
           setEditingHighlight({ ...hl, rect });
