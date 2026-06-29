@@ -152,7 +152,11 @@ export function restoreHighlights(root, highlights, onHighlightClick) {
           let start = isFirst ? startObj.offset : 0;
           let end = isLast ? endObj.offset : n.textContent.length;
           
-          if (start < end) {
+          const textSegment = n.textContent.substring(start, end);
+          
+          // 仅当文本片段不是纯空白字符时才包裹 <mark>，
+          // 避免块级元素（如 <p>）之间的换行符被包裹，从而在页面上撑开额外的空白行
+          if (start < end && textSegment.trim().length > 0) {
             const mark = document.createElement('mark');
             mark.className = `highlight-color ${hl.color || 'yellow'}`;
             mark.dataset.highlightId = hl.id;
