@@ -1,6 +1,6 @@
 const { app, BrowserWindow, shell } = require('electron');
 const path = require('path');
-const { spawn } = require('child_process');
+const { fork } = require('child_process');
 const net = require('net');
 const fs = require('fs');
 
@@ -104,20 +104,18 @@ async function createWindow() {
       return;
     }
 
-    // Use spawn with the bundled node executable to run the server
-    // We use process.execPath (Electron binary) with ELECTRON_RUN_AS_NODE=1
-    // so it acts as a plain Node.js runtime
-    serverProcess = spawn(process.execPath, [serverScript], {
+    // Use fork to run the server. In Electron, fork automatically uses the
+    // Helper executable on macOS, which prevents a second dock icon from appearing.
+    serverProcess = fork(serverScript, [], {
       cwd: standaloneDir,
       env: {
         ...process.env,
         NODE_ENV: 'production',
         PORT: port.toString(),
         HOSTNAME: '127.0.0.1',
-        ELECTRON_RUN_AS_NODE: '1',
         DATA_DIR: dataDir,
       },
-      stdio: ['ignore', 'pipe', 'pipe'],
+      silent: true, // pipes stdout and stderr to the parent (like stdio: ['ignore', 'pipe', 'pipe'])
     });
 
     serverProcess.stdout.on('data', (data) => {

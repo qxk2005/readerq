@@ -1,6 +1,6 @@
 {
   "name": "readerq",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "ReaderQ - 智能阅读助手",
   "author": "ReaderQ Team",
   "private": true,
@@ -35,11 +35,15 @@
       "target": [
         {
           "target": "dmg",
-          "arch": ["arm64"]
+          "arch": [
+            "arm64"
+          ]
         },
         {
           "target": "zip",
-          "arch": ["arm64"]
+          "arch": [
+            "arm64"
+          ]
         }
       ]
     },
