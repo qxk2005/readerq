@@ -1,7 +1,8 @@
 const { app, BrowserWindow } = require('electron');
 const path = require('path');
-const { fork } = require('child_process');
+const { spawn } = require('child_process');
 const net = require('net');
+const fs = require('fs');
 
 let mainWindow;
 let serverProcess;
@@ -18,6 +19,31 @@ function findOpenPort() {
   });
 }
 
+function getResourcePath(...segments) {
+  if (app.isPackaged) {
+    // In production, the standalone directory is unpacked from the asar
+    return path.join(process.resourcesPath, 'app.asar.unpacked', ...segments);
+  }
+  // In development, point to the project root
+  return path.join(__dirname, '..', ...segments);
+}
+
+function ensureEnvFile() {
+  // In packaged mode, copy .env.local to the standalone directory if it exists in userData
+  if (!app.isPackaged) return;
+
+  const userDataPath = app.getPath('userData');
+  const userEnvFile = path.join(userDataPath, '.env.local');
+  const standaloneDir = getResourcePath('.next', 'standalone');
+  const targetEnvFile = path.join(standaloneDir, '.env.local');
+
+  // If user has a custom .env.local in userData, use it
+  if (fs.existsSync(userEnvFile)) {
+    fs.copyFileSync(userEnvFile, targetEnvFile);
+    console.log('Copied .env.local from userData to standalone directory');
+  }
+}
+
 async function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1280,
@@ -26,55 +52,101 @@ async function createWindow() {
       nodeIntegration: false,
       contextIsolation: true,
     },
-    titleBarStyle: 'hiddenInset' // Mac style
+    titleBarStyle: 'hiddenInset',
+    trafficLightPosition: { x: 16, y: 18 },
+    show: false, // Don't show until content is ready
   });
 
   const port = await findOpenPort();
   const userDataPath = app.getPath('userData');
   const dataDir = path.join(userDataPath, 'data');
-  
+
+  // Ensure data directory exists
+  if (!fs.existsSync(dataDir)) {
+    fs.mkdirSync(dataDir, { recursive: true });
+  }
+
   if (app.isPackaged) {
-    // In production, run the Next.js standalone server
-    const serverPath = path.join(process.resourcesPath, 'app.asar.unpacked', '.next', 'standalone', 'server.js');
-    
-    serverProcess = fork(serverPath, [], {
+    ensureEnvFile();
+
+    const standaloneDir = getResourcePath('.next', 'standalone');
+    const serverScript = path.join(standaloneDir, 'server.js');
+
+    console.log('[ReaderQ] Starting Next.js server...');
+    console.log('[ReaderQ] Standalone dir:', standaloneDir);
+    console.log('[ReaderQ] Server script:', serverScript);
+    console.log('[ReaderQ] Data dir:', dataDir);
+    console.log('[ReaderQ] Port:', port);
+
+    if (!fs.existsSync(serverScript)) {
+      console.error('[ReaderQ] server.js not found at:', serverScript);
+      app.quit();
+      return;
+    }
+
+    // Use spawn with the bundled node executable to run the server
+    // We use process.execPath (Electron binary) with ELECTRON_RUN_AS_NODE=1
+    // so it acts as a plain Node.js runtime
+    serverProcess = spawn(process.execPath, [serverScript], {
+      cwd: standaloneDir,
       env: {
         ...process.env,
         NODE_ENV: 'production',
         PORT: port.toString(),
         HOSTNAME: '127.0.0.1',
         ELECTRON_RUN_AS_NODE: '1',
-        DATA_DIR: dataDir
-      }
+        DATA_DIR: dataDir,
+      },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+
+    serverProcess.stdout.on('data', (data) => {
+      console.log('[Next.js]', data.toString().trim());
+    });
+
+    serverProcess.stderr.on('data', (data) => {
+      console.error('[Next.js ERR]', data.toString().trim());
     });
 
     serverProcess.on('error', (err) => {
-      console.error('Failed to start Next.js server:', err);
+      console.error('[ReaderQ] Failed to start Next.js server:', err);
     });
 
-    // Simple wait loop to ensure the server is ready before loading
-    const checkServer = () => {
+    serverProcess.on('exit', (code) => {
+      console.log('[ReaderQ] Next.js server exited with code:', code);
+    });
+
+    // Wait for the server to be ready
+    const waitForServer = (retries = 0) => {
+      if (retries > 150) {
+        // 30 seconds timeout (150 * 200ms)
+        console.error('[ReaderQ] Server failed to start within 30 seconds');
+        app.quit();
+        return;
+      }
+
       const socket = new net.Socket();
       socket.setTimeout(1000);
       socket.on('connect', () => {
         socket.destroy();
+        console.log('[ReaderQ] Server is ready, loading UI...');
         mainWindow.loadURL(`http://127.0.0.1:${port}`);
+        mainWindow.show();
       }).on('error', () => {
         socket.destroy();
-        setTimeout(checkServer, 200);
+        setTimeout(() => waitForServer(retries + 1), 200);
       }).on('timeout', () => {
         socket.destroy();
-        setTimeout(checkServer, 200);
+        setTimeout(() => waitForServer(retries + 1), 200);
       });
       socket.connect(port, '127.0.0.1');
     };
-    
-    checkServer();
 
+    waitForServer();
   } else {
     // In development, assume next dev is running on port 3000
     mainWindow.loadURL('http://127.0.0.1:3000');
-    // Open DevTools in dev mode
+    mainWindow.show();
     mainWindow.webContents.openDevTools();
   }
 
@@ -99,8 +171,8 @@ app.on('window-all-closed', () => {
   }
 });
 
-app.on('before-quit', () => {
-  if (serverProcess) {
-    serverProcess.kill();
+app.on('will-quit', () => {
+  if (serverProcess && !serverProcess.killed) {
+    serverProcess.kill('SIGTERM');
   }
 });

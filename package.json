@@ -1,6 +1,8 @@
 {
   "name": "readerq",
   "version": "1.0.0",
+  "description": "ReaderQ - 智能阅读助手",
+  "author": "ReaderQ Team",
   "private": true,
   "bin": {
     "readerq": "./bin/readerq.js"
@@ -25,8 +27,21 @@
       "electron/**/*",
       ".next/standalone/**/*"
     ],
+    "asarUnpack": [
+      ".next/standalone/**/*"
+    ],
     "mac": {
-      "category": "public.app-category.productivity"
+      "category": "public.app-category.productivity",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": ["arm64"]
+        },
+        {
+          "target": "zip",
+          "arch": ["arm64"]
+        }
+      ]
     },
     "win": {
       "target": "nsis"
