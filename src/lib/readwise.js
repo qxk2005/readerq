@@ -196,22 +196,17 @@ class ReadwiseAPI {
   /**
    * 创建高亮并发送到 Readwise
    * 使用 Readwise API v2 接口
+   * 
+   * 标签处理：创建高亮后，使用 V2 专用 tags 端点为每个标签单独发请求
+   * （Inline Tagging .tag 格式仅在 Readwise Reader 原生 UI 中有效，API 创建时不会自动解析）
    */
   async createReadwiseHighlight(highlight) {
-    // 处理高亮的 Inline Tagging
-    // 如果高亮包含 tags，则将其以 .tag 形式追加到 note 中
-    let finalNote = highlight.note || '';
-    if (highlight.tags && Object.keys(highlight.tags).length > 0) {
-      const tagString = Object.keys(highlight.tags).map(tag => `.${tag}`).join(' ');
-      finalNote = finalNote ? `${finalNote}\n\n${tagString}` : tagString;
-    }
-
     const payload = {
       highlights: [{
         text: highlight.text,
         title: highlight.title,
         source_url: highlight.source_url,
-        note: finalNote,
+        note: highlight.note || '',
         location: highlight.location_start,
       }]
     };
@@ -220,6 +215,7 @@ class ReadwiseAPI {
       method: 'POST',
       headers: this.headers,
       body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(15000),
     });
 
     if (!response.ok) {
@@ -227,7 +223,44 @@ class ReadwiseAPI {
       throw new Error(`Readwise API v2 高亮错误 (${response.status}): ${errorText}`);
     }
 
-    return response.json();
+    const result = await response.json();
+
+    // 使用 V2 tags 端点为高亮添加标签
+    // 端点: POST /api/v2/highlights/<highlight_id>/tags/
+    if (highlight.tags && Object.keys(highlight.tags).length > 0) {
+      // 从返回结果中获取 Readwise 分配的 highlight ID
+      const createdHighlights = result;
+      let readwiseHighlightId = null;
+      if (Array.isArray(createdHighlights) && createdHighlights.length > 0) {
+        readwiseHighlightId = createdHighlights[0].id;
+      } else if (createdHighlights?.id) {
+        readwiseHighlightId = createdHighlights.id;
+      }
+
+      if (readwiseHighlightId) {
+        const tagNames = Object.keys(highlight.tags);
+        for (const tagName of tagNames) {
+          try {
+            const tagResponse = await fetch(
+              `https://readwise.io/api/v2/highlights/${readwiseHighlightId}/tags/`,
+              {
+                method: 'POST',
+                headers: this.headers,
+                body: JSON.stringify({ name: tagName }),
+                signal: AbortSignal.timeout(10000),
+              }
+            );
+            if (!tagResponse.ok) {
+              console.warn(`为高亮添加标签 "${tagName}" 失败: HTTP ${tagResponse.status}`);
+            }
+          } catch (tagErr) {
+            console.warn(`为高亮添加标签 "${tagName}" 异常:`, tagErr.message);
+          }
+        }
+      }
+    }
+
+    return result;
   }
 
   /**

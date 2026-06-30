@@ -35,11 +35,18 @@ export function findFuzzyOffset(fullText, query) {
   // 提前移除 Markdown 图片和链接语法（只保留链接文字）
   // 因为 Readwise 高亮中包含了嵌套的长 URL，而网页 DOM 的 textContent 不会包含这些 URL
   let cleanQuery = query.replace(/!\[[\s\S]*?\]\([\s\S]*?\)/g, '');
-  cleanQuery = cleanQuery.replace(/\[([\s\S]*?)\]\([\s\S]*?\)/g, '$1');
+  cleanQuery = cleanQuery.replace(/\[([^\]]*?)\]\([\s\S]*?\)/g, '$1');
+  
+  // 移除 [图片: xxx] 格式的占位符文本（ReaderQ 创建高亮时为 <img> 生成的占位符）
+  // 这些占位符在文章 DOM 的 textContent 中不存在（图片是 <img> 标签，不产生文本）
+  cleanQuery = cleanQuery.replace(/\[图片:\s*[^\]]*?\]/g, '');
   
   // 移除列表开头的数字序号，例如 "1. " 或 "12. "
   // 这可以解决 Readwise 会带上序号而正文 HTML 只包含纯文本（序号由浏览器渲染）的情况
   cleanQuery = cleanQuery.replace(/^\s*\d+\.\s+/gm, '');
+  
+  // 清理后可能残留多余的换行和空白，进行规范化
+  cleanQuery = cleanQuery.replace(/\n{2,}/g, '\n').trim();
 
   const exact = fullText.indexOf(cleanQuery);
   if (exact !== -1) return { start: exact, end: exact + cleanQuery.length };
