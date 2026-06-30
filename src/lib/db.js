@@ -29,6 +29,14 @@ export function getDatabase() {
   // 初始化表结构
   initSchema(db);
 
+  // 重置启动时可能残留的卡死同步状态
+  try {
+    db.prepare("INSERT OR REPLACE INTO sync_state (key, value) VALUES ('sync_status', 'idle')").run();
+    db.prepare("INSERT OR REPLACE INTO sync_state (key, value) VALUES ('sync_cancel_requested', 'false')").run();
+  } catch (e) {
+    console.error('初始化重置同步状态失败:', e);
+  }
+
   return db;
 }
 
