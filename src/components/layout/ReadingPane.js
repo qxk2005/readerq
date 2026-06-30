@@ -8,7 +8,7 @@ import { getTextOffset, restoreHighlights } from '@/lib/highlight';
 import GhostReader from '@/components/ai/GhostReader';
 import HighlightEditor from '@/components/HighlightEditor';
 import TagInput from '@/components/TagInput';
-import { BookOpen, Link, Info, Edit3, Bot, Loader2, ClipboardList, AlertTriangle, RefreshCw, CheckCircle2, XCircle } from 'lucide-react';
+import { BookOpen, Link, Info, Edit3, Bot, Loader2, ClipboardList, AlertTriangle, RefreshCw, CheckCircle2, XCircle, ImageIcon, Upload } from 'lucide-react';
 
 export default function ReadingPane() {
   const { 
@@ -34,6 +34,7 @@ export default function ReadingPane() {
   const [docNote, setDocNote] = useState('');
   const [isSavingDocMetadata, setIsSavingDocMetadata] = useState(false);
   const [highlightsError, setHighlightsError] = useState(null);
+  const [imageUploadStatus, setImageUploadStatus] = useState({}); // { [highlightId]: { status: 'uploading'|'success'|'error', images: [] } }
   
   // 在渲染阶段同步检测文档切换，瞬间进入 Loading 状态并重置高亮，防止闪烁
   const [prevDocId, setPrevDocId] = useState(null);
@@ -120,6 +121,23 @@ export default function ReadingPane() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedDoc?.id, isContentLoading, isLoadingHighlights, highlights]);
 
+  // 从选区 Range 中提取包含的 <img> 元素 URL
+  const extractImagesFromRange = (range) => {
+    const fragment = range.cloneContents();
+    const images = [];
+    const imgElements = fragment.querySelectorAll('img');
+    imgElements.forEach(img => {
+      const src = img.getAttribute('src');
+      if (src && (src.startsWith('http://') || src.startsWith('https://'))) {
+        images.push({
+          src,
+          alt: img.getAttribute('alt') || '图片',
+        });
+      }
+    });
+    return images;
+  };
+
   // 从选区中提取文本，保留块级元素边界的换行
   const extractSelectionText = (range) => {
     const BLOCK_ELEMENTS = new Set([
@@ -138,6 +156,13 @@ export default function ReadingPane() {
         const tagName = node.tagName;
         if (tagName === 'BR') {
           parts.push('\n');
+          return;
+        }
+        // 处理 <img> 标签：提取为占位文本
+        if (tagName === 'IMG') {
+          const alt = node.getAttribute('alt') || '图片';
+          const src = node.getAttribute('src') || '';
+          parts.push(`[图片: ${alt}]`);
           return;
         }
         const isBlock = BLOCK_ELEMENTS.has(tagName);
@@ -203,19 +228,94 @@ export default function ReadingPane() {
     const range = sel.getRangeAt(0);
     const rect = range.getBoundingClientRect();
     const text = extractSelectionText(range);
+    const images = extractImagesFromRange(range);
 
-    if (text) {
-      const location_start = getTextOffset(articleRef.current, range.startContainer, range.startOffset);
-      const location_end = getTextOffset(articleRef.current, range.endContainer, range.endOffset);
+    if (text || images.length > 0) {
+      let location_start = getTextOffset(articleRef.current, range.startContainer, range.startOffset);
+      let location_end = getTextOffset(articleRef.current, range.endContainer, range.endOffset);
       
-      if (location_start >= 0 && location_end >= 0) {
-        setSelection({
-          text,
-          location_start,
-          location_end,
-          rect: { top: rect.top, bottom: rect.bottom, left: rect.left, width: rect.width }
-        });
+      // 当选区起止点落在非文本节点（如 <img> 的父元素）上时，
+      // getTextOffset 无法匹配到文本节点会返回 -1。
+      // 此时通过遍历选区前后的文本节点来估算偏移量。
+      if (location_start < 0) {
+        const container = range.startContainer;
+        if (container.nodeType === Node.ELEMENT_NODE) {
+          const childNodes = container.childNodes;
+          for (let i = range.startOffset - 1; i >= 0; i--) {
+            const child = childNodes[i];
+            if (child) {
+              const walker = document.createTreeWalker(child, NodeFilter.SHOW_TEXT, null, false);
+              let lastText = null;
+              let n;
+              while ((n = walker.nextNode())) lastText = n;
+              if (lastText) {
+                location_start = getTextOffset(articleRef.current, lastText, lastText.textContent.length);
+                break;
+              }
+            }
+          }
+          if (location_start < 0) {
+            for (let i = range.startOffset; i < childNodes.length; i++) {
+              const child = childNodes[i];
+              if (child) {
+                const walker = document.createTreeWalker(child, NodeFilter.SHOW_TEXT, null, false);
+                const firstText = walker.nextNode();
+                if (firstText) {
+                  location_start = getTextOffset(articleRef.current, firstText, 0);
+                  break;
+                }
+              }
+            }
+          }
+          // 无法确定精确位置时设为 null，让 restoreHighlights 的模糊匹配来定位
+        }
       }
+
+      if (location_end < 0) {
+        const container = range.endContainer;
+        if (container.nodeType === Node.ELEMENT_NODE) {
+          const childNodes = container.childNodes;
+          for (let i = range.endOffset; i < childNodes.length; i++) {
+            const child = childNodes[i];
+            if (child) {
+              const walker = document.createTreeWalker(child, NodeFilter.SHOW_TEXT, null, false);
+              const firstText = walker.nextNode();
+              if (firstText) {
+                location_end = getTextOffset(articleRef.current, firstText, 0);
+                break;
+              }
+            }
+          }
+          if (location_end < 0) {
+            for (let i = range.endOffset - 1; i >= 0; i--) {
+              const child = childNodes[i];
+              if (child) {
+                const walker = document.createTreeWalker(child, NodeFilter.SHOW_TEXT, null, false);
+                let lastText = null;
+                let n;
+                while ((n = walker.nextNode())) lastText = n;
+                if (lastText) {
+                  location_end = getTextOffset(articleRef.current, lastText, lastText.textContent.length);
+                  break;
+                }
+              }
+            }
+          }
+          // 无法确定精确位置时设为 null，让 restoreHighlights 的模糊匹配来定位
+        }
+      }
+
+      // 如果仍无法确定偏移量（-1），设为 null 以触发 restoreHighlights 的模糊文本匹配
+      if (location_start < 0) location_start = null;
+      if (location_end < 0) location_end = null;
+      
+      setSelection({
+        text: text || (images.length > 0 ? images.map(i => `[图片: ${i.alt}]`).join('\n') : ''),
+        location_start,
+        location_end,
+        images,
+        rect: { top: rect.top, bottom: rect.bottom, left: rect.left, width: rect.width }
+      });
     }
   };
 
@@ -230,6 +330,9 @@ export default function ReadingPane() {
 
   const handleCreateHighlight = async (color) => {
     if (!selection || !selectedDoc) return;
+    
+    const selectionImages = selection.images || [];
+    const selectionRect = selection.rect;
     
     const newHl = {
       id: crypto.randomUUID(),
@@ -255,12 +358,72 @@ export default function ReadingPane() {
       });
       const data = await res.json();
       if (data.success) {
-        setHighlights([...highlights, data.highlight]);
+        const createdHighlight = data.highlight;
+        setHighlights(prev => [...prev, createdHighlight]);
         // Show edit UI immediately after creation
-        setEditingHighlight({ ...data.highlight, rect: selection.rect });
+        setEditingHighlight({ ...createdHighlight, rect: selectionRect });
+
+        // 如果选区包含图片，异步上传到 OSS
+        if (selectionImages.length > 0) {
+          uploadImagesToOss(createdHighlight.id, createdHighlight.text, selectionImages);
+        }
       }
     } catch (e) {
       console.error('保存高亮失败', e);
+    }
+  };
+
+  // 异步上传选区中的图片到 OSS 并更新高亮文本
+  const uploadImagesToOss = async (highlightId, originalText, images) => {
+    if (!images || images.length === 0) return;
+
+    setImageUploadStatus(prev => ({
+      ...prev,
+      [highlightId]: { status: 'uploading', images: images.map(i => ({ ...i, ossUrl: null, error: null })) }
+    }));
+
+    let updatedText = originalText;
+    const uploadResults = [];
+
+    for (let i = 0; i < images.length; i++) {
+      const img = images[i];
+      try {
+        const res = await fetch('/api/oss/upload', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            imageUrl: img.src,
+            documentId: selectedDoc.id,
+          }),
+        });
+        const data = await res.json();
+        if (data.success && data.ossUrl) {
+          // 替换占位文本为 Markdown 图片格式
+          const placeholder = `[图片: ${img.alt}]`;
+          const markdownImg = `![${img.alt}](${data.ossUrl})`;
+          updatedText = updatedText.replace(placeholder, markdownImg);
+          uploadResults.push({ ...img, ossUrl: data.ossUrl, error: null });
+        } else {
+          uploadResults.push({ ...img, ossUrl: null, error: data.error || '上传失败' });
+        }
+      } catch (err) {
+        uploadResults.push({ ...img, ossUrl: null, error: err.message });
+      }
+    }
+
+    // 更新上传状态
+    const allSuccess = uploadResults.every(r => r.ossUrl);
+    setImageUploadStatus(prev => ({
+      ...prev,
+      [highlightId]: {
+        status: allSuccess ? 'success' : 'error',
+        images: uploadResults,
+      }
+    }));
+
+    // 如果有任何图片上传成功，更新高亮文本
+    if (uploadResults.some(r => r.ossUrl) && updatedText !== originalText) {
+      handleUpdateHighlight(highlightId, { text: updatedText });
     }
   };
 
@@ -273,7 +436,7 @@ export default function ReadingPane() {
       });
       const data = await res.json();
       if (data.success) {
-        setHighlights(highlights.map(h => h.id === id ? data.highlight : h));
+        setHighlights(prev => prev.map(h => h.id === id ? data.highlight : h));
         setEditingHighlight(prev => prev ? { ...prev, ...data.highlight } : null);
         
         if (updates.tags) {
@@ -301,7 +464,7 @@ export default function ReadingPane() {
   const handleDeleteHighlight = async (id) => {
     try {
       await fetch(`/api/highlights/${id}`, { method: 'DELETE' });
-      setHighlights(highlights.filter(h => h.id !== id));
+      setHighlights(prev => prev.filter(h => h.id !== id));
       setEditingHighlight(null);
     } catch (e) {
       console.error(e);
@@ -723,7 +886,19 @@ export default function ReadingPane() {
                 <h3 style={{ fontSize: '11px', fontWeight: '600', color: 'var(--color-text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 'var(--space-3)' }}>Highlights ({highlights.length})</h3>
                 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
-                  {highlights.map(hl => (
+                  {highlights.map(hl => {
+                    // 检测高亮文本中的 Markdown 图片
+                    const mdImageRegex = /!\[([^\]]*)\]\(([^)]+)\)/g;
+                    const mdImages = [];
+                    let match;
+                    while ((match = mdImageRegex.exec(hl.text)) !== null) {
+                      mdImages.push({ alt: match[1], url: match[2] });
+                    }
+                    // 去掉 Markdown 图片语法后的纯文本显示
+                    const textWithoutImages = hl.text.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '').trim();
+                    const uploadStatus = imageUploadStatus[hl.id];
+
+                    return (
                     <div 
                       key={hl.id} 
                       className="highlight-card"
@@ -743,16 +918,125 @@ export default function ReadingPane() {
                         }
                       }}
                     >
-                      <div style={{ 
-                        borderLeft: `4px solid var(--highlight-${hl.color || 'yellow'})`, 
-                        paddingLeft: 'var(--space-2)',
-                        fontSize: '13px',
-                        lineHeight: '1.5',
-                        color: 'var(--color-text-primary)',
-                        whiteSpace: 'pre-line'
-                      }}>
-                        {hl.text}
-                      </div>
+                      {/* 高亮文本 */}
+                      {textWithoutImages && (
+                        <div style={{ 
+                          borderLeft: `4px solid var(--highlight-${hl.color || 'yellow'})`, 
+                          paddingLeft: 'var(--space-2)',
+                          fontSize: '13px',
+                          lineHeight: '1.5',
+                          color: 'var(--color-text-primary)',
+                          whiteSpace: 'pre-line'
+                        }}>
+                          {textWithoutImages}
+                        </div>
+                      )}
+
+                      {/* 图床图片预览 */}
+                      {mdImages.length > 0 && (
+                        <div style={{ 
+                          marginTop: textWithoutImages ? 'var(--space-2)' : '0',
+                          display: 'flex', 
+                          flexDirection: 'column', 
+                          gap: 'var(--space-2)' 
+                        }}>
+                          <div style={{ 
+                            fontSize: '11px', 
+                            color: 'var(--color-text-tertiary)', 
+                            display: 'flex', 
+                            alignItems: 'center', 
+                            gap: '4px',
+                            fontWeight: '600'
+                          }}>
+                            <ImageIcon size={12} /> 图床图片 ({mdImages.length})
+                          </div>
+                          {mdImages.map((img, idx) => (
+                            <div key={idx} style={{ 
+                              borderRadius: 'var(--radius-sm)', 
+                              overflow: 'hidden',
+                              border: '1px solid var(--color-border-light)',
+                              background: 'var(--color-bg-tertiary)',
+                            }}>
+                              <img 
+                                src={img.url} 
+                                alt={img.alt}
+                                style={{ 
+                                  width: '100%', 
+                                  maxHeight: '160px', 
+                                  objectFit: 'cover',
+                                  display: 'block'
+                                }}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  window.open(img.url, '_blank');
+                                }}
+                                onError={(e) => {
+                                  e.target.style.display = 'none';
+                                  e.target.nextSibling && (e.target.nextSibling.style.display = 'flex');
+                                }}
+                              />
+                              <div style={{ 
+                                display: 'none', 
+                                padding: 'var(--space-2)',
+                                color: 'var(--color-danger)',
+                                fontSize: '11px',
+                                alignItems: 'center',
+                                gap: '4px'
+                              }}>
+                                <XCircle size={12} /> 图片加载失败
+                              </div>
+                              <div style={{ 
+                                padding: '4px 8px', 
+                                fontSize: '10px', 
+                                color: 'var(--color-text-tertiary)',
+                                wordBreak: 'break-all',
+                                borderTop: '1px solid var(--color-border-light)'
+                              }}>
+                                {img.alt || '图片'}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* 图片上传状态指示 */}
+                      {uploadStatus && (
+                        <div style={{ 
+                          marginTop: 'var(--space-2)', 
+                          padding: 'var(--space-2)',
+                          background: uploadStatus.status === 'uploading' ? 'var(--color-accent-light)' 
+                            : uploadStatus.status === 'success' ? 'rgba(34, 197, 94, 0.06)' 
+                            : 'rgba(239, 68, 68, 0.06)',
+                          borderRadius: 'var(--radius-sm)',
+                          fontSize: '11px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '4px'
+                        }}>
+                          {uploadStatus.status === 'uploading' && (
+                            <>
+                              <Upload size={12} style={{ animation: 'pulse-banner 1.5s infinite' }} />
+                              <span style={{ color: 'var(--color-accent)' }}>正在上传图片到图床...</span>
+                            </>
+                          )}
+                          {uploadStatus.status === 'success' && (
+                            <>
+                              <CheckCircle2 size={12} style={{ color: 'var(--color-success)' }} />
+                              <span style={{ color: 'var(--color-success)' }}>
+                                {uploadStatus.images.length} 张图片已上传到图床
+                              </span>
+                            </>
+                          )}
+                          {uploadStatus.status === 'error' && (
+                            <>
+                              <XCircle size={12} style={{ color: 'var(--color-danger)' }} />
+                              <span style={{ color: 'var(--color-danger)' }}>
+                                部分图片上传失败: {uploadStatus.images.filter(i => i.error).map(i => i.error).join('; ')}
+                              </span>
+                            </>
+                          )}
+                        </div>
+                      )}
                       
                       {/* Verify Sync Status */}
                       <div style={{ marginTop: 'var(--space-2)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -807,7 +1091,7 @@ export default function ReadingPane() {
                         </div>
                       )}
                     </div>
-                  ))}
+                  );})}
                   {isLoadingHighlights ? (
                     <div style={{ textAlign: 'center', color: 'var(--color-text-tertiary)', fontSize: '13px', marginTop: 'var(--space-4)' }}>
                       <div className="loading-spinner" style={{ width: '16px', height: '16px', margin: '0 auto var(--space-2)' }}></div>

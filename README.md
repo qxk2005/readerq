@@ -57,6 +57,13 @@ ReaderQ 采用经典的“三栏式”桌面级效率工具布局（可使用 `[
 - **智能批注体验**：类原生应用的高亮选取体验，支持五种高亮色彩，以及针对单条高亮的备注与智能标签建议。
 - **状态无缝同步**：所有的操作自动在云端完成同步对齐。
 
+### 🖼️ 图床集成（阿里云 OSS）
+- **自动图片上传**：高亮包含图片的内容时，自动将图片上传到阿里云 OSS 图床。
+- **Markdown 格式转换**：上传完成后自动将图片引用转为 `![alt](url)` Markdown 格式，方便 Readwise API 接收和存储。
+- **侧边栏图片预览**：在笔记面板中直接预览图床图片缩略图，实时确认上传状态（上传中 / 成功 / 失败）。
+- **零依赖上传**：使用阿里云 OSS REST API 签名上传，无需额外安装 SDK。
+- **一键测试连接**：在设置页面配置完成后，可一键验证 OSS 连接是否正常。
+
 ### 🤖 AI 助手 (GhostReader)
 - **文档自动摘要与多语言翻译**
 - **上下文深度理解**：随时划词询问，或者向当前阅读的文献发起全局提问。
@@ -109,7 +116,17 @@ READWISE_API_TOKEN=your_token_here
 OPENAI_API_KEY=your_key_here
 OPENAI_BASE_URL=https://api.openai.com/v1
 OPENAI_MODEL=gpt-4o-mini
+
+# 可选：阿里云 OSS 图床配置（也可在设置页面中配置）
+# OSS_REGION=oss-cn-hangzhou
+# OSS_BUCKET=your-bucket-name
+# OSS_ACCESS_KEY_ID=your_access_key_id
+# OSS_ACCESS_KEY_SECRET=your_access_key_secret
+# OSS_CUSTOM_DOMAIN=https://img.example.com
+# OSS_PATH_PREFIX=readerq
 ```
+
+> **📷 图床配置说明**：OSS 配置支持两种方式——通过 `.env.local` 环境变量或在应用内「设置 → 图床配置」页面直接填写。Bucket 需开启**公共读**权限，以确保上传的图片可被外部访问。
 
 ### 启停命令 (CLI 工具)
 系统内置了跨平台的快捷脚本用于服务生命周期管理：
@@ -145,6 +162,7 @@ Get-Content data\server.log -Wait
 
 - **安全性**：密钥仅存在本地 `.env.local` 且不暴露给浏览器前端；本地 SQLite `.db` 文件静默存储在 `data/` 目录下不会上传远端仓库。
 - **核心技术栈**: Next.js 15 (App Router), better-sqlite3, Vanilla CSS 变量驱动。
+- **图床安全**：阿里云 OSS AccessKey ID 和 Secret 在 API 返回时自动脱敏，仅显示首尾各 4 位字符。
 
 ## 📄 许可证
 
@@ -167,6 +185,7 @@ MIT License
   - `/api/readwise/`: 专职负责与 Readwise V3 API 的增量/全量同步。
   - `/api/documents/` & `/api/highlights/`: 供前台调用的元数据修改接口，同时执行本地 SQLite 写入和 Readwise 远端同步。
   - `/api/ai/`: 统一个接管大模型调用的路由，抹平不同 LLM 厂家的 API 差异。
+  - `/api/oss/`: 图床服务接口（`upload/` 图片上传、`test/` 配置测试）。
 - `/src/components/`: 前端 UI 层。
   - `layout/`: 核心的三栏布局组件（`Sidebar`, `DocumentList`, `ReadingPane`）。
   - `ai/GhostReader.js`: AI 交互核心。
@@ -174,6 +193,7 @@ MIT License
   - `db.js`: SQLite 物理层，封装建表与增删改查。
   - `readwise.js`: 封装向 Readwise 发起的 HTTP 请求。
   - `highlight.js`: 核心的高亮偏移量算法库。
+  - `oss.js`: 阿里云 OSS 图床上传模块（REST API 签名、图片下载转存）。
 
 ### 3. 数据流与“双写三步走”铁律 ⚠️
 Readwise V3 API 存在明显的**缓存最终一致性（Eventual Consistency）**现象。如果你向其 `PATCH` 了一个标签，紧接着立即 `GET` 拉取，极大概率会拿到修改前的旧数据。

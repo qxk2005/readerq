@@ -13,6 +13,12 @@ const SETTING_KEYS = [
   'openai_base_url',
   'openai_model',
   'openai_max_tokens',
+  'oss_region',
+  'oss_bucket',
+  'oss_access_key_id',
+  'oss_access_key_secret',
+  'oss_custom_domain',
+  'oss_path_prefix',
 ];
 
 export async function GET() {
@@ -20,7 +26,7 @@ export async function GET() {
     const settings = {};
     for (const key of SETTING_KEYS) {
       const value = getSetting(key);
-      if (value && (key === 'readwise_token' || key === 'openai_api_key')) {
+      if (value && (key === 'readwise_token' || key === 'openai_api_key' || key === 'oss_access_key_id' || key === 'oss_access_key_secret')) {
         // 脱敏：只显示前4位和后4位
         settings[key] = value.length > 10
           ? value.substring(0, 4) + '••••••••' + value.substring(value.length - 4)

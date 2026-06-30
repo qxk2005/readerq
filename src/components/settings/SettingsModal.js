@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useApp } from '@/context/AppContext';
 import { useTheme } from '@/context/ThemeContext';
-import { Settings, Key, Palette, Keyboard, Info, RefreshCw, Lightbulb, Save, Zap, CheckCircle2, XCircle, Wrench, PartyPopper, Sun, Moon, Check, X } from 'lucide-react';
+import { Settings, Key, Palette, Keyboard, Info, RefreshCw, Lightbulb, Save, Zap, CheckCircle2, XCircle, Wrench, PartyPopper, Sun, Moon, Check, X, Image, CloudUpload } from 'lucide-react';
 
 export default function SettingsModal() {
   const { showSettings, setShowSettings, syncData, isSyncing, syncStatus: globalSyncStatus, syncProgress, syncCounts, syncError, cancelSync } = useApp();
@@ -26,6 +26,16 @@ export default function SettingsModal() {
   const [testStages, setTestStages] = useState(null);
   const [openaiMaxTokens, setOpenaiMaxTokens] = useState('');
 
+  // OSS 图床配置状态
+  const [ossRegion, setOssRegion] = useState('');
+  const [ossBucket, setOssBucket] = useState('');
+  const [ossAccessKeyId, setOssAccessKeyId] = useState('');
+  const [ossAccessKeySecret, setOssAccessKeySecret] = useState('');
+  const [ossCustomDomain, setOssCustomDomain] = useState('');
+  const [ossPathPrefix, setOssPathPrefix] = useState('readerq');
+  const [ossTestLoading, setOssTestLoading] = useState(false);
+  const [ossTestResult, setOssTestResult] = useState(null);
+
   // 加载当前配置
   const loadSettings = useCallback(async () => {
     try {
@@ -38,6 +48,12 @@ export default function SettingsModal() {
       setOpenaiBaseUrl(data.openai_base_url || '');
       setOpenaiModel(data.openai_model || '');
       setOpenaiMaxTokens(data.openai_max_tokens || '');
+      setOssRegion(data.oss_region || '');
+      setOssBucket(data.oss_bucket || '');
+      setOssAccessKeyId(data.oss_access_key_id || '');
+      setOssAccessKeySecret(data.oss_access_key_secret || '');
+      setOssCustomDomain(data.oss_custom_domain || '');
+      setOssPathPrefix(data.oss_path_prefix || 'readerq');
       setEnvInfo({
         readwiseFromEnv: data.env_readwise_token,
         openaiFromEnv: data.env_openai_api_key,
@@ -55,6 +71,7 @@ export default function SettingsModal() {
       setConfigError(null);
       setTestResult(null);
       setTestStages(null);
+      setOssTestResult(null);
     }
   }, [showSettings, loadSettings]);
 
@@ -74,6 +91,12 @@ export default function SettingsModal() {
           openai_base_url: openaiBaseUrl,
           openai_model: openaiModel,
           openai_max_tokens: openaiMaxTokens,
+          oss_region: ossRegion,
+          oss_bucket: ossBucket,
+          oss_access_key_id: ossAccessKeyId,
+          oss_access_key_secret: ossAccessKeySecret,
+          oss_custom_domain: ossCustomDomain,
+          oss_path_prefix: ossPathPrefix,
         }),
       });
       const data = await res.json();
@@ -170,6 +193,32 @@ export default function SettingsModal() {
       handleTestError(err.message || '网络请求失败，请检查本地网络连接与地址配置。');
     } finally {
       setTestLoading(false);
+    }
+  };
+
+  // 测试 OSS 配置
+  const testOssConfig = async () => {
+    setOssTestLoading(true);
+    setOssTestResult(null);
+    try {
+      const res = await fetch('/api/oss/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          oss_region: ossRegion,
+          oss_bucket: ossBucket,
+          oss_access_key_id: ossAccessKeyId,
+          oss_access_key_secret: ossAccessKeySecret,
+          oss_custom_domain: ossCustomDomain,
+          oss_path_prefix: ossPathPrefix,
+        }),
+      });
+      const data = await res.json();
+      setOssTestResult(data);
+    } catch (err) {
+      setOssTestResult({ success: false, error: err.message || '测试请求失败' });
+    } finally {
+      setOssTestLoading(false);
     }
   };
 
@@ -496,6 +545,168 @@ export default function SettingsModal() {
                     </div>
                   )}
                 </div>
+              )}
+            </div>
+          )}
+
+          <hr style={{ border: 'none', borderTop: '1px solid var(--color-border-light)', margin: 'var(--space-6) 0' }} />
+
+          {/* ===== 图床配置 ===== */}
+          <h3 style={{ fontSize: 'var(--text-base)', fontWeight: '600', marginBottom: 'var(--space-4)' }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><Image size={18} /> 图床配置（阿里云 OSS）</span>
+          </h3>
+
+          <div style={{
+            padding: 'var(--space-3)',
+            background: 'var(--color-bg-tertiary)',
+            borderRadius: 'var(--radius-md)',
+            fontSize: 'var(--text-xs)',
+            color: 'var(--color-text-tertiary)',
+            marginBottom: 'var(--space-4)',
+            lineHeight: '1.6',
+          }}>
+            <div className="help-text" style={{ display: 'flex', alignItems: 'flex-start', gap: '4px' }}>
+              <Lightbulb size={14} style={{ flexShrink: 0, marginTop: '2px' }} />
+              <span>配置阿里云 OSS 后，高亮包含图片的内容时将自动上传图片到图床，并以 Markdown 格式发送到 Readwise。Bucket 需开启<strong>公共读</strong>权限。</span>
+            </div>
+          </div>
+
+          {/* OSS Region */}
+          <div className="form-group">
+            <label className="form-label">OSS Region（地域）</label>
+            <input
+              type="text"
+              className="form-input"
+              placeholder="oss-cn-hangzhou"
+              value={ossRegion}
+              onChange={(e) => setOssRegion(e.target.value)}
+            />
+            <div className="form-hint">
+              阿里云 OSS 区域标识，如 <code style={{ background: 'var(--color-bg-hover)', padding: '1px 4px', borderRadius: '3px' }}>oss-cn-hangzhou</code>、<code style={{ background: 'var(--color-bg-hover)', padding: '1px 4px', borderRadius: '3px' }}>oss-cn-shanghai</code>
+            </div>
+          </div>
+
+          {/* OSS Bucket */}
+          <div className="form-group">
+            <label className="form-label">Bucket 名称</label>
+            <input
+              type="text"
+              className="form-input"
+              placeholder="my-image-bucket"
+              value={ossBucket}
+              onChange={(e) => setOssBucket(e.target.value)}
+            />
+          </div>
+
+          {/* OSS AccessKey ID */}
+          <div className="form-group">
+            <label className="form-label">AccessKey ID</label>
+            <input
+              type="password"
+              className="form-input"
+              placeholder="LTAI5t..."
+              value={ossAccessKeyId}
+              onChange={(e) => setOssAccessKeyId(e.target.value)}
+              autoComplete="off"
+            />
+          </div>
+
+          {/* OSS AccessKey Secret */}
+          <div className="form-group">
+            <label className="form-label">AccessKey Secret</label>
+            <input
+              type="password"
+              className="form-input"
+              placeholder="输入你的 AccessKey Secret..."
+              value={ossAccessKeySecret}
+              onChange={(e) => setOssAccessKeySecret(e.target.value)}
+              autoComplete="off"
+            />
+          </div>
+
+          {/* OSS 自定义域名 */}
+          <div className="form-group">
+            <label className="form-label">自定义域名（可选）</label>
+            <input
+              type="text"
+              className="form-input"
+              placeholder="https://img.example.com"
+              value={ossCustomDomain}
+              onChange={(e) => setOssCustomDomain(e.target.value)}
+            />
+            <div className="form-hint">
+              留空则使用默认域名 <code style={{ background: 'var(--color-bg-hover)', padding: '1px 4px', borderRadius: '3px' }}>bucket.region.aliyuncs.com</code>
+            </div>
+          </div>
+
+          {/* OSS 路径前缀 */}
+          <div className="form-group">
+            <label className="form-label">存储路径前缀</label>
+            <input
+              type="text"
+              className="form-input"
+              placeholder="readerq"
+              value={ossPathPrefix}
+              onChange={(e) => setOssPathPrefix(e.target.value)}
+            />
+            <div className="form-hint">
+              图片在 OSS 中的存储路径前缀，默认为 <code style={{ background: 'var(--color-bg-hover)', padding: '1px 4px', borderRadius: '3px' }}>readerq</code>
+            </div>
+          </div>
+
+          {/* OSS 测试按钮 */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', marginBottom: 'var(--space-4)' }}>
+            <button
+              className="btn btn-secondary"
+              onClick={testOssConfig}
+              disabled={ossTestLoading || !ossRegion || !ossBucket || !ossAccessKeyId || !ossAccessKeySecret}
+              style={{ minWidth: '140px' }}
+            >
+              <span style={{ display: 'flex', alignItems: 'center', gap: '6px', justifyContent: 'center' }}>
+                <CloudUpload size={16} />
+                {ossTestLoading ? '测试中...' : '测试 OSS 连接'}
+              </span>
+            </button>
+          </div>
+
+          {/* OSS 测试结果 */}
+          {ossTestResult && (
+            <div style={{
+              padding: 'var(--space-3)',
+              background: ossTestResult.success ? 'rgba(34, 197, 94, 0.06)' : 'rgba(239, 68, 68, 0.06)',
+              borderRadius: 'var(--radius-md)',
+              border: `1px solid ${ossTestResult.success ? 'rgba(34, 197, 94, 0.2)' : 'rgba(239, 68, 68, 0.2)'}`,
+              fontSize: 'var(--text-xs)',
+              marginBottom: 'var(--space-4)',
+            }}>
+              {ossTestResult.success ? (
+                <>
+                  <div style={{ color: 'var(--color-success)', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <CheckCircle2 size={14} /> OSS 连接测试成功！
+                  </div>
+                  {ossTestResult.ossUrl && (
+                    <div style={{ marginTop: 'var(--space-2)', wordBreak: 'break-all' }}>
+                      <span style={{ color: 'var(--color-text-tertiary)' }}>测试图片 URL: </span>
+                      <a href={ossTestResult.ossUrl} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--color-text-link)' }}>
+                        {ossTestResult.ossUrl}
+                      </a>
+                    </div>
+                  )}
+                  {ossTestResult.warning && (
+                    <div style={{ marginTop: 'var(--space-2)', color: 'var(--color-warning, #eab308)' }}>
+                      ⚠️ {ossTestResult.warning}
+                    </div>
+                  )}
+                </>
+              ) : (
+                <>
+                  <div style={{ color: 'var(--color-danger)', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <XCircle size={14} /> OSS 连接测试失败
+                  </div>
+                  <div style={{ marginTop: 'var(--space-2)', color: 'var(--color-text-secondary)', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
+                    {ossTestResult.error}
+                  </div>
+                </>
               )}
             </div>
           )}
