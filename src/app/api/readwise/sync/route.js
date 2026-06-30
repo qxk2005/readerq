@@ -5,7 +5,7 @@
 
 import { NextResponse } from 'next/server';
 import { getServerReadwiseClient } from '@/lib/readwise';
-import { upsertDocuments, upsertTags, upsertHighlights, convertReadwiseDocToHighlight, setSyncState, getSyncState, getDocumentCount, clearAllData } from '@/lib/db';
+import { upsertDocuments, upsertTags, upsertHighlights, convertReadwiseDocToHighlight, setSyncState, getSyncState, getDocumentCount, clearAllData, findDocumentIdBySourceUrl, findDocumentIdByTitle } from '@/lib/db';
 
 export async function POST(request) {
   try {
@@ -61,7 +61,7 @@ async function runSync(client, fullSync, location) {
       return getSyncState('sync_cancel_requested') === 'true';
     };
 
-    // 获取文档
+    // 阶段 1: 获取 V3 文档（包括 V3 内部的 highlight 文档）
     setSyncState('sync_progress', JSON.stringify({ phase: 'documents', fetched: 0, total: 0 }));
     
     let localHighlightsCount = 0;
@@ -100,7 +100,56 @@ async function runSync(client, fullSync, location) {
 
     if (checkCancel()) throw new Error('Sync cancelled by user');
 
-    // 同步标签
+    // 阶段 2: 从 V2 Export API 拉取高亮
+    // V2 高亮与 V3 文档分属不同系统：通过 ReaderQ 的 V2 API 创建的高亮
+    // 不会出现在 V3 list 结果中，需要额外从 V2 Export 拉取
+    setSyncState('sync_progress', JSON.stringify({ phase: 'highlights', fetched: 0, total: 0 }));
+    
+    let v2HighlightsCount = 0;
+    try {
+      await client.fetchAllV2Highlights(
+        (progress) => {
+          setSyncState('sync_progress', JSON.stringify({ phase: 'highlights', fetched: progress.fetched, total: progress.total }));
+        },
+        checkCancel,
+        async (batchItems) => {
+          // batchItems 是 [{book_id, title, source_url, highlights: [...]}] 数组
+          for (const item of batchItems) {
+            // 通过 source_url 或 title 查找本地对应的 V3 文档
+            let documentId = findDocumentIdBySourceUrl(item.source_url);
+            if (!documentId) {
+              documentId = findDocumentIdByTitle(item.title);
+            }
+            if (!documentId) {
+              // 无法关联到本地文档，跳过
+              continue;
+            }
+
+            // 将 V2 高亮写入本地 highlights 表
+            const highlightsToInsert = item.highlights.map(h => ({
+              ...h,
+              document_id: documentId,
+              location_start: h.location,
+              location_end: null,
+            }));
+
+            if (highlightsToInsert.length > 0) {
+              upsertHighlights(highlightsToInsert);
+              v2HighlightsCount += highlightsToInsert.length;
+            }
+          }
+        }
+      );
+    } catch (v2Err) {
+      // V2 高亮同步失败不应中断整个同步过程
+      console.warn('V2 高亮同步失败 (非致命):', v2Err.message);
+    }
+
+    localHighlightsCount += v2HighlightsCount;
+
+    if (checkCancel()) throw new Error('Sync cancelled by user');
+
+    // 阶段 3: 同步标签
     setSyncState('sync_progress', JSON.stringify({ phase: 'tags', fetched: 0, total: 0 }));
     const { fetchedCount: totalFetchedTags, totalCount: remoteTagCount } = await client.fetchAllTags(
       (progress) => {

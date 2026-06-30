@@ -509,3 +509,28 @@ export function getLatestDocumentDate({ location, category, tag } = {}) {
   const result = db.prepare(query).get(params);
   return result?.max_date || null;
 }
+
+/**
+ * 通过 source_url 查找本地文档 ID
+ * 用于将 V2 Export API 返回的高亮关联到对应的 V3 文档
+ * 
+ * @param {string} sourceUrl - 文档的 source URL
+ * @returns {string|null} 文档 ID 或 null
+ */
+export function findDocumentIdBySourceUrl(sourceUrl) {
+  if (!sourceUrl) return null;
+  const db = getDatabase();
+  // 优先匹配 source_url，其次匹配 url
+  const doc = db.prepare('SELECT id FROM documents WHERE (source_url = ? OR url = ?) AND parent_id IS NULL LIMIT 1').get(sourceUrl, sourceUrl);
+  return doc?.id || null;
+}
+
+/**
+ * 通过标题查找本地文档 ID（用于没有 source_url 的书籍等）
+ */
+export function findDocumentIdByTitle(title) {
+  if (!title) return null;
+  const db = getDatabase();
+  const doc = db.prepare('SELECT id FROM documents WHERE title = ? AND parent_id IS NULL LIMIT 1').get(title);
+  return doc?.id || null;
+}

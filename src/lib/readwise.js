@@ -264,6 +264,77 @@ class ReadwiseAPI {
   }
 
   /**
+   * 使用 V2 Export API 批量拉取所有高亮
+   * V2 Export 按 book 分组返回高亮，每个 book 包含 source_url 等信息
+   * 用于同步时补全通过 V2 API 创建的高亮（这些高亮不会出现在 V3 list 结果中）
+   * 
+   * @param {Function} onProgress - 进度回调
+   * @param {Function} checkCancel - 检查取消回调
+   * @param {Function} onBatch - 批处理回调，接收 [{book, highlights}] 数组
+   * @returns {Object} { fetchedCount, totalBookCount }
+   */
+  async fetchAllV2Highlights(onProgress = null, checkCancel = null, onBatch = null) {
+    let nextPageCursor = null;
+    let fetchedCount = 0;
+    let totalBookCount = 0;
+
+    do {
+      if (checkCancel && checkCancel()) {
+        throw new Error('Sync cancelled by user');
+      }
+
+      const params = new URLSearchParams();
+      if (nextPageCursor) params.append('pageCursor', nextPageCursor);
+
+      const data = await this.fetchWithRetry(
+        `https://readwise.io/api/v2/export/?${params.toString()}`
+      );
+
+      if (data.count !== undefined && totalBookCount === 0) {
+        totalBookCount = data.count;
+      }
+
+      // 从 export 数据中提取每本书的高亮
+      const batchItems = [];
+      for (const book of (data.results || [])) {
+        if (book.highlights && book.highlights.length > 0) {
+          const highlights = book.highlights.map(h => ({
+            id: h.external_id || `readwise-v2-${h.id}`,
+            readwise_id: h.id,
+            text: h.text || '',
+            note: h.note || '',
+            color: h.color || 'yellow',
+            tags: this._convertV2Tags(h.tags),
+            location: h.location || null,
+            created_at: h.highlighted_at || h.created_at || new Date().toISOString(),
+          }));
+          batchItems.push({
+            book_id: book.user_book_id,
+            title: book.title,
+            source_url: book.source_url,
+            readable_id: book.readable_id,
+            asin: book.asin,
+            highlights,
+          });
+          fetchedCount += highlights.length;
+        }
+      }
+
+      if (onBatch && batchItems.length > 0) {
+        await onBatch(batchItems);
+      }
+
+      nextPageCursor = data.nextPageCursor;
+
+      if (onProgress) {
+        onProgress({ fetched: fetchedCount, total: totalBookCount });
+      }
+    } while (nextPageCursor);
+
+    return { fetchedCount, totalBookCount };
+  }
+
+  /**
    * 获取标签列表
    */
   async listTags({ pageCursor } = {}) {
