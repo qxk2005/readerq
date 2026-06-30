@@ -23,29 +23,39 @@ class ReadwiseAPI {
    */
   async fetchWithRetry(url, options = {}, retries = 3) {
     for (let i = 0; i < retries; i++) {
-      const response = await fetch(url, {
-        ...options,
-        headers: { ...this.headers, ...options.headers },
-      });
+      try {
+        const response = await fetch(url, {
+          signal: AbortSignal.timeout(15000), // 15秒超时，防止网络请求因网络丢包无限卡死
+          ...options,
+          headers: { ...this.headers, ...options.headers },
+        });
 
-      if (response.status === 429) {
-        const retryAfter = parseInt(response.headers.get('Retry-After') || '5', 10);
-        console.warn(`速率限制，${retryAfter} 秒后重试...`);
-        await new Promise(resolve => setTimeout(resolve, retryAfter * 1000));
-        continue;
+        if (response.status === 429) {
+          const retryAfter = parseInt(response.headers.get('Retry-After') || '5', 10);
+          console.warn(`速率限制，${retryAfter} 秒后重试...`);
+          await new Promise(resolve => setTimeout(resolve, retryAfter * 1000));
+          continue;
+        }
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(`Readwise API 错误 (${response.status}): ${errorText}`);
+        }
+
+        // DELETE 请求返回 204 无内容
+        if (response.status === 204) {
+          return null;
+        }
+
+        return response.json();
+      } catch (err) {
+        if (i === retries - 1) {
+          throw err;
+        }
+        console.warn(`请求失败: ${err.message}，正在进行第 ${i + 2} 次重试...`);
+        // 等待 1 秒后重试
+        await new Promise(resolve => setTimeout(resolve, 1000));
       }
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Readwise API 错误 (${response.status}): ${errorText}`);
-      }
-
-      // DELETE 请求返回 204 无内容
-      if (response.status === 204) {
-        return null;
-      }
-
-      return response.json();
     }
     throw new Error('超过最大重试次数');
   }
@@ -335,6 +345,7 @@ class ReadwiseAPI {
     try {
       const response = await fetch('https://readwise.io/api/v2/auth/', {
         headers: this.headers,
+        signal: AbortSignal.timeout(10000), // 10秒超时
       });
       return response.status === 204;
     } catch {
