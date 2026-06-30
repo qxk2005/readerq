@@ -103,11 +103,14 @@ async function runSync(client, fullSync, location) {
     // 阶段 2: 从 V2 Export API 拉取高亮
     // V2 高亮与 V3 文档分属不同系统：通过 ReaderQ 的 V2 API 创建的高亮
     // 不会出现在 V3 list 结果中，需要额外从 V2 Export 拉取
+    const v2StateKey = location ? `lastV2HighlightSync_${location}` : 'lastV2HighlightSync';
+    const lastV2SyncedAt = fullSync ? null : getSyncState(v2StateKey);
     setSyncState('sync_progress', JSON.stringify({ phase: 'highlights', fetched: 0, total: 0 }));
     
     let v2HighlightsCount = 0;
     try {
       await client.fetchAllV2Highlights(
+        { updatedAfter: lastV2SyncedAt },
         (progress) => {
           setSyncState('sync_progress', JSON.stringify({ phase: 'highlights', fetched: progress.fetched, total: progress.total }));
         },
@@ -166,11 +169,16 @@ async function runSync(client, fullSync, location) {
     // 更新最后同步时间
     const now = new Date().toISOString();
     setSyncState(stateKey, now);
+    setSyncState(v2StateKey, now);
     // 同时更新全局最后同步时间（如果不更新全局，会导致全量增量同步丢失这部分更新）
     if (location && location !== 'all') {
       const globalLastSync = getSyncState('lastDocumentSync');
       if (!globalLastSync || new Date(now) > new Date(globalLastSync)) {
         setSyncState('lastDocumentSync', now);
+      }
+      const globalV2Sync = getSyncState('lastV2HighlightSync');
+      if (!globalV2Sync || new Date(now) > new Date(globalV2Sync)) {
+        setSyncState('lastV2HighlightSync', now);
       }
     }
     

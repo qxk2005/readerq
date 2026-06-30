@@ -851,7 +851,8 @@ export default function SettingsModal() {
                 <div style={{ marginTop: 'var(--space-3)' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: 'var(--color-text-secondary)', marginBottom: '4px' }}>
                     <span>
-                      {syncProgress.phase === 'documents' ? '拉取文档中...' :
+                      {syncProgress.phase === 'documents' ? '拉取文档中（增量）...' :
+                       syncProgress.phase === 'highlights' ? '拉取高亮中（增量）...' :
                        syncProgress.phase === 'tags' ? '拉取标签中...' :
                        syncProgress.phase === 'done' ? '处理完成' : '准备中...'}
                     </span>

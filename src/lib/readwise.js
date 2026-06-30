@@ -273,7 +273,7 @@ class ReadwiseAPI {
    * @param {Function} onBatch - 批处理回调，接收 [{book, highlights}] 数组
    * @returns {Object} { fetchedCount, totalBookCount }
    */
-  async fetchAllV2Highlights(onProgress = null, checkCancel = null, onBatch = null) {
+  async fetchAllV2Highlights({ updatedAfter } = {}, onProgress = null, checkCancel = null, onBatch = null) {
     let nextPageCursor = null;
     let fetchedCount = 0;
     let totalBookCount = 0;
@@ -285,6 +285,7 @@ class ReadwiseAPI {
 
       const params = new URLSearchParams();
       if (nextPageCursor) params.append('pageCursor', nextPageCursor);
+      if (updatedAfter) params.append('updatedAfter', updatedAfter);
 
       const data = await this.fetchWithRetry(
         `https://readwise.io/api/v2/export/?${params.toString()}`
