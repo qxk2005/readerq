@@ -203,23 +203,35 @@ export default function ReadingPane() {
   const handleMouseUp = (e) => {
     // 检测是否点击了已有的高亮 <mark> 元素（事件委托模式）
     const clickedMark = e.target.closest('mark[data-highlight-id]');
+    
+    // macOS 环境下由于拖动微小偏移可能导致选区非塌陷，这里优化检测逻辑
+    let isMarkClick = false;
+    const sel = window.getSelection();
+    
     if (clickedMark && articleRef.current?.contains(clickedMark)) {
-      const sel = window.getSelection();
-      // 只有简单点击（未拖选文本）才打开编辑器
-      if (sel && sel.isCollapsed) {
-        const hlId = clickedMark.dataset.highlightId;
-        const hl = highlights.find(h => String(h.id) === String(hlId));
-        if (hl) {
-          const rect = clickedMark.getBoundingClientRect();
-          setEditingHighlight({ ...hl, rect });
-          setSelection(null);
-          return;
+      if (!sel || sel.isCollapsed) {
+        isMarkClick = true;
+      } else {
+        // 如果有选区，但起止点都在同一个 mark 内，或者包含关系，认为是点击（微小拖选）
+        if (clickedMark.contains(sel.anchorNode) && clickedMark.contains(sel.focusNode)) {
+          isMarkClick = true;
         }
       }
     }
 
+    if (isMarkClick) {
+      if (sel) sel.removeAllRanges(); // 强制清除意外产生的选区，防止触发下方的新建高亮逻辑
+      const hlId = clickedMark.dataset.highlightId;
+      const hl = highlights.find(h => String(h.id) === String(hlId));
+      if (hl) {
+        const rect = clickedMark.getBoundingClientRect();
+        setEditingHighlight({ ...hl, rect });
+        setSelection(null);
+        return;
+      }
+    }
+
     // 非高亮点击：处理文本选区（新建高亮）
-    const sel = window.getSelection();
     if (!sel || sel.isCollapsed || !articleRef.current) {
       if (selection) setSelection(null);
       return;
@@ -356,7 +368,7 @@ export default function ReadingPane() {
       const res = await fetch('/api/highlights', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ highlight: newHl, syncToReadwise: true })
+        body: JSON.stringify({ highlight: newHl, syncToReadwise: selectionImages.length === 0 })
       });
       const data = await res.json();
       if (data.success) {

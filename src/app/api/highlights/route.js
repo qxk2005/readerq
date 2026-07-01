@@ -52,28 +52,33 @@ export async function POST(request) {
 
     upsertHighlight(highlight);
 
-    // 同步到 Readwise
+    // 同步到 Readwise (除非明确指定不同步)
     let syncedToReadwise = false;
     let syncError = null;
-    try {
-      const client = getServerReadwiseClient();
-      // 获取文档信息用于同步
-      const { getCachedDocument } = await import('@/lib/db');
-      const doc = getCachedDocument(highlight.document_id);
-      if (doc) {
-        await client.createReadwiseHighlight({
-          ...highlight,
-          title: doc.title,
-          source_url: doc.source_url || doc.url,
-        });
-        syncedToReadwise = true;
-      } else {
-        syncError = '本地未找到关联文档，无法同步';
-        console.warn(`[高亮同步] 文档 ${highlight.document_id} 未在本地缓存中找到`);
+    if (body.syncToReadwise !== false) {
+      try {
+        const client = getServerReadwiseClient();
+        // 获取文档信息用于同步
+        const { getCachedDocument } = await import('@/lib/db');
+        const doc = getCachedDocument(highlight.document_id);
+        if (doc) {
+          await client.createReadwiseHighlight({
+            ...highlight,
+            title: doc.title,
+            source_url: doc.source_url || doc.url,
+          });
+          syncedToReadwise = true;
+        } else {
+          syncError = '本地未找到关联文档，无法同步';
+          console.warn(`[高亮同步] 文档 ${highlight.document_id} 未在本地缓存中找到`);
+        }
+      } catch (err) {
+        syncError = err.message;
+        console.error('同步高亮到 Readwise 失败:', err.message);
       }
-    } catch (err) {
-      syncError = err.message;
-      console.error('同步高亮到 Readwise 失败:', err.message);
+    } else {
+      syncedToReadwise = false;
+      syncError = '推迟同步';
     }
 
     return NextResponse.json({ success: true, highlight, synced_to_readwise: syncedToReadwise, sync_error: syncError });

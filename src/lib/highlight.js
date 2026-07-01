@@ -176,10 +176,7 @@ export function restoreHighlights(root, highlights, onHighlightClick) {
             middle.parentNode.replaceChild(mark, middle);
             
             if (onHighlightClick) {
-              mark.onclick = (e) => {
-                e.stopPropagation();
-                onHighlightClick(hl, e);
-              };
+              // onclick is handled by event delegation in ReadingPane to avoid conflicts
               // Make mark appear clickable
               mark.style.cursor = 'pointer';
             }

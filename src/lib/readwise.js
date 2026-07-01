@@ -208,8 +208,19 @@ class ReadwiseAPI {
       location: highlight.location_start,
     };
     // Readwise V2 API 不接受空字符串的 note 字段
-    if (highlight.note) {
-      highlightData.note = highlight.note;
+    let noteText = highlight.note || '';
+    
+    // 使用 Readwise 官方支持的 Inline Tagging 方式
+    // 将标签转为 ".tagname" 格式并追加到 note 尾部
+    if (highlight.tags && Object.keys(highlight.tags).length > 0) {
+      const inlineTags = Object.keys(highlight.tags)
+        .map(t => `.${t.replace(/\s+/g, '_')}`) // 替换空格为下划线，以符合标签格式
+        .join(' ');
+      noteText = noteText ? `${noteText}\n\n${inlineTags}` : inlineTags;
+    }
+
+    if (noteText) {
+      highlightData.note = noteText;
     }
 
     const payload = {
