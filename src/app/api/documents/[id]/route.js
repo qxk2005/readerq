@@ -27,11 +27,14 @@ export async function PATCH(request, { params }) {
 
     const client = getServerReadwiseClient();
 
-    // 更新 Readwise
-    await client.updateDocument(id, updates);
+    // 获取本地文档信息 (source_url 用于 V2 标签同步)
+    const doc = getCachedDocument(id);
+
+    // 更新 Readwise (V3 + V2 标签同步)
+    const sourceUrl = doc?.source_url || doc?.url;
+    await client.updateDocument(id, updates, sourceUrl);
 
     // 更新本地数据库
-    const doc = getCachedDocument(id);
     if (doc) {
       if (tags !== undefined) {
         const tagsObj = {};

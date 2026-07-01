@@ -158,13 +158,136 @@ class ReadwiseAPI {
   }
 
   /**
-   * 更新文档
+   * 更新文档 (V3 API)
+   * 如果包含标签更新，同时通过 V2 API 同步标签到 V2 系统
+   * @param {string} id - V3 文档 ID
+   * @param {object} updates - 更新字段 { tags, notes, ... }
+   * @param {string} [sourceUrl] - 文档的 source_url (可选，用于 V2 标签同步)
    */
-  async updateDocument(id, updates) {
-    return this.fetchWithRetry(`${this.baseUrl}/update/${id}/`, {
+  async updateDocument(id, updates, sourceUrl) {
+    const result = await this.fetchWithRetry(`${this.baseUrl}/update/${id}/`, {
       method: 'PATCH',
       body: JSON.stringify(updates),
     });
+
+    // 如果更新包含标签，同步到 V2 books tags 系统
+    if (updates.tags && Array.isArray(updates.tags) && updates.tags.length > 0) {
+      try {
+        let url = sourceUrl;
+        if (!url) {
+          // Fallback: 从 V3 list 获取 source_url
+          const docData = await this.fetchWithRetry(`${this.baseUrl}/list/?id=${id}`);
+          url = docData?.results?.[0]?.source_url;
+        }
+        
+        if (url) {
+          await this.syncDocumentTagsV2(url, updates.tags);
+        } else {
+          console.warn('[V2标签同步] 无法获取文档 source_url，跳过 V2 标签同步');
+        }
+      } catch (err) {
+        console.error('[V2标签同步] 同步失败 (不影响 V3):', err.message);
+      }
+    }
+
+    return result;
+  }
+
+  /**
+   * 通过 source_url 在 V2 books API 中查找 book_id
+   * @param {string} sourceUrl - 文档的原始 URL
+   * @returns {number|null} V2 book_id，未找到返回 null
+   */
+  async findV2BookId(sourceUrl) {
+    if (!sourceUrl) return null;
+
+    let nextPage = 'https://readwise.io/api/v2/books/?page_size=100';
+    let pageCount = 0;
+    const maxPages = 10;
+
+    while (nextPage && pageCount < maxPages) {
+      pageCount++;
+      const response = await fetch(nextPage, {
+        headers: this.headers,
+        signal: AbortSignal.timeout(15000),
+      });
+
+      if (!response.ok) break;
+
+      const data = await response.json();
+      for (const book of (data.results || [])) {
+        if (book.source_url === sourceUrl) {
+          console.log(`[V2 Book查找] 匹配到 book_id=${book.id} (搜索了 ${pageCount} 页)`);
+          return book.id;
+        }
+      }
+      nextPage = data.next || null;
+    }
+
+    console.warn(`[V2 Book查找] 未找到 source_url=${sourceUrl} 对应的 V2 book (搜索了 ${pageCount} 页)`);
+    return null;
+  }
+
+  /**
+   * 通过 V2 books tags API 同步文档标签
+   * V2 标签系统独立于 V3，Readwise 后台 bookreview 页面使用 V2 标签
+   * 
+   * @param {string} sourceUrl - 文档的 source_url
+   * @param {string[]} tags - 目标标签列表
+   */
+  async syncDocumentTagsV2(sourceUrl, tags) {
+    const bookId = await this.findV2BookId(sourceUrl);
+    if (!bookId) return;
+
+    try {
+      // 获取现有 V2 标签
+      const existingRes = await fetch(`https://readwise.io/api/v2/books/${bookId}/tags/`, {
+        headers: this.headers,
+        signal: AbortSignal.timeout(15000),
+      });
+
+      if (!existingRes.ok) {
+        console.error('[V2标签同步] 获取现有标签失败:', existingRes.status);
+        return;
+      }
+
+      const existingTags = await existingRes.json();
+      const existingNames = new Set(existingTags.map(t => t.name));
+      const targetNames = new Set(tags);
+
+      // 删除不在目标列表中的旧标签
+      for (const tag of existingTags) {
+        if (!targetNames.has(tag.name)) {
+          await fetch(`https://readwise.io/api/v2/books/${bookId}/tags/${tag.id}`, {
+            method: 'DELETE',
+            headers: this.headers,
+            signal: AbortSignal.timeout(10000),
+          });
+          console.log(`[V2标签同步] 删除旧标签: ${tag.name}`);
+        }
+      }
+
+      // 添加新标签
+      for (const tagName of tags) {
+        if (!existingNames.has(tagName)) {
+          const addRes = await fetch(`https://readwise.io/api/v2/books/${bookId}/tags/`, {
+            method: 'POST',
+            headers: this.headers,
+            body: JSON.stringify({ name: tagName }),
+            signal: AbortSignal.timeout(10000),
+          });
+          if (addRes.ok) {
+            console.log(`[V2标签同步] 添加标签: ${tagName}`);
+          } else {
+            console.warn(`[V2标签同步] 添加标签 ${tagName} 失败: ${addRes.status}`);
+          }
+        }
+      }
+
+      console.log(`[V2标签同步] book_id=${bookId} 标签同步完成`);
+    } catch (err) {
+      console.error('[V2标签同步] 异常:', err.message);
+    }
   }
 
   /**
