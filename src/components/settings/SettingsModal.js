@@ -3,7 +3,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useApp } from '@/context/AppContext';
 import { useTheme } from '@/context/ThemeContext';
-import { Settings, Key, Palette, Keyboard, Info, RefreshCw, Lightbulb, Save, Zap, CheckCircle2, XCircle, Wrench, PartyPopper, Sun, Moon, Check, X, Image, CloudUpload } from 'lucide-react';
+import { Settings, Key, Palette, Keyboard, Info, RefreshCw, Lightbulb, Save, Zap, CheckCircle2, XCircle, Wrench, PartyPopper, Sun, Moon, Check, X, Image, CloudUpload, History } from 'lucide-react';
+import ChangelogPanel from './ChangelogPanel';
 
 export default function SettingsModal() {
   const { showSettings, setShowSettings, syncData, isSyncing, syncStatus: globalSyncStatus, syncProgress, syncCounts, syncError, cancelSync } = useApp();
@@ -11,6 +12,7 @@ export default function SettingsModal() {
   
   // Local status for UI feedback not covered by global status
   const [localSyncStatus, setLocalSyncStatus] = useState(null);
+  const [showChangelog, setShowChangelog] = useState(false);
 
   // API 配置表单状态
   const [readwiseToken, setReadwiseToken] = useState('');
@@ -970,14 +972,27 @@ export default function SettingsModal() {
             <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><Info size={18} /> 关于</span>
           </h3>
           <div style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-secondary)', lineHeight: '1.8' }}>
-            <p><strong>ReaderQ</strong> v1.0.0</p>
+            <p><strong>ReaderQ</strong> v{process.env.NEXT_PUBLIC_APP_VERSION || '未知'}</p>
             <p>Readwise Reader 开源复刻版本</p>
             <p>使用 Next.js + SQLite + OpenAI 兼容 API 构建</p>
-            <p style={{ marginTop: 'var(--space-2)' }}>
-              <a href="https://github.com/qxk2005/readerq" target="_blank" rel="noopener noreferrer">
+            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', marginTop: 'var(--space-3)' }}>
+              <button
+                className="btn btn-primary btn-sm"
+                onClick={() => setShowChangelog(true)}
+                style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+              >
+                <History size={14} />
+                查看更新历史
+              </button>
+              <a
+                href="https://github.com/qxk2005/readerq"
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ color: 'var(--color-text-link)', fontSize: 'var(--text-xs)' }}
+              >
                 GitHub 仓库
               </a>
-            </p>
+            </div>
           </div>
         </div>
 
@@ -987,6 +1002,7 @@ export default function SettingsModal() {
           </button>
         </div>
       </div>
+      {showChangelog && <ChangelogPanel onClose={() => setShowChangelog(false)} />}
     </div>
   );
 }
