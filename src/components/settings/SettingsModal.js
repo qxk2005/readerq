@@ -6,11 +6,20 @@ import { useTheme } from '@/context/ThemeContext';
 import { Settings, Key, Palette, Keyboard, Info, RefreshCw, Lightbulb, Save, Zap, CheckCircle2, XCircle, Wrench, PartyPopper, Sun, Moon, Check, X, Image, CloudUpload, History } from 'lucide-react';
 import ChangelogPanel from './ChangelogPanel';
 
+const TABS = [
+  { id: 'api', label: 'API 配置', icon: Key },
+  { id: 'oss', label: '图床配置', icon: Image },
+  { id: 'appearance', label: '外观设置', icon: Palette },
+  { id: 'sync', label: '数据同步', icon: RefreshCw },
+  { id: 'shortcuts', label: '快捷键', icon: Keyboard },
+  { id: 'about', label: '关于', icon: Info },
+];
+
 export default function SettingsModal() {
   const { showSettings, setShowSettings, syncData, isSyncing, syncStatus: globalSyncStatus, syncProgress, syncCounts, syncError, cancelSync } = useApp();
   const { theme, setTheme, fontSize, setFontSize, lineHeight, setLineHeight, contentWidth, setContentWidth, fontFamily, setFontFamily } = useTheme();
   
-  // Local status for UI feedback not covered by global status
+  const [activeTab, setActiveTab] = useState('api');
   const [localSyncStatus, setLocalSyncStatus] = useState(null);
   const [showChangelog, setShowChangelog] = useState(false);
 
@@ -105,7 +114,6 @@ export default function SettingsModal() {
       if (data.error) throw new Error(data.error);
 
       setConfigSaved(true);
-      // 重新加载以获取脱敏值
       await loadSettings();
       setTimeout(() => setConfigSaved(false), 3000);
     } catch (err) {
@@ -167,7 +175,7 @@ export default function SettingsModal() {
 
         buffer += decoder.decode(value, { stream: true });
         const lines = buffer.split('\n');
-        buffer = lines.pop(); // 保留最后一个不完整行
+        buffer = lines.pop();
 
         for (const line of lines) {
           if (!line.trim()) continue;
@@ -224,785 +232,653 @@ export default function SettingsModal() {
     }
   };
 
-
-
   if (!showSettings) return null;
+
+  // ===== Tab 内容渲染 =====
+  const renderTabContent = () => {
+    switch (activeTab) {
+      case 'api':
+        return <TabAPI {...{
+          readwiseToken, setReadwiseToken, openaiApiKey, setOpenaiApiKey,
+          openaiBaseUrl, setOpenaiBaseUrl, openaiModel, setOpenaiModel,
+          openaiMaxTokens, setOpenaiMaxTokens, envInfo,
+          testConfig, testLoading, testStages, testResult,
+        }} />;
+      case 'oss':
+        return <TabOSS {...{
+          ossRegion, setOssRegion, ossBucket, setOssBucket,
+          ossAccessKeyId, setOssAccessKeyId, ossAccessKeySecret, setOssAccessKeySecret,
+          ossCustomDomain, setOssCustomDomain, ossPathPrefix, setOssPathPrefix,
+          testOssConfig, ossTestLoading, ossTestResult,
+        }} />;
+      case 'appearance':
+        return <TabAppearance {...{
+          theme, setTheme, fontSize, setFontSize,
+          lineHeight, setLineHeight, contentWidth, setContentWidth,
+          fontFamily, setFontFamily,
+        }} />;
+      case 'sync':
+        return <TabSync {...{
+          syncData, isSyncing, globalSyncStatus, syncProgress,
+          syncCounts, syncError, cancelSync,
+          localSyncStatus, setLocalSyncStatus,
+        }} />;
+      case 'shortcuts':
+        return <TabShortcuts />;
+      case 'about':
+        return <TabAbout showChangelog={showChangelog} setShowChangelog={setShowChangelog} />;
+      default:
+        return null;
+    }
+  };
 
   return (
     <div className="modal-overlay" onClick={() => setShowSettings(false)}>
-      <div className="modal" style={{ width: '560px', maxHeight: '85vh' }} onClick={(e) => e.stopPropagation()}>
-        <div className="modal-header">
+      <div 
+        className="modal" 
+        style={{ width: '680px', maxHeight: '85vh', display: 'flex', flexDirection: 'column' }} 
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* 固定头部 */}
+        <div className="modal-header" style={{ borderBottom: '1px solid var(--color-border)', flexShrink: 0 }}>
           <h2 className="modal-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><Settings size={24} /> 设置</h2>
           <button className="btn-icon" onClick={() => setShowSettings(false)}>✕</button>
         </div>
 
-        <div className="modal-body">
-          {/* ===== API 配置 ===== */}
-          <h3 style={{ fontSize: 'var(--text-base)', fontWeight: '600', marginBottom: 'var(--space-4)' }}>
-            <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><Key size={18} /> API 配置</span>
-          </h3>
-
-          <div style={{
-            padding: 'var(--space-3)',
-            background: 'var(--color-bg-tertiary)',
-            borderRadius: 'var(--radius-md)',
-            fontSize: 'var(--text-xs)',
-            color: 'var(--color-text-tertiary)',
-            marginBottom: 'var(--space-4)',
-            lineHeight: '1.6',
+        {/* 主内容区：左侧 Tab 导航 + 右侧内容 */}
+        <div style={{ display: 'flex', flex: 1, overflow: 'hidden', minHeight: 0 }}>
+          {/* 左侧 Tab 导航 */}
+          <nav style={{
+            width: '140px',
+            flexShrink: 0,
+            borderRight: '1px solid var(--color-border)',
+            padding: 'var(--space-3) 0',
+            overflowY: 'auto',
+            background: 'var(--color-bg-secondary)',
           }}>
-            <div className="help-text" style={{ display: 'flex', alignItems: 'flex-start', gap: '4px' }}>
-              <Lightbulb size={14} style={{ flexShrink: 0, marginTop: '2px' }} />
-              <span>在此处配置的值会保存到本地数据库并优先使用。如果你在此处留空，系统将自动回退使用 <code style={{ background: 'var(--color-bg-hover)', padding: '1px 4px', borderRadius: '3px' }}>.env.local</code> 或环境变量配置。</span>
-            </div>
-          </div>
+            {TABS.map(tab => {
+              const Icon = tab.icon;
+              const isActive = activeTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    width: '100%',
+                    padding: '10px 16px',
+                    border: 'none',
+                    background: isActive ? 'var(--color-bg-hover)' : 'transparent',
+                    color: isActive ? 'var(--color-accent)' : 'var(--color-text-secondary)',
+                    fontSize: '13px',
+                    fontWeight: isActive ? '600' : '400',
+                    cursor: 'pointer',
+                    textAlign: 'left',
+                    borderLeft: isActive ? '3px solid var(--color-accent)' : '3px solid transparent',
+                    transition: 'all 0.15s ease',
+                  }}
+                >
+                  <Icon size={16} />
+                  {tab.label}
+                </button>
+              );
+            })}
+          </nav>
 
-          {/* Readwise Token */}
-          <div className="form-group">
-            <label className="form-label">
-              Readwise API Token
-              {envInfo.readwiseFromEnv && (
-                <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-success)', marginLeft: 'var(--space-2)' }}>
-                  <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><CheckCircle2 size={12} /> 环境变量已设置</span>
-                </span>
-              )}
-            </label>
-            <input
-              type="password"
-              className="form-input"
-              placeholder="粘贴你的 Readwise Token..."
-              value={readwiseToken}
-              onChange={(e) => setReadwiseToken(e.target.value)}
-              autoComplete="off"
-            />
-            <div className="form-hint">
-              从 <a href="https://readwise.io/access_token" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--color-text-link)' }}>readwise.io/access_token</a> 获取
-            </div>
+          {/* 右侧内容区 */}
+          <div style={{ flex: 1, overflowY: 'auto', padding: 'var(--space-5)' }}>
+            {renderTabContent()}
           </div>
+        </div>
 
-          {/* OpenAI API Key */}
-          <div className="form-group">
-            <label className="form-label">
-              OpenAI API Key
-              {envInfo.openaiFromEnv && (
-                <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-success)', marginLeft: 'var(--space-2)' }}>
-                  <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><CheckCircle2 size={12} /> 环境变量已设置</span>
-                </span>
-              )}
-            </label>
-            <input
-              type="password"
-              className="form-input"
-              placeholder="sk-..."
-              value={openaiApiKey}
-              onChange={(e) => setOpenaiApiKey(e.target.value)}
-              autoComplete="off"
-            />
-          </div>
-
-          {/* OpenAI Base URL */}
-          <div className="form-group">
-            <label className="form-label">
-              OpenAI 兼容服务器地址
-              {envInfo.envBaseUrl && (
-                <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-tertiary)', marginLeft: 'var(--space-2)' }}>
-                  环境变量: {envInfo.envBaseUrl}
-                </span>
-              )}
-            </label>
-            <input
-              type="url"
-              className="form-input"
-              placeholder="https://api.openai.com/v1"
-              value={openaiBaseUrl}
-              onChange={(e) => setOpenaiBaseUrl(e.target.value)}
-            />
-            <div className="form-hint">
-              支持任何 OpenAI 兼容的 API 服务器（如 vLLM、Ollama、Azure 等）
-            </div>
-          </div>
-
-          {/* OpenAI Model */}
-          <div className="form-group">
-            <label className="form-label">
-              AI 模型名称
-              {envInfo.envModel && (
-                <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-tertiary)', marginLeft: 'var(--space-2)' }}>
-                  环境变量: {envInfo.envModel}
-                </span>
-              )}
-            </label>
-            <input
-              type="text"
-              className="form-input"
-              placeholder="gpt-4o-mini"
-              value={openaiModel}
-              onChange={(e) => setOpenaiModel(e.target.value)}
-            />
-            <div className="form-hint">
-              填入你的 AI 服务器支持的模型名称
-            </div>
-          </div>
-
-          {/* OpenAI Max Tokens */}
-          <div className="form-group">
-            <label className="form-label">
-              最大回答 Token 限制 (max_tokens)
-              {envInfo.envMaxTokens && (
-                <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-tertiary)', marginLeft: 'var(--space-2)' }}>
-                  环境变量: {envInfo.envMaxTokens}
-                </span>
-              )}
-            </label>
-            <input
-              type="number"
-              min="1"
-              className="form-input"
-              placeholder="4096"
-              value={openaiMaxTokens}
-              onChange={(e) => setOpenaiMaxTokens(e.target.value)}
-            />
-            <div className="form-hint">
-              AI 接口单次生成（含思考过程）的最大 Token 限制。对于 DeepSeek 等推理模型，建议设置为 4096 或更大。
-            </div>
-          </div>
-
-          {/* 保存与测试按钮组 */}
-          <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 'var(--space-3)', marginBottom: 'var(--space-4)' }}>
-            <button
-              className="btn btn-primary"
-              onClick={saveConfig}
-              disabled={configLoading || testLoading}
-              style={{ minWidth: '120px' }}
-            >
-              <span style={{ display: 'flex', alignItems: 'center', gap: '6px', justifyContent: 'center' }}>
-                <Save size={16} />
-                {configLoading ? '保存中...' : '保存配置'}
-              </span>
-            </button>
-            <button
-              className="btn btn-secondary"
-              onClick={testConfig}
-              disabled={configLoading || testLoading}
-              style={{ minWidth: '120px' }}
-            >
-              <span style={{ display: 'flex', alignItems: 'center', gap: '6px', justifyContent: 'center' }}>
-                <Zap size={16} />
-                {testLoading ? '测试中...' : '测试连接'}
-              </span>
-            </button>
+        {/* 固定底部 */}
+        <div className="modal-footer" style={{ 
+          borderTop: '1px solid var(--color-border)', 
+          flexShrink: 0,
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
             {configSaved && (
-              <span style={{ fontSize: 'var(--text-sm)', color: 'var(--color-success)', animation: 'fadeIn 0.3s ease' }}>
-                <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><CheckCircle2 size={14} /> 配置已保存</span>
+              <span style={{ fontSize: 'var(--text-sm)', color: 'var(--color-success)', animation: 'fadeIn 0.3s ease', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <CheckCircle2 size={14} /> 配置已保存
               </span>
             )}
             {configError && (
-              <span style={{ fontSize: 'var(--text-sm)', color: 'var(--color-danger)' }}>
-                <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><XCircle size={14} /> 保存失败: {configError}</span>
+              <span style={{ fontSize: 'var(--text-sm)', color: 'var(--color-danger)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <XCircle size={14} /> {configError}
               </span>
             )}
           </div>
-
-          {/* 测试连接结果显示 */}
-          {(testStages || testResult) && (
-            <div style={{
-              padding: 'var(--space-4)',
-              background: 'var(--color-bg-secondary)',
-              border: '1px solid var(--color-border)',
-              borderRadius: 'var(--radius-lg)',
-              fontSize: 'var(--text-xs)',
-              marginBottom: 'var(--space-4)',
-              lineHeight: '1.6',
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', fontWeight: '600', color: 'var(--color-text-primary)', marginBottom: 'var(--space-3)' }}>
-                <Zap size={16} color="var(--color-accent)" /> 连接测试诊断详情
-                {testLoading && (
-                  <span className="loading-spinner" style={{ width: '12px', height: '12px', display: 'inline-block', border: '2px solid var(--color-accent)', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin-loading 1s linear infinite' }} />
-                )}
-              </div>
-              
-              {/* 步骤时间轴 */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)', position: 'relative', paddingLeft: 'var(--space-4)', marginBottom: 'var(--space-2)' }}>
-                {/* 时间轴左侧竖线 */}
-                <div style={{
-                  position: 'absolute',
-                  left: '6px',
-                  top: '8px',
-                  bottom: '8px',
-                  width: '2px',
-                  background: 'var(--color-border)',
-                  zIndex: 0
-                }} />
-
-                {testStages && testStages.map((stage) => {
-                  let icon = '';
-                  let iconColor = 'var(--color-text-tertiary)';
-                  let textColor = 'var(--color-text-secondary)';
-                  let isCurrent = false;
-
-                  if (stage.status === 'running') {
-                    icon = '';
-                    iconColor = 'var(--color-accent)';
-                    textColor = 'var(--color-text-primary)';
-                    isCurrent = true;
-                  } else if (stage.status === 'success') {
-                    icon = <Check size={10} />;
-                    iconColor = 'var(--color-success)';
-                    textColor = 'var(--color-text-secondary)';
-                  } else if (stage.status === 'failed') {
-                    icon = <X size={10} />;
-                    iconColor = 'var(--color-danger)';
-                    textColor = 'var(--color-danger)';
-                  }
-
-                  return (
-                    <div key={stage.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 'var(--space-2)', position: 'relative', zIndex: 1 }}>
-                      {/* 节点圆形背景图标 */}
-                      <div style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        width: '16px',
-                        height: '16px',
-                        borderRadius: '50%',
-                        background: stage.status === 'running' ? 'var(--color-accent-light)' : 'var(--color-bg-secondary)',
-                        border: `1px solid ${iconColor}`,
-                        color: iconColor,
-                        fontSize: '10px',
-                        fontWeight: 'bold',
-                        marginLeft: '-14px',
-                        animation: isCurrent ? 'spin-loading 2s linear infinite' : 'none'
-                      }}>
-                        {icon}
-                      </div>
-                      
-                      <div style={{ flex: 1, marginLeft: 'var(--space-1)' }}>
-                        <div style={{ fontWeight: '600', color: textColor, display: 'flex', justifyContent: 'space-between' }}>
-                          <span>{stage.name}</span>
-                          {stage.status === 'running' && (
-                            <span style={{ fontSize: '10px', color: 'var(--color-accent)', fontWeight: 'normal' }}>进行中...</span>
-                          )}
-                          {stage.status === 'success' && (
-                            <span style={{ fontSize: '10px', color: 'var(--color-success)', fontWeight: 'normal' }}>已完成</span>
-                          )}
-                          {stage.status === 'failed' && (
-                            <span style={{ fontSize: '10px', color: 'var(--color-danger)', fontWeight: 'normal' }}>失败</span>
-                          )}
-                        </div>
-                        <div style={{ color: stage.status === 'failed' ? 'var(--color-danger)' : 'var(--color-text-tertiary)', fontSize: '11px', marginTop: '2px' }}>
-                          {stage.message}
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-
-              {/* 最终结果卡片 */}
-              {testResult && (
-                <div style={{
-                  marginTop: 'var(--space-4)',
-                  paddingTop: 'var(--space-3)',
-                  borderTop: '1px solid var(--color-border-light)',
-                }}>
-                  {testResult.success ? (
-                    <div style={{
-                      padding: 'var(--space-3)',
-                      background: 'rgba(34, 197, 94, 0.06)',
-                      borderRadius: 'var(--radius-md)',
-                      border: '1px solid rgba(34, 197, 94, 0.2)',
-                    }}>
-                      <div style={{ color: 'var(--color-success)', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                        <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><PartyPopper size={14} /> 测试连接成功！(总耗时: {testResult.duration}ms)</span>
-                      </div>
-                      <div style={{ marginTop: 'var(--space-2)', color: 'var(--color-text-secondary)', padding: 'var(--space-2)', background: 'var(--color-bg-primary)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-border-light)' }}>
-                        <strong style={{ fontSize: '10px', color: 'var(--color-text-tertiary)', display: 'block', marginBottom: '2px' }}>AI 响应内容:</strong>
-                        <span style={{ fontFamily: 'var(--font-mono)' }}>"{testResult.reply}"</span>
-                      </div>
-                    </div>
-                  ) : (
-                    <div style={{
-                      padding: 'var(--space-3)',
-                      background: 'rgba(239, 68, 68, 0.06)',
-                      borderRadius: 'var(--radius-md)',
-                      border: '1px solid rgba(239, 68, 68, 0.2)',
-                    }}>
-                      <div style={{ color: 'var(--color-danger)', fontWeight: 'bold' }}>
-                        <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><XCircle size={14} /> 测试连接失败</span>
-                      </div>
-                      <div style={{ marginTop: 'var(--space-2)', color: 'var(--color-text-secondary)', whiteSpace: 'pre-wrap', wordBreak: 'break-all', fontSize: '11px', background: 'var(--color-bg-primary)', padding: 'var(--space-2)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-border-light)' }}>
-                        {testResult.error}
-                      </div>
-                      
-                      {/* 智能排障建议 */}
-                      <div style={{ marginTop: 'var(--space-3)', padding: 'var(--space-3)', background: 'var(--color-bg-tertiary)', borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)' }}>
-                        <div style={{ fontWeight: '600', color: 'var(--color-text-primary)', marginBottom: 'var(--space-1)', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px' }}><Wrench size={12} /> 排障小贴士：</div>
-                        <ul style={{ paddingLeft: 'var(--space-4)', margin: 0, color: 'var(--color-text-secondary)', fontSize: '11px', lineHeight: '1.6' }}>
-                          <li>检查 API Key 是否完整，确保开头没有多余空格。</li>
-                          <li>如果使用的是国内代理或第三方 API，请确保服务器地址包含协议头（<code>http://</code> 或 <code>https://</code>）并以 <code>/v1</code> 结尾（如 <code>https://api.yourproxy.com/v1</code>）。</li>
-                          <li>对于 Ollama，本地默认地址通常是 <code>http://127.0.0.1:11434/v1</code>，请确认 Ollama 已启动。</li>
-                          <li>请确认<b>模型名称</b>与您服务器上配置的完全一致（如 <code>gpt-4o-mini</code> 或 <code>deepseek-chat</code>）。</li>
-                        </ul>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
-
-          <hr style={{ border: 'none', borderTop: '1px solid var(--color-border-light)', margin: 'var(--space-6) 0' }} />
-
-          {/* ===== 图床配置 ===== */}
-          <h3 style={{ fontSize: 'var(--text-base)', fontWeight: '600', marginBottom: 'var(--space-4)' }}>
-            <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><Image size={18} /> 图床配置（阿里云 OSS）</span>
-          </h3>
-
-          <div style={{
-            padding: 'var(--space-3)',
-            background: 'var(--color-bg-tertiary)',
-            borderRadius: 'var(--radius-md)',
-            fontSize: 'var(--text-xs)',
-            color: 'var(--color-text-tertiary)',
-            marginBottom: 'var(--space-4)',
-            lineHeight: '1.6',
-          }}>
-            <div className="help-text" style={{ display: 'flex', alignItems: 'flex-start', gap: '4px' }}>
-              <Lightbulb size={14} style={{ flexShrink: 0, marginTop: '2px' }} />
-              <span>配置阿里云 OSS 后，高亮包含图片的内容时将自动上传图片到图床，并以 Markdown 格式发送到 Readwise。Bucket 需开启<strong>公共读</strong>权限。</span>
-            </div>
-          </div>
-
-          {/* OSS Region */}
-          <div className="form-group">
-            <label className="form-label">OSS Region（地域）</label>
-            <input
-              type="text"
-              className="form-input"
-              placeholder="oss-cn-hangzhou"
-              value={ossRegion}
-              onChange={(e) => setOssRegion(e.target.value)}
-            />
-            <div className="form-hint">
-              阿里云 OSS 区域标识，如 <code style={{ background: 'var(--color-bg-hover)', padding: '1px 4px', borderRadius: '3px' }}>oss-cn-hangzhou</code>、<code style={{ background: 'var(--color-bg-hover)', padding: '1px 4px', borderRadius: '3px' }}>oss-cn-shanghai</code>
-            </div>
-          </div>
-
-          {/* OSS Bucket */}
-          <div className="form-group">
-            <label className="form-label">Bucket 名称</label>
-            <input
-              type="text"
-              className="form-input"
-              placeholder="my-image-bucket"
-              value={ossBucket}
-              onChange={(e) => setOssBucket(e.target.value)}
-            />
-          </div>
-
-          {/* OSS AccessKey ID */}
-          <div className="form-group">
-            <label className="form-label">AccessKey ID</label>
-            <input
-              type="password"
-              className="form-input"
-              placeholder="LTAI5t..."
-              value={ossAccessKeyId}
-              onChange={(e) => setOssAccessKeyId(e.target.value)}
-              autoComplete="off"
-            />
-          </div>
-
-          {/* OSS AccessKey Secret */}
-          <div className="form-group">
-            <label className="form-label">AccessKey Secret</label>
-            <input
-              type="password"
-              className="form-input"
-              placeholder="输入你的 AccessKey Secret..."
-              value={ossAccessKeySecret}
-              onChange={(e) => setOssAccessKeySecret(e.target.value)}
-              autoComplete="off"
-            />
-          </div>
-
-          {/* OSS 自定义域名 */}
-          <div className="form-group">
-            <label className="form-label">自定义域名（可选）</label>
-            <input
-              type="text"
-              className="form-input"
-              placeholder="https://img.example.com"
-              value={ossCustomDomain}
-              onChange={(e) => setOssCustomDomain(e.target.value)}
-            />
-            <div className="form-hint">
-              留空则使用默认域名 <code style={{ background: 'var(--color-bg-hover)', padding: '1px 4px', borderRadius: '3px' }}>bucket.region.aliyuncs.com</code>
-            </div>
-          </div>
-
-          {/* OSS 路径前缀 */}
-          <div className="form-group">
-            <label className="form-label">存储路径前缀</label>
-            <input
-              type="text"
-              className="form-input"
-              placeholder="readerq"
-              value={ossPathPrefix}
-              onChange={(e) => setOssPathPrefix(e.target.value)}
-            />
-            <div className="form-hint">
-              图片在 OSS 中的存储路径前缀，默认为 <code style={{ background: 'var(--color-bg-hover)', padding: '1px 4px', borderRadius: '3px' }}>readerq</code>
-            </div>
-          </div>
-
-          {/* OSS 测试按钮 */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', marginBottom: 'var(--space-4)' }}>
+          <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
             <button
-              className="btn btn-secondary"
-              onClick={testOssConfig}
-              disabled={ossTestLoading || !ossRegion || !ossBucket || !ossAccessKeyId || !ossAccessKeySecret}
-              style={{ minWidth: '140px' }}
+              className="btn btn-primary"
+              onClick={saveConfig}
+              disabled={configLoading}
+              style={{ minWidth: '100px' }}
             >
               <span style={{ display: 'flex', alignItems: 'center', gap: '6px', justifyContent: 'center' }}>
-                <CloudUpload size={16} />
-                {ossTestLoading ? '测试中...' : '测试 OSS 连接'}
+                <Save size={14} />
+                {configLoading ? '保存中...' : '保存配置'}
               </span>
             </button>
+            <button className="btn btn-secondary" onClick={() => setShowSettings(false)}>
+              关闭
+            </button>
           </div>
-
-          {/* OSS 测试结果 */}
-          {ossTestResult && (
-            <div style={{
-              padding: 'var(--space-3)',
-              background: ossTestResult.success ? 'rgba(34, 197, 94, 0.06)' : 'rgba(239, 68, 68, 0.06)',
-              borderRadius: 'var(--radius-md)',
-              border: `1px solid ${ossTestResult.success ? 'rgba(34, 197, 94, 0.2)' : 'rgba(239, 68, 68, 0.2)'}`,
-              fontSize: 'var(--text-xs)',
-              marginBottom: 'var(--space-4)',
-            }}>
-              {ossTestResult.success ? (
-                <>
-                  <div style={{ color: 'var(--color-success)', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                    <CheckCircle2 size={14} /> OSS 连接测试成功！
-                  </div>
-                  {ossTestResult.ossUrl && (
-                    <div style={{ marginTop: 'var(--space-2)', wordBreak: 'break-all' }}>
-                      <span style={{ color: 'var(--color-text-tertiary)' }}>测试图片 URL: </span>
-                      <a href={ossTestResult.ossUrl} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--color-text-link)' }}>
-                        {ossTestResult.ossUrl}
-                      </a>
-                    </div>
-                  )}
-                  {ossTestResult.warning && (
-                    <div style={{ marginTop: 'var(--space-2)', color: 'var(--color-warning, #eab308)' }}>
-                      ⚠️ {ossTestResult.warning}
-                    </div>
-                  )}
-                </>
-              ) : (
-                <>
-                  <div style={{ color: 'var(--color-danger)', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                    <XCircle size={14} /> OSS 连接测试失败
-                  </div>
-                  <div style={{ marginTop: 'var(--space-2)', color: 'var(--color-text-secondary)', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
-                    {ossTestResult.error}
-                  </div>
-                </>
-              )}
-            </div>
-          )}
-
-          <hr style={{ border: 'none', borderTop: '1px solid var(--color-border-light)', margin: 'var(--space-6) 0' }} />
-
-          {/* ===== 外观设置 ===== */}
-          <h3 style={{ fontSize: 'var(--text-base)', fontWeight: '600', marginBottom: 'var(--space-4)' }}>
-            <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><Palette size={18} /> 外观</span>
-          </h3>
-
-          <div className="form-group">
-            <label className="form-label">主题</label>
-            <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
-              <button
-                className={`btn ${theme === 'light' ? 'btn-primary' : 'btn-secondary'} btn-sm`}
-                onClick={() => setTheme('light')}
-              >
-                <Sun size={14} style={{ marginRight: '6px', verticalAlign: 'middle' }} /> 浅色
-              </button>
-              <button
-                className={`btn ${theme === 'dark' ? 'btn-primary' : 'btn-secondary'} btn-sm`}
-                onClick={() => setTheme('dark')}
-              >
-                <Moon size={14} style={{ marginRight: '6px', verticalAlign: 'middle' }} /> 深色
-              </button>
-            </div>
-          </div>
-
-          <div className="form-group">
-            <label className="form-label">阅读字体</label>
-            <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
-              <button
-                className={`btn ${fontFamily === 'serif' ? 'btn-primary' : 'btn-secondary'} btn-sm`}
-                onClick={() => setFontFamily('serif')}
-              >
-                衬线体
-              </button>
-              <button
-                className={`btn ${fontFamily === 'sans' ? 'btn-primary' : 'btn-secondary'} btn-sm`}
-                onClick={() => setFontFamily('sans')}
-              >
-                无衬线
-              </button>
-            </div>
-          </div>
-
-          <div className="form-group">
-            <label className="form-label">字号: {fontSize}px</label>
-            <input
-              type="range"
-              min="14"
-              max="24"
-              value={fontSize}
-              onChange={(e) => setFontSize(Number(e.target.value))}
-              style={{ width: '100%', cursor: 'pointer' }}
-            />
-          </div>
-
-          <div className="form-group">
-            <label className="form-label">行高: {lineHeight}</label>
-            <input
-              type="range"
-              min="1.4"
-              max="2.4"
-              step="0.1"
-              value={lineHeight}
-              onChange={(e) => setLineHeight(Number(e.target.value))}
-              style={{ width: '100%', cursor: 'pointer' }}
-            />
-          </div>
-
-          <div className="form-group">
-            <label className="form-label">内容宽度: {contentWidth}px</label>
-            <input
-              type="range"
-              min="500"
-              max="1000"
-              step="20"
-              value={contentWidth}
-              onChange={(e) => setContentWidth(Number(e.target.value))}
-              style={{ width: '100%', cursor: 'pointer' }}
-            />
-          </div>
-
-          <hr style={{ border: 'none', borderTop: '1px solid var(--color-border-light)', margin: 'var(--space-6) 0' }} />
-
-          {/* ===== 数据同步 ===== */}
-          <h3 style={{ fontSize: 'var(--text-base)', fontWeight: '600', marginBottom: 'var(--space-4)' }}>
-            <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><RefreshCw size={18} /> 数据同步</span>
-          </h3>
-
-          <div className="form-group">
-            {/* Sync Status Display */}
-            <div style={{
-              marginBottom: 'var(--space-4)',
-              padding: 'var(--space-3)',
-              background: 'var(--color-bg-secondary)',
-              borderRadius: 'var(--radius-lg)',
-              border: '1px solid var(--color-border)',
-              fontSize: '13px'
-            }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 'var(--space-2)' }}>
-                <span style={{ color: 'var(--color-text-secondary)' }}>上次同步</span>
-                <span style={{ color: 'var(--color-text-primary)', fontWeight: '500' }}>
-                  {syncCounts?.lastSync ? new Date(syncCounts.lastSync).toLocaleString() : '从未同步'}
-                </span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 'var(--space-2)' }}>
-                <span style={{ color: 'var(--color-text-secondary)' }}>本地文档总数</span>
-                <span style={{ color: 'var(--color-text-primary)', fontWeight: '500' }}>
-                  {syncCounts?.local || 0} 篇
-                </span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 'var(--space-2)' }}>
-                <span style={{ color: 'var(--color-text-secondary)' }}>云端记录总数</span>
-                <span style={{ color: 'var(--color-text-primary)', fontWeight: '500' }}>
-                  {syncCounts?.remote ? `${syncCounts.remote} 篇` : '未知'}
-                </span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ color: 'var(--color-text-secondary)' }}>当前状态</span>
-                <span style={{ 
-                  color: globalSyncStatus === 'error' ? 'var(--color-danger)' : 
-                         globalSyncStatus === 'syncing' ? 'var(--color-accent)' : 
-                         'var(--color-text-primary)', 
-                  fontWeight: '500',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '4px'
-                }}>
-                  {globalSyncStatus === 'syncing' && <span className="loading-spinner" style={{ width: '10px', height: '10px' }} />}
-                  {globalSyncStatus === 'syncing' ? '同步中...' :
-                   globalSyncStatus === 'canceling' ? '正在取消...' :
-                   globalSyncStatus === 'error' ? '同步失败' :
-                   globalSyncStatus === 'canceled' ? '已取消' : '空闲'}
-                </span>
-              </div>
-
-              {/* Progress Display */}
-              {isSyncing && syncProgress && (
-                <div style={{ marginTop: 'var(--space-3)' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: 'var(--color-text-secondary)', marginBottom: '4px' }}>
-                    <span>
-                      {syncProgress.phase === 'documents' ? '拉取文档中（增量）...' :
-                       syncProgress.phase === 'highlights' ? '拉取高亮中（增量）...' :
-                       syncProgress.phase === 'tags' ? '拉取标签中...' :
-                       syncProgress.phase === 'done' ? '处理完成' : '准备中...'}
-                    </span>
-                    <span>
-                      {syncProgress.total > 0 ? `${syncProgress.fetched} / ${syncProgress.total}` : `${syncProgress.fetched}`}
-                    </span>
-                  </div>
-                  {syncProgress.total > 0 && (
-                    <div style={{ width: '100%', height: '4px', background: 'var(--color-bg-tertiary)', borderRadius: '2px', overflow: 'hidden' }}>
-                      <div style={{ 
-                        height: '100%', 
-                        width: `${Math.min(100, Math.round((syncProgress.fetched / syncProgress.total) * 100))}%`, 
-                        background: 'var(--color-accent)',
-                        transition: 'width 0.3s ease'
-                      }} />
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-
-            {syncError && (
-              <div style={{
-                marginBottom: 'var(--space-3)',
-                padding: 'var(--space-2) var(--space-3)',
-                background: 'rgba(239, 68, 68, 0.1)',
-                color: 'var(--color-danger)',
-                borderRadius: 'var(--radius-md)',
-                fontSize: '12px',
-                border: '1px solid rgba(239, 68, 68, 0.2)'
-              }}>
-                <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><XCircle size={14} /> {syncError}</span>
-              </div>
-            )}
-
-            <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
-              {!isSyncing ? (
-                <>
-                  <button
-                    className="btn btn-primary"
-                    onClick={async () => {
-                      setLocalSyncStatus(null);
-                      await syncData(false); // 增量同步
-                    }}
-                    style={{ flex: 2 }}
-                  >
-                    <span style={{ display: 'flex', alignItems: 'center', gap: '6px', justifyContent: 'center' }}><Zap size={14} /> 增量同步更新</span>
-                  </button>
-                  <button
-                    className="btn btn-secondary"
-                    onClick={async () => {
-                      if (confirm('全量覆盖同步将从头开始拉取所有文档和标签，可能需要较长时间，确认继续吗？')) {
-                        setLocalSyncStatus(null);
-                        await syncData(true); // 全量同步
-                      }
-                    }}
-                    style={{ flex: 1, fontSize: '11px' }}
-                  >
-                    📥 全量覆盖同步
-                  </button>
-                </>
-              ) : (
-                <button
-                  className="btn btn-secondary"
-                  onClick={cancelSync}
-                  disabled={globalSyncStatus === 'canceling'}
-                  style={{ flex: 1, borderColor: 'var(--color-danger)', color: 'var(--color-danger)' }}
-                >
-                  {globalSyncStatus === 'canceling' ? '取消中...' : '⏹ 终止同步'}
-                </button>
-              )}
-            </div>
-            
-            <div className="form-hint" style={{ marginTop: 'var(--space-2)' }}>
-              从 Readwise 同步所有文档和标签到本地缓存。进度显示取决于云端数据量。
-            </div>
-          </div>
-
-          <hr style={{ border: 'none', borderTop: '1px solid var(--color-border-light)', margin: 'var(--space-6) 0' }} />
-
-          {/* ===== 快捷键 ===== */}
-          <h3 style={{ fontSize: 'var(--text-base)', fontWeight: '600', marginBottom: 'var(--space-4)' }}>
-            <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><Keyboard size={18} /> 快捷键</span>
-          </h3>
-          <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-secondary)' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <tbody>
-                {[
-                  ['⌘/Ctrl + K', '命令面板'],
-                  ['⌘/Ctrl + N', '添加文章'],
-                  ['⌘/Ctrl + Shift + A', 'AI 助手'],
-                  ['⌘/Ctrl + Shift + S', '同步数据'],
-                  ['⌘/Ctrl + Shift + L', '切换主题'],
-                  ['[', '收起左侧栏'],
-                  [']', '打开 AI 面板'],
-                  ['Esc', '关闭弹窗'],
-                ].map(([key, label]) => (
-                  <tr key={key} style={{ borderBottom: '1px solid var(--color-border-light)' }}>
-                    <td style={{ padding: '6px 0', fontFamily: 'var(--font-mono)' }}>
-                      <kbd style={{ background: 'var(--color-bg-tertiary)', padding: '1px 6px', borderRadius: '3px', border: '1px solid var(--color-border)' }}>
-                        {key}
-                      </kbd>
-                    </td>
-                    <td style={{ padding: '6px 0', textAlign: 'right' }}>{label}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          <hr style={{ border: 'none', borderTop: '1px solid var(--color-border-light)', margin: 'var(--space-6) 0' }} />
-
-          {/* ===== 关于 ===== */}
-          <h3 style={{ fontSize: 'var(--text-base)', fontWeight: '600', marginBottom: 'var(--space-4)' }}>
-            <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><Info size={18} /> 关于</span>
-          </h3>
-          <div style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-secondary)', lineHeight: '1.8' }}>
-            <p><strong>ReaderQ</strong> v{process.env.NEXT_PUBLIC_APP_VERSION || '未知'}</p>
-            <p>Readwise Reader 开源复刻版本</p>
-            <p>使用 Next.js + SQLite + OpenAI 兼容 API 构建</p>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', marginTop: 'var(--space-3)' }}>
-              <button
-                className="btn btn-primary btn-sm"
-                onClick={() => setShowChangelog(true)}
-                style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
-              >
-                <History size={14} />
-                查看更新历史
-              </button>
-              <a
-                href="https://github.com/qxk2005/readerq"
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{ color: 'var(--color-text-link)', fontSize: 'var(--text-xs)' }}
-              >
-                GitHub 仓库
-              </a>
-            </div>
-          </div>
-        </div>
-
-        <div className="modal-footer">
-          <button className="btn btn-secondary" onClick={() => setShowSettings(false)}>
-            关闭
-          </button>
         </div>
       </div>
       {showChangelog && <ChangelogPanel onClose={() => setShowChangelog(false)} />}
+    </div>
+  );
+}
+
+
+// ===== Tab: API 配置 =====
+function TabAPI({
+  readwiseToken, setReadwiseToken, openaiApiKey, setOpenaiApiKey,
+  openaiBaseUrl, setOpenaiBaseUrl, openaiModel, setOpenaiModel,
+  openaiMaxTokens, setOpenaiMaxTokens, envInfo,
+  testConfig, testLoading, testStages, testResult,
+}) {
+  return (
+    <>
+      <div style={{
+        padding: 'var(--space-3)',
+        background: 'var(--color-bg-tertiary)',
+        borderRadius: 'var(--radius-md)',
+        fontSize: 'var(--text-xs)',
+        color: 'var(--color-text-tertiary)',
+        marginBottom: 'var(--space-4)',
+        lineHeight: '1.6',
+      }}>
+        <div className="help-text" style={{ display: 'flex', alignItems: 'flex-start', gap: '4px' }}>
+          <Lightbulb size={14} style={{ flexShrink: 0, marginTop: '2px' }} />
+          <span>在此处配置的值会保存到本地数据库并优先使用。如果你在此处留空，系统将自动回退使用 <code style={{ background: 'var(--color-bg-hover)', padding: '1px 4px', borderRadius: '3px' }}>.env.local</code> 或环境变量配置。</span>
+        </div>
+      </div>
+
+      {/* Readwise Token */}
+      <div className="form-group">
+        <label className="form-label">
+          Readwise API Token
+          {envInfo.readwiseFromEnv && (
+            <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-success)', marginLeft: 'var(--space-2)' }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><CheckCircle2 size={12} /> 环境变量已设置</span>
+            </span>
+          )}
+        </label>
+        <input type="password" className="form-input" placeholder="粘贴你的 Readwise Token..." value={readwiseToken} onChange={(e) => setReadwiseToken(e.target.value)} autoComplete="off" />
+        <div className="form-hint">
+          从 <a href="https://readwise.io/access_token" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--color-text-link)' }}>readwise.io/access_token</a> 获取
+        </div>
+      </div>
+
+      {/* OpenAI API Key */}
+      <div className="form-group">
+        <label className="form-label">
+          OpenAI API Key
+          {envInfo.openaiFromEnv && (
+            <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-success)', marginLeft: 'var(--space-2)' }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><CheckCircle2 size={12} /> 环境变量已设置</span>
+            </span>
+          )}
+        </label>
+        <input type="password" className="form-input" placeholder="sk-..." value={openaiApiKey} onChange={(e) => setOpenaiApiKey(e.target.value)} autoComplete="off" />
+      </div>
+
+      {/* OpenAI Base URL */}
+      <div className="form-group">
+        <label className="form-label">
+          OpenAI 兼容服务器地址
+          {envInfo.envBaseUrl && (
+            <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-tertiary)', marginLeft: 'var(--space-2)' }}>
+              环境变量: {envInfo.envBaseUrl}
+            </span>
+          )}
+        </label>
+        <input type="url" className="form-input" placeholder="https://api.openai.com/v1" value={openaiBaseUrl} onChange={(e) => setOpenaiBaseUrl(e.target.value)} />
+        <div className="form-hint">支持任何 OpenAI 兼容的 API 服务器（如 vLLM、Ollama、Azure 等）</div>
+      </div>
+
+      {/* OpenAI Model */}
+      <div className="form-group">
+        <label className="form-label">
+          AI 模型名称
+          {envInfo.envModel && (
+            <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-tertiary)', marginLeft: 'var(--space-2)' }}>
+              环境变量: {envInfo.envModel}
+            </span>
+          )}
+        </label>
+        <input type="text" className="form-input" placeholder="gpt-4o-mini" value={openaiModel} onChange={(e) => setOpenaiModel(e.target.value)} />
+        <div className="form-hint">填入你的 AI 服务器支持的模型名称</div>
+      </div>
+
+      {/* OpenAI Max Tokens */}
+      <div className="form-group">
+        <label className="form-label">
+          最大回答 Token 限制 (max_tokens)
+          {envInfo.envMaxTokens && (
+            <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-tertiary)', marginLeft: 'var(--space-2)' }}>
+              环境变量: {envInfo.envMaxTokens}
+            </span>
+          )}
+        </label>
+        <input type="number" min="1" className="form-input" placeholder="4096" value={openaiMaxTokens} onChange={(e) => setOpenaiMaxTokens(e.target.value)} />
+        <div className="form-hint">AI 接口单次生成（含思考过程）的最大 Token 限制。对于 DeepSeek 等推理模型，建议设置为 4096 或更大。</div>
+      </div>
+
+      {/* 测试连接按钮 */}
+      <div style={{ marginBottom: 'var(--space-4)' }}>
+        <button className="btn btn-secondary" onClick={testConfig} disabled={testLoading} style={{ minWidth: '120px' }}>
+          <span style={{ display: 'flex', alignItems: 'center', gap: '6px', justifyContent: 'center' }}>
+            <Zap size={16} />
+            {testLoading ? '测试中...' : '测试连接'}
+          </span>
+        </button>
+      </div>
+
+      {/* 测试连接结果显示 */}
+      {(testStages || testResult) && (
+        <div style={{
+          padding: 'var(--space-4)',
+          background: 'var(--color-bg-secondary)',
+          border: '1px solid var(--color-border)',
+          borderRadius: 'var(--radius-lg)',
+          fontSize: 'var(--text-xs)',
+          lineHeight: '1.6',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', fontWeight: '600', color: 'var(--color-text-primary)', marginBottom: 'var(--space-3)' }}>
+            <Zap size={16} color="var(--color-accent)" /> 连接测试诊断详情
+            {testLoading && (
+              <span className="loading-spinner" style={{ width: '12px', height: '12px', display: 'inline-block', border: '2px solid var(--color-accent)', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin-loading 1s linear infinite' }} />
+            )}
+          </div>
+          
+          {/* 步骤时间轴 */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)', position: 'relative', paddingLeft: 'var(--space-4)', marginBottom: 'var(--space-2)' }}>
+            <div style={{ position: 'absolute', left: '6px', top: '8px', bottom: '8px', width: '2px', background: 'var(--color-border)', zIndex: 0 }} />
+            {testStages && testStages.map((stage) => {
+              let icon = '';
+              let iconColor = 'var(--color-text-tertiary)';
+              let textColor = 'var(--color-text-secondary)';
+              let isCurrent = false;
+
+              if (stage.status === 'running') {
+                icon = '';
+                iconColor = 'var(--color-accent)';
+                textColor = 'var(--color-text-primary)';
+                isCurrent = true;
+              } else if (stage.status === 'success') {
+                icon = <Check size={10} />;
+                iconColor = 'var(--color-success)';
+                textColor = 'var(--color-text-secondary)';
+              } else if (stage.status === 'failed') {
+                icon = <X size={10} />;
+                iconColor = 'var(--color-danger)';
+                textColor = 'var(--color-danger)';
+              }
+
+              return (
+                <div key={stage.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 'var(--space-2)', position: 'relative', zIndex: 1 }}>
+                  <div style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    width: '16px', height: '16px', borderRadius: '50%',
+                    background: stage.status === 'running' ? 'var(--color-accent-light)' : 'var(--color-bg-secondary)',
+                    border: `1px solid ${iconColor}`, color: iconColor,
+                    fontSize: '10px', fontWeight: 'bold', marginLeft: '-14px',
+                    animation: isCurrent ? 'spin-loading 2s linear infinite' : 'none'
+                  }}>
+                    {icon}
+                  </div>
+                  <div style={{ flex: 1, marginLeft: 'var(--space-1)' }}>
+                    <div style={{ fontWeight: '600', color: textColor, display: 'flex', justifyContent: 'space-between' }}>
+                      <span>{stage.name}</span>
+                      {stage.status === 'running' && <span style={{ fontSize: '10px', color: 'var(--color-accent)', fontWeight: 'normal' }}>进行中...</span>}
+                      {stage.status === 'success' && <span style={{ fontSize: '10px', color: 'var(--color-success)', fontWeight: 'normal' }}>已完成</span>}
+                      {stage.status === 'failed' && <span style={{ fontSize: '10px', color: 'var(--color-danger)', fontWeight: 'normal' }}>失败</span>}
+                    </div>
+                    <div style={{ color: stage.status === 'failed' ? 'var(--color-danger)' : 'var(--color-text-tertiary)', fontSize: '11px', marginTop: '2px' }}>
+                      {stage.message}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* 最终结果卡片 */}
+          {testResult && (
+            <div style={{ marginTop: 'var(--space-4)', paddingTop: 'var(--space-3)', borderTop: '1px solid var(--color-border-light)' }}>
+              {testResult.success ? (
+                <div style={{ padding: 'var(--space-3)', background: 'rgba(34, 197, 94, 0.06)', borderRadius: 'var(--radius-md)', border: '1px solid rgba(34, 197, 94, 0.2)' }}>
+                  <div style={{ color: 'var(--color-success)', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <PartyPopper size={14} /> 测试连接成功！(总耗时: {testResult.duration}ms)
+                  </div>
+                  <div style={{ marginTop: 'var(--space-2)', color: 'var(--color-text-secondary)', padding: 'var(--space-2)', background: 'var(--color-bg-primary)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-border-light)' }}>
+                    <strong style={{ fontSize: '10px', color: 'var(--color-text-tertiary)', display: 'block', marginBottom: '2px' }}>AI 响应内容:</strong>
+                    <span style={{ fontFamily: 'var(--font-mono)' }}>"{testResult.reply}"</span>
+                  </div>
+                </div>
+              ) : (
+                <div style={{ padding: 'var(--space-3)', background: 'rgba(239, 68, 68, 0.06)', borderRadius: 'var(--radius-md)', border: '1px solid rgba(239, 68, 68, 0.2)' }}>
+                  <div style={{ color: 'var(--color-danger)', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <XCircle size={14} /> 测试连接失败
+                  </div>
+                  <div style={{ marginTop: 'var(--space-2)', color: 'var(--color-text-secondary)', whiteSpace: 'pre-wrap', wordBreak: 'break-all', fontSize: '11px', background: 'var(--color-bg-primary)', padding: 'var(--space-2)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-border-light)' }}>
+                    {testResult.error}
+                  </div>
+                  <div style={{ marginTop: 'var(--space-3)', padding: 'var(--space-3)', background: 'var(--color-bg-tertiary)', borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)' }}>
+                    <div style={{ fontWeight: '600', color: 'var(--color-text-primary)', marginBottom: 'var(--space-1)', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px' }}><Wrench size={12} /> 排障小贴士：</div>
+                    <ul style={{ paddingLeft: 'var(--space-4)', margin: 0, color: 'var(--color-text-secondary)', fontSize: '11px', lineHeight: '1.6' }}>
+                      <li>检查 API Key 是否完整，确保开头没有多余空格。</li>
+                      <li>如果使用的是国内代理或第三方 API，请确保服务器地址包含协议头（<code>http://</code> 或 <code>https://</code>）并以 <code>/v1</code> 结尾。</li>
+                      <li>对于 Ollama，本地默认地址通常是 <code>http://127.0.0.1:11434/v1</code>，请确认 Ollama 已启动。</li>
+                      <li>请确认<b>模型名称</b>与您服务器上配置的完全一致。</li>
+                    </ul>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </>
+  );
+}
+
+
+// ===== Tab: 图床配置 =====
+function TabOSS({
+  ossRegion, setOssRegion, ossBucket, setOssBucket,
+  ossAccessKeyId, setOssAccessKeyId, ossAccessKeySecret, setOssAccessKeySecret,
+  ossCustomDomain, setOssCustomDomain, ossPathPrefix, setOssPathPrefix,
+  testOssConfig, ossTestLoading, ossTestResult,
+}) {
+  return (
+    <>
+      <div style={{ padding: 'var(--space-3)', background: 'var(--color-bg-tertiary)', borderRadius: 'var(--radius-md)', fontSize: 'var(--text-xs)', color: 'var(--color-text-tertiary)', marginBottom: 'var(--space-4)', lineHeight: '1.6' }}>
+        <div className="help-text" style={{ display: 'flex', alignItems: 'flex-start', gap: '4px' }}>
+          <Lightbulb size={14} style={{ flexShrink: 0, marginTop: '2px' }} />
+          <span>配置阿里云 OSS 后，高亮包含图片的内容时将自动上传图片到图床，并以 Markdown 格式发送到 Readwise。Bucket 需开启<strong>公共读</strong>权限。</span>
+        </div>
+      </div>
+
+      <div className="form-group">
+        <label className="form-label">OSS Region（地域）</label>
+        <input type="text" className="form-input" placeholder="oss-cn-hangzhou" value={ossRegion} onChange={(e) => setOssRegion(e.target.value)} />
+        <div className="form-hint">阿里云 OSS 区域标识，如 <code style={{ background: 'var(--color-bg-hover)', padding: '1px 4px', borderRadius: '3px' }}>oss-cn-hangzhou</code></div>
+      </div>
+
+      <div className="form-group">
+        <label className="form-label">Bucket 名称</label>
+        <input type="text" className="form-input" placeholder="my-image-bucket" value={ossBucket} onChange={(e) => setOssBucket(e.target.value)} />
+      </div>
+
+      <div className="form-group">
+        <label className="form-label">AccessKey ID</label>
+        <input type="password" className="form-input" placeholder="LTAI5t..." value={ossAccessKeyId} onChange={(e) => setOssAccessKeyId(e.target.value)} autoComplete="off" />
+      </div>
+
+      <div className="form-group">
+        <label className="form-label">AccessKey Secret</label>
+        <input type="password" className="form-input" placeholder="输入你的 AccessKey Secret..." value={ossAccessKeySecret} onChange={(e) => setOssAccessKeySecret(e.target.value)} autoComplete="off" />
+      </div>
+
+      <div className="form-group">
+        <label className="form-label">自定义域名（可选）</label>
+        <input type="text" className="form-input" placeholder="https://img.example.com" value={ossCustomDomain} onChange={(e) => setOssCustomDomain(e.target.value)} />
+        <div className="form-hint">留空则使用默认域名 <code style={{ background: 'var(--color-bg-hover)', padding: '1px 4px', borderRadius: '3px' }}>bucket.region.aliyuncs.com</code></div>
+      </div>
+
+      <div className="form-group">
+        <label className="form-label">存储路径前缀</label>
+        <input type="text" className="form-input" placeholder="readerq" value={ossPathPrefix} onChange={(e) => setOssPathPrefix(e.target.value)} />
+        <div className="form-hint">图片在 OSS 中的存储路径前缀，默认为 <code style={{ background: 'var(--color-bg-hover)', padding: '1px 4px', borderRadius: '3px' }}>readerq</code></div>
+      </div>
+
+      <div style={{ marginBottom: 'var(--space-4)' }}>
+        <button className="btn btn-secondary" onClick={testOssConfig} disabled={ossTestLoading || !ossRegion || !ossBucket || !ossAccessKeyId || !ossAccessKeySecret} style={{ minWidth: '140px' }}>
+          <span style={{ display: 'flex', alignItems: 'center', gap: '6px', justifyContent: 'center' }}>
+            <CloudUpload size={16} />
+            {ossTestLoading ? '测试中...' : '测试 OSS 连接'}
+          </span>
+        </button>
+      </div>
+
+      {ossTestResult && (
+        <div style={{ padding: 'var(--space-3)', background: ossTestResult.success ? 'rgba(34, 197, 94, 0.06)' : 'rgba(239, 68, 68, 0.06)', borderRadius: 'var(--radius-md)', border: `1px solid ${ossTestResult.success ? 'rgba(34, 197, 94, 0.2)' : 'rgba(239, 68, 68, 0.2)'}`, fontSize: 'var(--text-xs)' }}>
+          {ossTestResult.success ? (
+            <>
+              <div style={{ color: 'var(--color-success)', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <CheckCircle2 size={14} /> OSS 连接测试成功！
+              </div>
+              {ossTestResult.ossUrl && (
+                <div style={{ marginTop: 'var(--space-2)', wordBreak: 'break-all' }}>
+                  <span style={{ color: 'var(--color-text-tertiary)' }}>测试图片 URL: </span>
+                  <a href={ossTestResult.ossUrl} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--color-text-link)' }}>{ossTestResult.ossUrl}</a>
+                </div>
+              )}
+              {ossTestResult.warning && (
+                <div style={{ marginTop: 'var(--space-2)', color: 'var(--color-warning, #eab308)' }}>⚠️ {ossTestResult.warning}</div>
+              )}
+            </>
+          ) : (
+            <>
+              <div style={{ color: 'var(--color-danger)', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <XCircle size={14} /> OSS 连接测试失败
+              </div>
+              <div style={{ marginTop: 'var(--space-2)', color: 'var(--color-text-secondary)', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>{ossTestResult.error}</div>
+            </>
+          )}
+        </div>
+      )}
+    </>
+  );
+}
+
+
+// ===== Tab: 外观设置 =====
+function TabAppearance({ theme, setTheme, fontSize, setFontSize, lineHeight, setLineHeight, contentWidth, setContentWidth, fontFamily, setFontFamily }) {
+  return (
+    <>
+      <div className="form-group">
+        <label className="form-label">主题</label>
+        <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+          <button className={`btn ${theme === 'light' ? 'btn-primary' : 'btn-secondary'} btn-sm`} onClick={() => setTheme('light')}>
+            <Sun size={14} style={{ marginRight: '6px', verticalAlign: 'middle' }} /> 浅色
+          </button>
+          <button className={`btn ${theme === 'dark' ? 'btn-primary' : 'btn-secondary'} btn-sm`} onClick={() => setTheme('dark')}>
+            <Moon size={14} style={{ marginRight: '6px', verticalAlign: 'middle' }} /> 深色
+          </button>
+        </div>
+      </div>
+
+      <div className="form-group">
+        <label className="form-label">阅读字体</label>
+        <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+          <button className={`btn ${fontFamily === 'serif' ? 'btn-primary' : 'btn-secondary'} btn-sm`} onClick={() => setFontFamily('serif')}>衬线体</button>
+          <button className={`btn ${fontFamily === 'sans' ? 'btn-primary' : 'btn-secondary'} btn-sm`} onClick={() => setFontFamily('sans')}>无衬线</button>
+        </div>
+      </div>
+
+      <div className="form-group">
+        <label className="form-label">字号: {fontSize}px</label>
+        <input type="range" min="14" max="24" value={fontSize} onChange={(e) => setFontSize(Number(e.target.value))} style={{ width: '100%', cursor: 'pointer' }} />
+      </div>
+
+      <div className="form-group">
+        <label className="form-label">行高: {lineHeight}</label>
+        <input type="range" min="1.4" max="2.4" step="0.1" value={lineHeight} onChange={(e) => setLineHeight(Number(e.target.value))} style={{ width: '100%', cursor: 'pointer' }} />
+      </div>
+
+      <div className="form-group">
+        <label className="form-label">内容宽度: {contentWidth}px</label>
+        <input type="range" min="500" max="1000" step="20" value={contentWidth} onChange={(e) => setContentWidth(Number(e.target.value))} style={{ width: '100%', cursor: 'pointer' }} />
+      </div>
+    </>
+  );
+}
+
+
+// ===== Tab: 数据同步 =====
+function TabSync({ syncData, isSyncing, globalSyncStatus, syncProgress, syncCounts, syncError, cancelSync, localSyncStatus, setLocalSyncStatus }) {
+  return (
+    <>
+      <div style={{
+        marginBottom: 'var(--space-4)',
+        padding: 'var(--space-3)',
+        background: 'var(--color-bg-secondary)',
+        borderRadius: 'var(--radius-lg)',
+        border: '1px solid var(--color-border)',
+        fontSize: '13px'
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 'var(--space-2)' }}>
+          <span style={{ color: 'var(--color-text-secondary)' }}>上次同步</span>
+          <span style={{ color: 'var(--color-text-primary)', fontWeight: '500' }}>
+            {syncCounts?.lastSync ? new Date(syncCounts.lastSync).toLocaleString() : '从未同步'}
+          </span>
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 'var(--space-2)' }}>
+          <span style={{ color: 'var(--color-text-secondary)' }}>本地文档总数</span>
+          <span style={{ color: 'var(--color-text-primary)', fontWeight: '500' }}>{syncCounts?.local || 0} 篇</span>
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 'var(--space-2)' }}>
+          <span style={{ color: 'var(--color-text-secondary)' }}>云端记录总数</span>
+          <span style={{ color: 'var(--color-text-primary)', fontWeight: '500' }}>{syncCounts?.remote ? `${syncCounts.remote} 篇` : '未知'}</span>
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span style={{ color: 'var(--color-text-secondary)' }}>当前状态</span>
+          <span style={{ 
+            color: globalSyncStatus === 'error' ? 'var(--color-danger)' : globalSyncStatus === 'syncing' ? 'var(--color-accent)' : 'var(--color-text-primary)', 
+            fontWeight: '500', display: 'flex', alignItems: 'center', gap: '4px'
+          }}>
+            {globalSyncStatus === 'syncing' && <span className="loading-spinner" style={{ width: '10px', height: '10px' }} />}
+            {globalSyncStatus === 'syncing' ? '同步中...' :
+             globalSyncStatus === 'canceling' ? '正在取消...' :
+             globalSyncStatus === 'error' ? '同步失败' :
+             globalSyncStatus === 'canceled' ? '已取消' : '空闲'}
+          </span>
+        </div>
+
+        {/* Progress Display */}
+        {isSyncing && syncProgress && (
+          <div style={{ marginTop: 'var(--space-3)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: 'var(--color-text-secondary)', marginBottom: '4px' }}>
+              <span>
+                {syncProgress.phase === 'documents' ? '拉取文档中（增量）...' :
+                 syncProgress.phase === 'highlights' ? '拉取高亮中（增量）...' :
+                 syncProgress.phase === 'tags' ? '拉取标签中...' :
+                 syncProgress.phase === 'done' ? '处理完成' : '准备中...'}
+              </span>
+              <span>{syncProgress.total > 0 ? `${syncProgress.fetched} / ${syncProgress.total}` : `${syncProgress.fetched}`}</span>
+            </div>
+            {syncProgress.total > 0 && (
+              <div style={{ width: '100%', height: '4px', background: 'var(--color-bg-tertiary)', borderRadius: '2px', overflow: 'hidden' }}>
+                <div style={{ height: '100%', width: `${Math.min(100, Math.round((syncProgress.fetched / syncProgress.total) * 100))}%`, background: 'var(--color-accent)', transition: 'width 0.3s ease' }} />
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {syncError && (
+        <div style={{ marginBottom: 'var(--space-3)', padding: 'var(--space-2) var(--space-3)', background: 'rgba(239, 68, 68, 0.1)', color: 'var(--color-danger)', borderRadius: 'var(--radius-md)', fontSize: '12px', border: '1px solid rgba(239, 68, 68, 0.2)' }}>
+          <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><XCircle size={14} /> {syncError}</span>
+        </div>
+      )}
+
+      <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+        {!isSyncing ? (
+          <>
+            <button className="btn btn-primary" onClick={async () => { setLocalSyncStatus(null); await syncData(false); }} style={{ flex: 2 }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: '6px', justifyContent: 'center' }}><Zap size={14} /> 增量同步更新</span>
+            </button>
+            <button className="btn btn-secondary" onClick={async () => {
+              if (confirm('全量覆盖同步将从头开始拉取所有文档和标签，可能需要较长时间，确认继续吗？')) {
+                setLocalSyncStatus(null);
+                await syncData(true);
+              }
+            }} style={{ flex: 1, fontSize: '11px' }}>
+              📥 全量覆盖同步
+            </button>
+          </>
+        ) : (
+          <button className="btn btn-secondary" onClick={cancelSync} disabled={globalSyncStatus === 'canceling'} style={{ flex: 1, borderColor: 'var(--color-danger)', color: 'var(--color-danger)' }}>
+            {globalSyncStatus === 'canceling' ? '取消中...' : '⏹ 终止同步'}
+          </button>
+        )}
+      </div>
+      
+      <div className="form-hint" style={{ marginTop: 'var(--space-2)' }}>
+        从 Readwise 同步所有文档和标签到本地缓存。进度显示取决于云端数据量。
+      </div>
+    </>
+  );
+}
+
+
+// ===== Tab: 快捷键 =====
+function TabShortcuts() {
+  return (
+    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-secondary)' }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+        <tbody>
+          {[
+            ['⌘/Ctrl + K', '命令面板'],
+            ['⌘/Ctrl + N', '添加文章'],
+            ['⌘/Ctrl + Shift + A', 'AI 助手'],
+            ['⌘/Ctrl + Shift + S', '同步数据'],
+            ['⌘/Ctrl + Shift + L', '切换主题'],
+            ['[', '收起左侧栏'],
+            [']', '打开 AI 面板'],
+            ['Esc', '关闭弹窗'],
+          ].map(([key, label]) => (
+            <tr key={key} style={{ borderBottom: '1px solid var(--color-border-light)' }}>
+              <td style={{ padding: '10px 0', fontFamily: 'var(--font-mono)' }}>
+                <kbd style={{ background: 'var(--color-bg-tertiary)', padding: '2px 8px', borderRadius: '4px', border: '1px solid var(--color-border)', fontSize: '12px' }}>
+                  {key}
+                </kbd>
+              </td>
+              <td style={{ padding: '10px 0', textAlign: 'right' }}>{label}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+
+// ===== Tab: 关于 =====
+function TabAbout({ showChangelog, setShowChangelog }) {
+  return (
+    <div style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-secondary)', lineHeight: '1.8' }}>
+      <p><strong>ReaderQ</strong> v{process.env.NEXT_PUBLIC_APP_VERSION || '未知'}</p>
+      <p>Readwise Reader 开源复刻版本</p>
+      <p>使用 Next.js + SQLite + OpenAI 兼容 API 构建</p>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', marginTop: 'var(--space-3)' }}>
+        <button
+          className="btn btn-primary btn-sm"
+          onClick={() => setShowChangelog(true)}
+          style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+        >
+          <History size={14} />
+          查看更新历史
+        </button>
+        <a
+          href="https://github.com/qxk2005/readerq"
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{ color: 'var(--color-text-link)', fontSize: 'var(--text-xs)' }}
+        >
+          GitHub 仓库
+        </a>
+      </div>
     </div>
   );
 }
