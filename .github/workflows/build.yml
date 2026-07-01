@@ -35,10 +35,9 @@ jobs:
 
       - name: Sync version from git tag
         if: startsWith(github.ref, 'refs/tags/v')
-        run: |
-          TAG_VERSION="${GITHUB_REF#refs/tags/v}"
-          echo "Syncing version to $TAG_VERSION"
-          node -e "const fs=require('fs');const p=JSON.parse(fs.readFileSync('package.json','utf8'));p.version='$TAG_VERSION';fs.writeFileSync('package.json',JSON.stringify(p,null,2)+'\n')"
+        run: node -e "const fs=require('fs');const v=process.env.GITHUB_REF.replace('refs/tags/v','');console.log('Syncing version to',v);const p=JSON.parse(fs.readFileSync('package.json','utf8'));p.version=v;fs.writeFileSync('package.json',JSON.stringify(p,null,2)+'\n')"
+        env:
+          GITHUB_REF: ${{ github.ref }}
 
       - name: Build Electron App
         run: npm run electron:build
