@@ -603,16 +603,14 @@ export default function ReadingPane() {
 
       {/* 编辑已有高亮工具栏 */}
       {editingHighlight && (
-        <div onMouseUp={(e) => e.stopPropagation()}>
-          <HighlightEditor 
-            key={editingHighlight.id}
-            highlight={editingHighlight} 
-            onUpdate={handleUpdateHighlight}
-            onDelete={handleDeleteHighlight}
-            onClose={() => setEditingHighlight(null)}
-            allTags={allTags}
-          />
-        </div>
+        <HighlightEditor 
+          key={editingHighlight.id}
+          highlight={editingHighlight} 
+          onUpdate={handleUpdateHighlight}
+          onDelete={handleDeleteHighlight}
+          onClose={() => setEditingHighlight(null)}
+          allTags={allTags}
+        />
       )}
 
       <div style={{ display: 'flex', flexDirection: 'row', flex: 1, overflow: 'hidden', minWidth: 0 }}>
