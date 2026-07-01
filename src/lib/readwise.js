@@ -208,19 +208,8 @@ class ReadwiseAPI {
       location: highlight.location_start,
     };
     // Readwise V2 API 不接受空字符串的 note 字段
-    let noteText = highlight.note || '';
-    
-    // 使用 Readwise 官方支持的 Inline Tagging 方式
-    // 将标签转为 ".tagname" 格式并追加到 note 尾部
-    if (highlight.tags && Object.keys(highlight.tags).length > 0) {
-      const inlineTags = Object.keys(highlight.tags)
-        .map(t => `.${t.replace(/\s+/g, '_')}`) // 替换空格为下划线，以符合标签格式
-        .join(' ');
-      noteText = noteText ? `${noteText}\n\n${inlineTags}` : inlineTags;
-    }
-
-    if (noteText) {
-      highlightData.note = noteText;
+    if (highlight.note) {
+      highlightData.note = highlight.note;
     }
 
     const payload = {
@@ -245,10 +234,15 @@ class ReadwiseAPI {
     // 端点: POST /api/v2/highlights/<highlight_id>/tags/
     if (highlight.tags && Object.keys(highlight.tags).length > 0) {
       // 从返回结果中获取 Readwise 分配的 highlight ID
+      // 注意：POST /highlights/ 返回的对象 ID 其实是 book_id，真实的高亮 ID 在 modified_highlights 数组里
       const createdHighlights = result;
       let readwiseHighlightId = null;
       if (Array.isArray(createdHighlights) && createdHighlights.length > 0) {
-        readwiseHighlightId = createdHighlights[0].id;
+        if (createdHighlights[0].modified_highlights && createdHighlights[0].modified_highlights.length > 0) {
+          readwiseHighlightId = createdHighlights[0].modified_highlights[0];
+        } else if (createdHighlights[0].id) {
+          readwiseHighlightId = createdHighlights[0].id; // Fallback
+        }
       } else if (createdHighlights?.id) {
         readwiseHighlightId = createdHighlights.id;
       }

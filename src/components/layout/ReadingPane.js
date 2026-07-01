@@ -109,10 +109,11 @@ export default function ReadingPane() {
 
   // 渲染高亮
   useEffect(() => {
+    let timerId = null;
     if (articleRef.current && !isContentLoading && !isLoadingHighlights && selectedDoc?.html_content) {
       // 必须先重置 DOM 避免多次添加 <mark> 导致文本 offset 计算错误
       articleRef.current.innerHTML = sanitizeArticleHtml(selectedDoc.html_content);
-      setTimeout(() => {
+      timerId = setTimeout(() => {
         if (!articleRef.current) return;
         restoreHighlights(articleRef.current, highlights, (hl, e) => {
           const rect = e.target.getBoundingClientRect();
@@ -120,6 +121,9 @@ export default function ReadingPane() {
         });
       }, 50);
     }
+    return () => {
+      if (timerId !== null) clearTimeout(timerId);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedDoc?.id, isContentLoading, isLoadingHighlights, highlights]);
 
@@ -483,12 +487,13 @@ export default function ReadingPane() {
   };
 
   const handleDeleteHighlight = async (id) => {
+    // 立即关闭当前编辑器并从高亮列表中移除，提供即时视觉反馈
+    setEditingHighlight(prev => (prev?.id === id ? null : prev));
+    setHighlights(prev => prev.filter(h => h.id !== id));
     try {
       await fetch(`/api/highlights/${id}`, { method: 'DELETE' });
-      setHighlights(prev => prev.filter(h => h.id !== id));
-      setEditingHighlight(null);
     } catch (e) {
-      console.error(e);
+      console.error('删除高亮 API 调用失败:', e);
     }
   };
 
@@ -598,13 +603,16 @@ export default function ReadingPane() {
 
       {/* 编辑已有高亮工具栏 */}
       {editingHighlight && (
-        <HighlightEditor 
-          highlight={editingHighlight} 
-          onUpdate={handleUpdateHighlight}
-          onDelete={handleDeleteHighlight}
-          onClose={() => setEditingHighlight(null)}
-          allTags={allTags}
-        />
+        <div onMouseUp={(e) => e.stopPropagation()}>
+          <HighlightEditor 
+            key={editingHighlight.id}
+            highlight={editingHighlight} 
+            onUpdate={handleUpdateHighlight}
+            onDelete={handleDeleteHighlight}
+            onClose={() => setEditingHighlight(null)}
+            allTags={allTags}
+          />
+        </div>
       )}
 
       <div style={{ display: 'flex', flexDirection: 'row', flex: 1, overflow: 'hidden', minWidth: 0 }}>
