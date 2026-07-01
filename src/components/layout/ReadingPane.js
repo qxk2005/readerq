@@ -43,6 +43,8 @@ export default function ReadingPane() {
     setIsLoadingHighlights(true);
     setHighlights([]);
     setHighlightsError(null);
+    setEditingHighlight(null);
+    setSelection(null);
   }
 
   const articleRef = useRef(null);
