@@ -46,6 +46,7 @@ jobs:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
 
       - name: List dist contents
+        shell: bash
         run: ls -lhR dist/ || true
 
       - name: Upload Artifacts
