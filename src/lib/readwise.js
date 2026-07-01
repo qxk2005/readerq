@@ -274,6 +274,38 @@ class ReadwiseAPI {
   }
 
   /**
+   * 从 Readwise 删除高亮
+   * 使用 Readwise API v2 接口: DELETE /api/v2/highlights/<id>
+   * 
+   * @param {string|number} readwiseHighlightId - Readwise 分配的高亮 ID
+   */
+  async deleteReadwiseHighlight(readwiseHighlightId) {
+    if (!readwiseHighlightId) {
+      console.warn('[Readwise删除] 缺少 readwiseHighlightId，跳过远程删除');
+      return;
+    }
+
+    const response = await fetch(`https://readwise.io/api/v2/highlights/${readwiseHighlightId}`, {
+      method: 'DELETE',
+      headers: this.headers,
+      signal: AbortSignal.timeout(15000),
+    });
+
+    if (response.status === 204) {
+      console.log(`[Readwise删除] 高亮 ${readwiseHighlightId} 已从 Readwise 删除`);
+      return;
+    }
+
+    if (response.status === 404) {
+      console.warn(`[Readwise删除] 高亮 ${readwiseHighlightId} 在 Readwise 中不存在，可能已被删除`);
+      return;
+    }
+
+    const errorText = await response.text();
+    throw new Error(`Readwise 删除高亮失败 (${response.status}): ${errorText}`);
+  }
+
+  /**
    * 使用 V2 Export API 批量拉取所有高亮
    * V2 Export 按 book 分组返回高亮，每个 book 包含 source_url 等信息
    * 用于同步时补全通过 V2 API 创建的高亮（这些高亮不会出现在 V3 list 结果中）

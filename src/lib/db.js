@@ -89,6 +89,7 @@ function initSchema(db) {
       location_end INTEGER,
       created_at TEXT,
       tags_json TEXT DEFAULT '{}',
+      readwise_highlight_id TEXT,
       FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE CASCADE
     );
 
@@ -113,8 +114,11 @@ function initSchema(db) {
     if (!tableInfo.find(c => c.name === 'tags_json')) {
       db.prepare("ALTER TABLE highlights ADD COLUMN tags_json TEXT DEFAULT '{}'").run();
     }
+    if (!tableInfo.find(c => c.name === 'readwise_highlight_id')) {
+      db.prepare("ALTER TABLE highlights ADD COLUMN readwise_highlight_id TEXT").run();
+    }
   } catch (e) {
-    console.error('Migration error (highlights.tags_json):', e);
+    console.error('Migration error (highlights columns):', e);
   }
 }
 
@@ -356,11 +360,12 @@ export function upsertHighlight(highlight) {
 
   db.prepare(`
     INSERT OR REPLACE INTO highlights
-    (id, document_id, text, note, color, location_start, location_end, created_at, tags_json)
-    VALUES (@id, @document_id, @text, @note, @color, @location_start, @location_end, @created_at, @tags_json)
+    (id, document_id, text, note, color, location_start, location_end, created_at, tags_json, readwise_highlight_id)
+    VALUES (@id, @document_id, @text, @note, @color, @location_start, @location_end, @created_at, @tags_json, @readwise_highlight_id)
   `).run({
     ...highlight,
-    tags_json: JSON.stringify(highlight.tags || {})
+    tags_json: JSON.stringify(highlight.tags || {}),
+    readwise_highlight_id: highlight.readwise_highlight_id || null
   });
 }
 

@@ -62,12 +62,24 @@ export async function POST(request) {
         const { getCachedDocument } = await import('@/lib/db');
         const doc = getCachedDocument(highlight.document_id);
         if (doc) {
-          await client.createReadwiseHighlight({
+          const result = await client.createReadwiseHighlight({
             ...highlight,
             title: doc.title,
             source_url: doc.source_url || doc.url,
           });
           syncedToReadwise = true;
+          
+          // 保存 Readwise 返回的高亮 ID，用于后续的删除/更新同步
+          let readwiseHighlightId = null;
+          if (Array.isArray(result) && result.length > 0) {
+            if (result[0].modified_highlights && result[0].modified_highlights.length > 0) {
+              readwiseHighlightId = String(result[0].modified_highlights[0]);
+            }
+          }
+          if (readwiseHighlightId) {
+            highlight.readwise_highlight_id = readwiseHighlightId;
+            upsertHighlight(highlight);
+          }
         } else {
           syncError = '本地未找到关联文档，无法同步';
           console.warn(`[高亮同步] 文档 ${highlight.document_id} 未在本地缓存中找到`);
