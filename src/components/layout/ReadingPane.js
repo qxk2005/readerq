@@ -536,15 +536,9 @@ export default function ReadingPane() {
       {/* 动态注入微动画 */}
       <style>{`
         .highlight-toolbar {
-          position: fixed;
-          background: var(--color-bg-primary);
-          border: 1px solid var(--color-border);
-          box-shadow: var(--shadow-lg);
-          border-radius: var(--radius-md);
-          padding: var(--space-2);
-          display: flex;
           gap: var(--space-2);
-          z-index: 1000;
+          padding: var(--space-2);
+          border-radius: var(--radius-md);
           transform: translate(-50%, 0);
           margin-top: 8px;
         }
