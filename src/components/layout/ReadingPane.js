@@ -35,6 +35,9 @@ export default function ReadingPane() {
   const [isSavingDocMetadata, setIsSavingDocMetadata] = useState(false);
   const [highlightsError, setHighlightsError] = useState(null);
   const [imageUploadStatus, setImageUploadStatus] = useState({}); // { [highlightId]: { status: 'uploading'|'success'|'error', images: [] } }
+  const [sidebarEditingId, setSidebarEditingId] = useState(null);
+  const [sidebarEditNote, setSidebarEditNote] = useState('');
+  const [sidebarEditTags, setSidebarEditTags] = useState([]);
   
   // 在渲染阶段同步检测文档切换，瞬间进入 Loading 状态并重置高亮，防止闪烁
   const [prevDocId, setPrevDocId] = useState(null);
@@ -918,6 +921,7 @@ export default function ReadingPane() {
                     // 去掉 Markdown 图片语法后的纯文本显示
                     const textWithoutImages = hl.text.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '').trim();
                     const uploadStatus = imageUploadStatus[hl.id];
+                    const isEditing = sidebarEditingId === hl.id;
 
                     return (
                     <div 
@@ -927,16 +931,22 @@ export default function ReadingPane() {
                         padding: 'var(--space-3)', 
                         backgroundColor: 'var(--color-bg-primary)', 
                         borderRadius: 'var(--radius-md)', 
-                        border: '1px solid var(--color-border)',
-                        boxShadow: 'var(--shadow-sm)',
-                        cursor: 'pointer'
+                        border: isEditing ? '1px solid var(--color-accent)' : '1px solid var(--color-border)',
+                        boxShadow: isEditing ? '0 0 0 1px var(--color-accent)' : 'var(--shadow-sm)',
+                        cursor: isEditing ? 'default' : 'pointer',
+                        transition: 'border-color 0.15s, box-shadow 0.15s'
                       }}
                       onClick={() => {
+                        if (isEditing) return;
+                        // 滚动到正文中的高亮位置
                         const mark = articleRef.current?.querySelector(`mark[data-highlight-id="${hl.id}"]`);
                         if (mark) {
                           mark.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                          setEditingHighlight({ ...hl, rect: mark.getBoundingClientRect() });
                         }
+                        // 展开侧边栏编辑
+                        setSidebarEditingId(hl.id);
+                        setSidebarEditNote(hl.note || '');
+                        setSidebarEditTags(hl.tags ? Object.keys(hl.tags) : []);
                       }}
                     >
                       {/* 高亮文本 */}
@@ -1058,91 +1068,177 @@ export default function ReadingPane() {
                           )}
                         </div>
                       )}
-                      
-                      {/* Verify Sync Status */}
-                      <div style={{ marginTop: 'var(--space-2)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        {verifyStatus[hl.id] ? (
-                          <span style={{ fontSize: '11px', color: verifyStatus[hl.id].synced ? 'var(--color-success)' : 'var(--color-danger)' }}>
-                            {verifyStatus[hl.id].synced ? <span style={{display:'flex', alignItems:'center', gap:'4px'}}><CheckCircle2 size={12}/>已同步至 Readwise</span> : <span style={{display:'flex', alignItems:'center', gap:'4px'}}><XCircle size={12}/>{verifyStatus[hl.id].message}</span>}
-                          </span>
-                        ) : (
-                          <span style={{ fontSize: '11px', color: 'var(--color-text-tertiary)' }}>未验证同步</span>
-                        )}
-                        
-                        <div style={{ display: 'flex', gap: '4px' }}>
-                          {/* 重新同步按钮（仅在验证失败时显示） */}
-                          {verifyStatus[hl.id] && !verifyStatus[hl.id].synced && (
-                            <button 
-                              className="btn btn-ghost btn-sm" 
-                              style={{ fontSize: '11px', padding: '2px 6px', height: 'auto', minHeight: 'auto', color: 'var(--color-accent)' }}
-                              disabled={verifyingHlId === hl.id}
-                              onClick={async (e) => {
-                                e.stopPropagation();
-                                setVerifyingHlId(hl.id);
-                                try {
-                                  const res = await fetch('/api/highlights/resync', {
-                                    method: 'POST',
-                                    headers: { 'Content-Type': 'application/json' },
-                                    body: JSON.stringify({ highlightId: hl.id }),
-                                  });
-                                  const data = await res.json();
-                                  if (data.synced_to_readwise) {
-                                    setVerifyStatus(prev => ({ ...prev, [hl.id]: { synced: true } }));
-                                  } else {
-                                    setVerifyStatus(prev => ({ ...prev, [hl.id]: { synced: false, message: data.error || '重新同步失败' } }));
-                                  }
-                                } catch (err) {
-                                  setVerifyStatus(prev => ({ ...prev, [hl.id]: { synced: false, message: '重新同步请求失败' } }));
-                                } finally {
-                                  setVerifyingHlId(null);
+
+                      {/* ===== 侧边栏内联编辑区域 ===== */}
+                      {isEditing ? (
+                        <div style={{ marginTop: 'var(--space-3)', borderTop: '1px solid var(--color-border-light)', paddingTop: 'var(--space-3)' }} onClick={(e) => e.stopPropagation()}>
+                          {/* 颜色选择 */}
+                          <div style={{ display: 'flex', gap: '6px', marginBottom: 'var(--space-2)' }}>
+                            {['yellow', 'green', 'blue', 'purple', 'red'].map(c => (
+                              <button 
+                                key={c}
+                                style={{
+                                  width: '20px', height: '20px', borderRadius: '50%',
+                                  backgroundColor: `var(--highlight-${c})`,
+                                  border: hl.color === c ? '2px solid var(--color-text-primary)' : '1px solid rgba(0,0,0,0.1)',
+                                  cursor: 'pointer', padding: 0
+                                }}
+                                onClick={() => handleUpdateHighlight(hl.id, { color: c })}
+                              />
+                            ))}
+                          </div>
+
+                          {/* 笔记编辑 */}
+                          <textarea
+                            placeholder="添加笔记..."
+                            value={sidebarEditNote}
+                            onChange={(e) => setSidebarEditNote(e.target.value)}
+                            style={{
+                              width: '100%', minHeight: '50px', padding: 'var(--space-2)',
+                              fontSize: '12px', borderRadius: 'var(--radius-sm)',
+                              border: '1px solid var(--color-border)',
+                              backgroundColor: 'var(--color-bg-secondary)',
+                              resize: 'vertical', color: 'var(--color-text-primary)'
+                            }}
+                          />
+
+                          {/* 标签编辑 */}
+                          <div style={{ marginTop: 'var(--space-2)' }}>
+                            <TagInput
+                              value={sidebarEditTags}
+                              onChange={setSidebarEditTags}
+                              allTags={allTags.map(t => t.name)}
+                              placeholder="添加标签..."
+                            />
+                          </div>
+
+                          {/* 操作按钮 */}
+                          <div style={{ display: 'flex', gap: '6px', marginTop: 'var(--space-2)', justifyContent: 'space-between' }}>
+                            <button
+                              className="btn btn-ghost btn-sm"
+                              style={{ color: 'var(--color-danger)', fontSize: '12px', padding: '4px 8px' }}
+                              onClick={() => {
+                                if (confirm('确定要删除这条高亮吗？')) {
+                                  handleDeleteHighlight(hl.id);
+                                  setSidebarEditingId(null);
                                 }
                               }}
                             >
-                              {verifyingHlId === hl.id ? '同步中...' : '重新同步'}
+                              🗑️ 删除
                             </button>
-                          )}
-                          <button 
-                            className="btn btn-ghost btn-sm" 
-                            style={{ fontSize: '11px', padding: '2px 6px', height: 'auto', minHeight: 'auto' }}
-                            disabled={verifyingHlId === hl.id}
-                            onClick={async (e) => {
-                              e.stopPropagation();
-                              setVerifyingHlId(hl.id);
-                              try {
-                                const res = await fetch(`/api/highlights/${hl.id}/verify`);
-                                const data = await res.json();
-                                setVerifyStatus(prev => ({
-                                  ...prev,
-                                  [hl.id]: data.synced ? { synced: true } : { synced: false, message: data.message || '未找到' }
-                                }));
-                              } catch (err) {
-                                setVerifyStatus(prev => ({
-                                  ...prev,
-                                  [hl.id]: { synced: false, message: '验证请求失败' }
-                                }));
-                              } finally {
-                                setVerifyingHlId(null);
-                              }
-                            }}
-                          >
-                            {verifyingHlId === hl.id ? '正在验证...' : '验证同步状态'}
-                          </button>
+                            <div style={{ display: 'flex', gap: '6px' }}>
+                              <button
+                                className="btn btn-ghost btn-sm"
+                                style={{ fontSize: '12px', padding: '4px 8px' }}
+                                onClick={() => setSidebarEditingId(null)}
+                              >
+                                取消
+                              </button>
+                              <button
+                                className="btn btn-primary btn-sm"
+                                style={{ fontSize: '12px', padding: '4px 8px' }}
+                                onClick={() => {
+                                  const tagsObj = {};
+                                  sidebarEditTags.forEach(t => tagsObj[t] = 1);
+                                  if (!tagsObj['readerq']) tagsObj['readerq'] = 1;
+                                  handleUpdateHighlight(hl.id, { note: sidebarEditNote, tags: tagsObj });
+                                  setSidebarEditingId(null);
+                                }}
+                              >
+                                保存
+                              </button>
+                            </div>
+                          </div>
                         </div>
-                      </div>
+                      ) : (
+                        /* ===== 非编辑态：显示笔记、标签和同步状态 ===== */
+                        <>
+                          {/* Verify Sync Status */}
+                          <div style={{ marginTop: 'var(--space-2)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            {verifyStatus[hl.id] ? (
+                              <span style={{ fontSize: '11px', color: verifyStatus[hl.id].synced ? 'var(--color-success)' : 'var(--color-danger)' }}>
+                                {verifyStatus[hl.id].synced ? <span style={{display:'flex', alignItems:'center', gap:'4px'}}><CheckCircle2 size={12}/>已同步至 Readwise</span> : <span style={{display:'flex', alignItems:'center', gap:'4px'}}><XCircle size={12}/>{verifyStatus[hl.id].message}</span>}
+                              </span>
+                            ) : (
+                              <span style={{ fontSize: '11px', color: 'var(--color-text-tertiary)' }}>未验证同步</span>
+                            )}
+                            
+                            <div style={{ display: 'flex', gap: '4px' }}>
+                              {/* 重新同步按钮（仅在验证失败时显示） */}
+                              {verifyStatus[hl.id] && !verifyStatus[hl.id].synced && (
+                                <button 
+                                  className="btn btn-ghost btn-sm" 
+                                  style={{ fontSize: '11px', padding: '2px 6px', height: 'auto', minHeight: 'auto', color: 'var(--color-accent)' }}
+                                  disabled={verifyingHlId === hl.id}
+                                  onClick={async (e) => {
+                                    e.stopPropagation();
+                                    setVerifyingHlId(hl.id);
+                                    try {
+                                      const res = await fetch('/api/highlights/resync', {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({ highlightId: hl.id }),
+                                      });
+                                      const data = await res.json();
+                                      if (data.synced_to_readwise) {
+                                        setVerifyStatus(prev => ({ ...prev, [hl.id]: { synced: true } }));
+                                      } else {
+                                        setVerifyStatus(prev => ({ ...prev, [hl.id]: { synced: false, message: data.error || '重新同步失败' } }));
+                                      }
+                                    } catch (err) {
+                                      setVerifyStatus(prev => ({ ...prev, [hl.id]: { synced: false, message: '重新同步请求失败' } }));
+                                    } finally {
+                                      setVerifyingHlId(null);
+                                    }
+                                  }}
+                                >
+                                  {verifyingHlId === hl.id ? '同步中...' : '重新同步'}
+                                </button>
+                              )}
+                              <button 
+                                className="btn btn-ghost btn-sm" 
+                                style={{ fontSize: '11px', padding: '2px 6px', height: 'auto', minHeight: 'auto' }}
+                                disabled={verifyingHlId === hl.id}
+                                onClick={async (e) => {
+                                  e.stopPropagation();
+                                  setVerifyingHlId(hl.id);
+                                  try {
+                                    const res = await fetch(`/api/highlights/${hl.id}/verify`);
+                                    const data = await res.json();
+                                    setVerifyStatus(prev => ({
+                                      ...prev,
+                                      [hl.id]: data.synced ? { synced: true } : { synced: false, message: data.message || '未找到' }
+                                    }));
+                                  } catch (err) {
+                                    setVerifyStatus(prev => ({
+                                      ...prev,
+                                      [hl.id]: { synced: false, message: '验证请求失败' }
+                                    }));
+                                  } finally {
+                                    setVerifyingHlId(null);
+                                  }
+                                }}
+                              >
+                                {verifyingHlId === hl.id ? '正在验证...' : '验证同步状态'}
+                              </button>
+                            </div>
+                          </div>
 
-                      {hl.note && (
-                        <div style={{ marginTop: 'var(--space-2)', fontSize: '12px', color: 'var(--color-text-secondary)', fontStyle: 'italic' }}>
-                          <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><Edit3 size={12} /> {hl.note}</span>
-                        </div>
-                      )}
-                      {hl.tags && Object.keys(hl.tags).length > 0 && (
-                        <div style={{ marginTop: 'var(--space-2)', display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
-                          {Object.keys(hl.tags).map(t => (
-                            <span key={t} style={{ fontSize: '11px', color: 'var(--color-text-tertiary)', background: 'var(--color-bg-tertiary)', padding: '2px 6px', borderRadius: '4px' }}>
-                              #{t}
-                            </span>
-                          ))}
-                        </div>
+                          {hl.note && (
+                            <div style={{ marginTop: 'var(--space-2)', fontSize: '12px', color: 'var(--color-text-secondary)', fontStyle: 'italic' }}>
+                              <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><Edit3 size={12} /> {hl.note}</span>
+                            </div>
+                          )}
+                          {hl.tags && Object.keys(hl.tags).length > 0 && (
+                            <div style={{ marginTop: 'var(--space-2)', display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                              {Object.keys(hl.tags).map(t => (
+                                <span key={t} style={{ fontSize: '11px', color: 'var(--color-text-tertiary)', background: 'var(--color-bg-tertiary)', padding: '2px 6px', borderRadius: '4px' }}>
+                                  #{t}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </>
                       )}
                     </div>
                   );})}
