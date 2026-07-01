@@ -363,6 +363,13 @@ export default function ReadingPane() {
         // Show edit UI immediately after creation
         setEditingHighlight({ ...createdHighlight, rect: selectionRect });
 
+        // 根据同步结果自动设置验证状态
+        if (data.synced_to_readwise) {
+          setVerifyStatus(prev => ({ ...prev, [createdHighlight.id]: { synced: true } }));
+        } else if (data.sync_error) {
+          setVerifyStatus(prev => ({ ...prev, [createdHighlight.id]: { synced: false, message: data.sync_error } }));
+        }
+
         // 如果选区包含图片，异步上传到 OSS
         if (selectionImages.length > 0) {
           uploadImagesToOss(createdHighlight.id, createdHighlight.text, selectionImages);
@@ -1048,32 +1055,65 @@ export default function ReadingPane() {
                           <span style={{ fontSize: '11px', color: 'var(--color-text-tertiary)' }}>未验证同步</span>
                         )}
                         
-                        <button 
-                          className="btn btn-ghost btn-sm" 
-                          style={{ fontSize: '11px', padding: '2px 6px', height: 'auto', minHeight: 'auto' }}
-                          disabled={verifyingHlId === hl.id}
-                          onClick={async (e) => {
-                            e.stopPropagation();
-                            setVerifyingHlId(hl.id);
-                            try {
-                              const res = await fetch(`/api/highlights/${hl.id}/verify`);
-                              const data = await res.json();
-                              setVerifyStatus(prev => ({
-                                ...prev,
-                                [hl.id]: data.synced ? { synced: true } : { synced: false, message: data.message || '未找到' }
-                              }));
-                            } catch (err) {
-                              setVerifyStatus(prev => ({
-                                ...prev,
-                                [hl.id]: { synced: false, message: '验证请求失败' }
-                              }));
-                            } finally {
-                              setVerifyingHlId(null);
-                            }
-                          }}
-                        >
-                          {verifyingHlId === hl.id ? '正在验证...' : '验证同步状态'}
-                        </button>
+                        <div style={{ display: 'flex', gap: '4px' }}>
+                          {/* 重新同步按钮（仅在验证失败时显示） */}
+                          {verifyStatus[hl.id] && !verifyStatus[hl.id].synced && (
+                            <button 
+                              className="btn btn-ghost btn-sm" 
+                              style={{ fontSize: '11px', padding: '2px 6px', height: 'auto', minHeight: 'auto', color: 'var(--color-accent)' }}
+                              disabled={verifyingHlId === hl.id}
+                              onClick={async (e) => {
+                                e.stopPropagation();
+                                setVerifyingHlId(hl.id);
+                                try {
+                                  const res = await fetch('/api/highlights/resync', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ highlightId: hl.id }),
+                                  });
+                                  const data = await res.json();
+                                  if (data.synced_to_readwise) {
+                                    setVerifyStatus(prev => ({ ...prev, [hl.id]: { synced: true } }));
+                                  } else {
+                                    setVerifyStatus(prev => ({ ...prev, [hl.id]: { synced: false, message: data.error || '重新同步失败' } }));
+                                  }
+                                } catch (err) {
+                                  setVerifyStatus(prev => ({ ...prev, [hl.id]: { synced: false, message: '重新同步请求失败' } }));
+                                } finally {
+                                  setVerifyingHlId(null);
+                                }
+                              }}
+                            >
+                              {verifyingHlId === hl.id ? '同步中...' : '重新同步'}
+                            </button>
+                          )}
+                          <button 
+                            className="btn btn-ghost btn-sm" 
+                            style={{ fontSize: '11px', padding: '2px 6px', height: 'auto', minHeight: 'auto' }}
+                            disabled={verifyingHlId === hl.id}
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              setVerifyingHlId(hl.id);
+                              try {
+                                const res = await fetch(`/api/highlights/${hl.id}/verify`);
+                                const data = await res.json();
+                                setVerifyStatus(prev => ({
+                                  ...prev,
+                                  [hl.id]: data.synced ? { synced: true } : { synced: false, message: data.message || '未找到' }
+                                }));
+                              } catch (err) {
+                                setVerifyStatus(prev => ({
+                                  ...prev,
+                                  [hl.id]: { synced: false, message: '验证请求失败' }
+                                }));
+                              } finally {
+                                setVerifyingHlId(null);
+                              }
+                            }}
+                          >
+                            {verifyingHlId === hl.id ? '正在验证...' : '验证同步状态'}
+                          </button>
+                        </div>
                       </div>
 
                       {hl.note && (

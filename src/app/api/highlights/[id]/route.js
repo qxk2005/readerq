@@ -20,6 +20,8 @@ export async function PATCH(request, { params }) {
     upsertHighlight(updated);
 
     // 同步更新到 Readwise (upsert)
+    let syncedToReadwise = false;
+    let syncError = null;
     try {
       const client = getServerReadwiseClient();
       const { getCachedDocument } = await import('@/lib/db');
@@ -30,12 +32,16 @@ export async function PATCH(request, { params }) {
           title: doc.title,
           source_url: doc.source_url || doc.url,
         });
+        syncedToReadwise = true;
+      } else {
+        syncError = '本地未找到关联文档，无法同步';
       }
-    } catch (syncError) {
-      console.error('同步更新到 Readwise 失败:', syncError.message);
+    } catch (err) {
+      syncError = err.message;
+      console.error('同步更新到 Readwise 失败:', err.message);
     }
     
-    return NextResponse.json({ success: true, highlight: updated });
+    return NextResponse.json({ success: true, highlight: updated, synced_to_readwise: syncedToReadwise, sync_error: syncError });
   } catch (error) {
     console.error('更新高亮失败:', error);
     return NextResponse.json(

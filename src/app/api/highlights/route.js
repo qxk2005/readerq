@@ -53,6 +53,8 @@ export async function POST(request) {
     upsertHighlight(highlight);
 
     // 同步到 Readwise
+    let syncedToReadwise = false;
+    let syncError = null;
     try {
       const client = getServerReadwiseClient();
       // 获取文档信息用于同步
@@ -64,13 +66,17 @@ export async function POST(request) {
           title: doc.title,
           source_url: doc.source_url || doc.url,
         });
+        syncedToReadwise = true;
+      } else {
+        syncError = '本地未找到关联文档，无法同步';
+        console.warn(`[高亮同步] 文档 ${highlight.document_id} 未在本地缓存中找到`);
       }
-    } catch (syncError) {
-      console.error('同步高亮到 Readwise 失败:', syncError.message);
-      // 本地保存成功即可，不影响用户操作
+    } catch (err) {
+      syncError = err.message;
+      console.error('同步高亮到 Readwise 失败:', err.message);
     }
 
-    return NextResponse.json({ success: true, highlight });
+    return NextResponse.json({ success: true, highlight, synced_to_readwise: syncedToReadwise, sync_error: syncError });
   } catch (error) {
     console.error('创建高亮失败:', error);
     return NextResponse.json(
