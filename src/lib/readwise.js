@@ -306,6 +306,91 @@ class ReadwiseAPI {
   }
 
   /**
+   * 通过文本内容在 Readwise 中查找并删除高亮
+   * 用于没有存储 readwise_highlight_id 的旧高亮
+   * 
+   * 策略: 遍历 V2 highlights 列表 API，通过文本前缀匹配找到目标高亮后删除
+   * 
+   * @param {string} highlightText - 高亮的文本内容
+   * @param {string} sourceUrl - 文档的 source_url (未使用但保留接口兼容)
+   * @param {string} [docTitle] - 文档标题 (未使用但保留接口兼容)
+   * @returns {number} 删除的高亮数量
+   */
+  async findAndDeleteReadwiseHighlight(highlightText, sourceUrl, docTitle) {
+    if (!highlightText) {
+      console.warn('[Readwise查找删除] 缺少文本内容，跳过');
+      return 0;
+    }
+
+    // 取文本前 60 个字符用于匹配（去除 Markdown 图片语法）
+    const textPrefix = highlightText.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '').trim().substring(0, 60);
+    if (!textPrefix || textPrefix.length < 10) {
+      console.warn('[Readwise查找删除] 清理后文本太短，跳过');
+      return 0;
+    }
+
+    let deletedCount = 0;
+    let nextPage = `https://readwise.io/api/v2/highlights/?page_size=1000`;
+    let pageCount = 0;
+    const maxPages = 5; // 最多搜索 5 页 (5000 条)
+    let targetBookId = null; // 锁定到第一个匹配的 book_id，防止误删其他文档的高亮
+
+    console.log(`[Readwise查找删除] 搜索文本前缀: "${textPrefix.substring(0, 40)}..."`);
+
+    while (nextPage && pageCount < maxPages) {
+      pageCount++;
+      try {
+        const response = await fetch(nextPage, {
+          headers: this.headers,
+          signal: AbortSignal.timeout(30000),
+        });
+
+        if (!response.ok) {
+          console.error(`[Readwise查找删除] API 请求失败: ${response.status}`);
+          break;
+        }
+
+        const data = await response.json();
+        
+        for (const hl of (data.results || [])) {
+          const hlTextClean = (hl.text || '').replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '').replace(/\[图片[^\]]*\]/g, '').trim();
+          if (hlTextClean.startsWith(textPrefix) || textPrefix.startsWith(hlTextClean.substring(0, 60))) {
+            // 第一次匹配时记录 book_id，后续只删除同 book 的高亮
+            if (targetBookId === null) {
+              targetBookId = hl.book_id;
+              console.log(`[Readwise查找删除] 锁定 book_id=${targetBookId}`);
+            }
+            
+            if (hl.book_id !== targetBookId) {
+              console.log(`[Readwise查找删除] 跳过非目标 book 的匹配: ID=${hl.id}, book_id=${hl.book_id}`);
+              continue;
+            }
+            
+            console.log(`[Readwise查找删除] 匹配到高亮 ID=${hl.id}, book_id=${hl.book_id}`);
+            try {
+              await this.deleteReadwiseHighlight(hl.id);
+              deletedCount++;
+            } catch (delErr) {
+              console.error(`[Readwise查找删除] 删除 ID=${hl.id} 失败:`, delErr.message);
+            }
+          }
+        }
+
+        // 找到并删除后就停止，不继续翻页
+        if (deletedCount > 0) break;
+
+        nextPage = data.next || null;
+      } catch (err) {
+        console.error('[Readwise查找删除] 搜索异常:', err.message);
+        break;
+      }
+    }
+
+    console.log(`[Readwise查找删除] 完成，共删除 ${deletedCount} 条 (搜索了 ${pageCount} 页)`);
+    return deletedCount;
+  }
+
+  /**
    * 使用 V2 Export API 批量拉取所有高亮
    * V2 Export 按 book 分组返回高亮，每个 book 包含 source_url 等信息
    * 用于同步时补全通过 V2 API 创建的高亮（这些高亮不会出现在 V3 list 结果中）

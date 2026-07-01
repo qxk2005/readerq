@@ -118,17 +118,31 @@ export async function DELETE(request, { params }) {
   try {
     const { id } = await params;
     
-    // 先获取高亮信息以得到 readwise_highlight_id
+    // 先获取高亮信息以得到 readwise_highlight_id 和文本
     const existing = getHighlight(id);
     
     // 先删除本地记录
     deleteHighlight(id);
     
     // 同步删除到 Readwise
-    if (existing?.readwise_highlight_id) {
+    if (existing) {
       try {
         const client = getServerReadwiseClient();
-        await client.deleteReadwiseHighlight(existing.readwise_highlight_id);
+        
+        if (existing.readwise_highlight_id) {
+          // 有 Readwise ID → 直接删除
+          await client.deleteReadwiseHighlight(existing.readwise_highlight_id);
+        } else if (existing.text) {
+          // 没有 Readwise ID (旧高亮) → 通过文本匹配查找并删除
+          const { getCachedDocument } = await import('@/lib/db');
+          const doc = getCachedDocument(existing.document_id);
+          if (doc) {
+            const sourceUrl = doc.source_url || doc.url;
+            if (sourceUrl) {
+              await client.findAndDeleteReadwiseHighlight(existing.text, sourceUrl, doc.title);
+            }
+          }
+        }
       } catch (err) {
         console.error('同步删除到 Readwise 失败:', err.message);
         // 本地已删除，远程删除失败不阻塞
