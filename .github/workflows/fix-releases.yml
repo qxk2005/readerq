@@ -1,0 +1,77 @@
+name: Fix Releases
+
+on:
+  workflow_dispatch:
+
+jobs:
+  fix-releases:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Fix Historical Release Notes
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          REPO="${{ github.repository }}"
+          echo "Processing repository $REPO..."
+          
+          # Fetch all releases
+          RELEASES=$(curl -sSL -H "Authorization: Bearer $GITHUB_TOKEN" \
+               -H "Accept: application/vnd.github.v3+json" \
+               "https://api.github.com/repos/$REPO/releases?per_page=100")
+          
+          # Iterate over all tags
+          git tag --sort=-v:refname | while read TAG; do
+            echo "Processing tag $TAG"
+            
+            # Find the previous tag
+            PREVIOUS_TAG=$(git describe --tags --abbrev=0 "$TAG^" 2>/dev/null || echo "")
+            
+            echo "Previous tag: $PREVIOUS_TAG"
+            
+            # Generate the changelog
+            if [ -z "$PREVIOUS_TAG" ]; then
+              git log --pretty=format:"* %s (%h)" "$TAG" > changelog.txt
+            else
+              git log --pretty=format:"* %s (%h)" "$PREVIOUS_TAG..$TAG" > changelog.txt
+            fi
+            
+            # Add full changelog link
+            echo "" >> changelog.txt
+            if [ -z "$PREVIOUS_TAG" ]; then
+               echo "**Full Changelog**: https://github.com/$REPO/commits/$TAG" >> changelog.txt
+            else
+               echo "**Full Changelog**: https://github.com/$REPO/compare/$PREVIOUS_TAG...$TAG" >> changelog.txt
+            fi
+            
+            # Read changelog into a variable, escape newlines and quotes
+            BODY=$(cat changelog.txt)
+            
+            # Find the release ID for this tag
+            RELEASE_ID=$(echo "$RELEASES" | jq -r ".[] | select(.tag_name == \"$TAG\") | .id")
+            
+            if [ -n "$RELEASE_ID" ] && [ "$RELEASE_ID" != "null" ]; then
+              echo "Updating release ID $RELEASE_ID for tag $TAG"
+              
+              # Create a JSON payload
+              jq -n --arg body "$BODY" '{body: $body}' > payload.json
+              
+              # Update the release
+              curl -sSL -X PATCH \
+                -H "Authorization: Bearer $GITHUB_TOKEN" \
+                -H "Accept: application/vnd.github.v3+json" \
+                -d @payload.json \
+                "https://api.github.com/repos/$REPO/releases/$RELEASE_ID" > /dev/null
+              
+              echo "Updated $TAG successfully."
+            else
+              echo "No GitHub Release found for tag $TAG."
+            fi
+            
+            echo "-----------------------"
+          done
