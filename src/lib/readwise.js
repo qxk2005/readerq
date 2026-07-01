@@ -201,14 +201,19 @@ class ReadwiseAPI {
    * （Inline Tagging .tag 格式仅在 Readwise Reader 原生 UI 中有效，API 创建时不会自动解析）
    */
   async createReadwiseHighlight(highlight) {
+    const highlightData = {
+      text: highlight.text,
+      title: highlight.title,
+      source_url: highlight.source_url,
+      location: highlight.location_start,
+    };
+    // Readwise V2 API 不接受空字符串的 note 字段
+    if (highlight.note) {
+      highlightData.note = highlight.note;
+    }
+
     const payload = {
-      highlights: [{
-        text: highlight.text,
-        title: highlight.title,
-        source_url: highlight.source_url,
-        note: highlight.note || '',
-        location: highlight.location_start,
-      }]
+      highlights: [highlightData]
     };
 
     const response = await fetch('https://readwise.io/api/v2/highlights/', {
