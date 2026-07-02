@@ -123,7 +123,6 @@ fun NotebookHighlightCard(
     viewModel: MainViewModel
 ) {
     val isDark = theme == "dark"
-    val isSepia = theme == "sepia"
     
     val hlTags = remember(hl.tags_json) {
         try {
@@ -180,10 +179,11 @@ fun NotebookHighlightCard(
         "sepia" -> Color(0xFFE4DFD5)
         else -> Color(0xFF2D2D2D)
     }
+    val textColor = MaterialTheme.colorScheme.onBackground
 
     var isEditing by remember { mutableStateOf(false) }
-    var editNoteText by remember { mutableStateOf(hl.note ?: "") }
-    var editTagsText by remember { mutableStateOf(hlTags.joinToString(", ")) }
+    var editNoteText by remember(hl.note, isEditing) { mutableStateOf(hl.note ?: "") }
+    var editTagsText by remember(hlTags, isEditing) { mutableStateOf(hlTags.joinToString(", ")) }
 
     Card(
         colors = CardDefaults.cardColors(containerColor = cardBg),
@@ -195,15 +195,16 @@ fun NotebookHighlightCard(
                 color = if (isEditing) MaterialTheme.colorScheme.primary else Color.Transparent,
                 shape = RoundedCornerShape(12.dp)
             )
-            .clickable(enabled = !isEditing) {
-                isEditing = true
-                editNoteText = hl.note ?: ""
-                editTagsText = hlTags.joinToString(", ")
-            }
     ) {
         Column(modifier = Modifier.padding(12.dp)) {
-            // Highlight Quote Text & Inline Images
-            Row(modifier = Modifier.fillMaxWidth()) {
+            // Read-only Row which catches click event only when not editing
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(enabled = !isEditing) {
+                        isEditing = true
+                    }
+            ) {
                 Box(
                     modifier = Modifier
                         .width(4.dp)
@@ -260,7 +261,11 @@ fun NotebookHighlightCard(
                     onValueChange = { editNoteText = it },
                     placeholder = { Text("添加高亮笔记...", fontSize = 13.sp) },
                     label = { Text("批注", fontSize = 11.sp) },
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = textColor,
+                        unfocusedTextColor = textColor
+                    )
                 )
 
                 Spacer(modifier = Modifier.height(8.dp))
@@ -270,7 +275,11 @@ fun NotebookHighlightCard(
                     onValueChange = { editTagsText = it },
                     placeholder = { Text("添加标签 (逗号分隔)...", fontSize = 13.sp) },
                     label = { Text("标签", fontSize = 11.sp) },
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = textColor,
+                        unfocusedTextColor = textColor
+                    )
                 )
 
                 Spacer(modifier = Modifier.height(12.dp))
