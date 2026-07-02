@@ -11,6 +11,12 @@ interface DocumentDao {
     @Query("SELECT * FROM documents WHERE location = :location ORDER BY created_at DESC")
     fun getDocumentsByLocation(location: String): Flow<List<DocumentEntity>>
 
+    @Query("SELECT * FROM documents WHERE (title LIKE :query OR author LIKE :query OR summary LIKE :query) ORDER BY created_at DESC")
+    fun searchAllDocuments(query: String): Flow<List<DocumentEntity>>
+
+    @Query("SELECT * FROM documents WHERE location = :location AND (title LIKE :query OR author LIKE :query OR summary LIKE :query) ORDER BY created_at DESC")
+    fun searchDocumentsByLocation(location: String, query: String): Flow<List<DocumentEntity>>
+
     @Query("SELECT * FROM documents WHERE id = :id LIMIT 1")
     suspend fun getDocumentById(id: String): DocumentEntity?
 
@@ -28,6 +34,9 @@ interface DocumentDao {
 
     @Query("DELETE FROM documents")
     suspend fun deleteAll()
+
+    @Query("SELECT COUNT(*) FROM documents")
+    suspend fun getDocumentCount(): Int
 }
 
 @Dao

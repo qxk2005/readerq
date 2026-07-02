@@ -164,7 +164,7 @@ fun NotebookView(viewModel: MainViewModel) {
                     // Render inline editor if expanded
                     if (isEditing) {
                         Spacer(modifier = Modifier.height(12.dp))
-                        HorizontalDivider(color = Color(0xFF2D2D2D))
+                        Divider(color = Color(0xFF2D2D2D))
                         Spacer(modifier = Modifier.height(12.dp))
 
                         // Note text field

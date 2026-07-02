@@ -1,0 +1,25 @@
+# Gradle files
+.gradle/
+build/
+
+# Local configuration file (sdk path, etc.)
+local.properties
+
+# Log Files
+*.log
+
+# Android Studio local files
+.idea/workspace.xml
+.idea/libraries/
+.idea/caches/
+.idea/shelf/
+
+# Built-in APK/AAB outputs
+*.apk
+*.ap_
+*.aab
+
+# Device/Capture files
+captures/
+.externalNativeBuild/
+.cxx/

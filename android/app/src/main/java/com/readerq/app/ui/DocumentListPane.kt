@@ -10,6 +10,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -32,6 +34,9 @@ fun DocumentListPane(
     val selectedDoc by viewModel.selectedDoc.collectAsState()
     val isSyncing by viewModel.isSyncing.collectAsState()
     val currentView by viewModel.currentView.collectAsState()
+
+    var showSearchBar by remember { mutableStateOf(false) }
+    val searchQuery by viewModel.searchQuery.collectAsState()
 
     val views = listOf(
         "new" to "收件箱",
@@ -57,6 +62,20 @@ fun DocumentListPane(
                 )
             },
             actions = {
+                IconButton(onClick = { showSearchBar = !showSearchBar }) {
+                    Icon(
+                        imageVector = Icons.Default.Search,
+                        contentDescription = "Search",
+                        tint = Color.White
+                    )
+                }
+                IconButton(onClick = { viewModel.toggleTheme() }) {
+                    Icon(
+                        imageVector = Icons.Default.Star,
+                        contentDescription = "Theme",
+                        tint = Color.White
+                    )
+                }
                 IconButton(onClick = { viewModel.startSync() }, enabled = !isSyncing) {
                     Icon(
                         imageVector = Icons.Default.Refresh,
@@ -76,6 +95,29 @@ fun DocumentListPane(
                 containerColor = Color(0xFF1E1E1E)
             )
         )
+
+        // Search input bar
+        if (showSearchBar) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 6.dp)
+            ) {
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { viewModel.setSearchQuery(it) },
+                    placeholder = { Text("搜索标题、作者或摘要...", color = Color.Gray, fontSize = 14.sp) },
+                    singleLine = true,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = Color.White,
+                        unfocusedTextColor = Color.LightGray,
+                        focusedBorderColor = MaterialTheme.colorScheme.primary,
+                        unfocusedBorderColor = Color(0xFF2D2D2D)
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        }
 
         // Syncing indicator
         if (isSyncing) {
@@ -208,7 +250,7 @@ fun DocumentItemCard(
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     LinearProgressIndicator(
-                        progress = { doc.reading_progress },
+                        progress = doc.reading_progress,
                         modifier = Modifier
                             .weight(1f)
                             .height(2.dp)
