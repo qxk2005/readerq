@@ -36,6 +36,12 @@ fun ReadingPane(
     val doc by viewModel.selectedDoc.collectAsState()
     val highlights by viewModel.highlights.collectAsState()
 
+    val theme by viewModel.theme.collectAsState()
+    val fontSize by viewModel.fontSize.collectAsState()
+    val fontFamily by viewModel.fontFamily.collectAsState()
+    val lineHeight by viewModel.lineHeight.collectAsState()
+    val contentWidth by viewModel.contentWidth.collectAsState()
+
     var activeTab by remember { mutableStateOf("content") } // content, notebook, info, ai
     var selectedTextForHighlight by remember { mutableStateOf<String?>(null) }
     var showHighlightCreator by remember { mutableStateOf(false) }
@@ -48,7 +54,7 @@ fun ReadingPane(
         Column(
             modifier = modifier
                 .fillMaxSize()
-                .background(Color(0xFF121212))
+                .background(if (theme == "dark") Color(0xFF121212) else Color(0xFFFFFFFF))
         ) {
             // Document Top Bar
             TopAppBar(
@@ -119,6 +125,11 @@ fun ReadingPane(
                         HtmlContentViewer(
                             html = currentDoc.html_content ?: "加载中...",
                             highlights = highlights.map { it.text },
+                            theme = theme,
+                            fontFamily = fontFamily,
+                            fontSize = fontSize,
+                            lineHeight = lineHeight,
+                            contentWidth = contentWidth,
                             onTextSelected = { text ->
                                 selectedTextForHighlight = text
                                 showHighlightCreator = true
@@ -444,6 +455,11 @@ fun ReadingPane(
 fun HtmlContentViewer(
     html: String,
     highlights: List<String>,
+    theme: String,
+    fontFamily: String,
+    fontSize: Int,
+    lineHeight: Float,
+    contentWidth: Int,
     onTextSelected: (String) -> Unit
 ) {
     AndroidView(
@@ -487,13 +503,14 @@ fun HtmlContentViewer(
                 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
                 <style>
                     body {
-                        background-color: #121212;
-                        color: #E5E7EB;
-                        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-                        line-height: 1.6;
+                        background-color: ${if (theme == "dark") "#121212" else "#FFFFFF"};
+                        color: ${if (theme == "dark") "#E5E7EB" else "#111827"};
+                        font-family: ${if (fontFamily == "serif") "Georgia, Cambria, 'Times New Roman', Times, serif" else "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"};
+                        line-height: $lineHeight;
+                        font-size: ${fontSize}px;
+                        max-width: ${contentWidth}px;
+                        margin: 0 auto;
                         padding: 16px;
-                        margin: 0;
-                        font-size: 16px;
                     }
                     a { color: #6366F1; text-decoration: none; }
                     img { max-width: 100%; height: auto; border-radius: 8px; margin: 12px 0; }

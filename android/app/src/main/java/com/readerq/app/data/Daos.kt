@@ -37,6 +37,12 @@ interface DocumentDao {
 
     @Query("SELECT COUNT(*) FROM documents")
     suspend fun getDocumentCount(): Int
+
+    @Query("SELECT id FROM documents WHERE source_url = :url OR url = :url LIMIT 1")
+    suspend fun findDocumentIdBySourceUrl(url: String): String?
+
+    @Query("SELECT id FROM documents WHERE title = :title LIMIT 1")
+    suspend fun findDocumentIdByTitle(title: String): String?
 }
 
 @Dao
@@ -50,11 +56,17 @@ interface HighlightDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertHighlight(highlight: HighlightEntity)
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(highlights: List<HighlightEntity>)
+
     @Query("DELETE FROM highlights WHERE id = :id")
     suspend fun deleteHighlight(id: String)
 
     @Query("DELETE FROM highlights WHERE document_id = :documentId")
     suspend fun deleteHighlightsForDocument(documentId: String)
+
+    @Query("DELETE FROM highlights")
+    suspend fun deleteAll()
 }
 
 @Dao

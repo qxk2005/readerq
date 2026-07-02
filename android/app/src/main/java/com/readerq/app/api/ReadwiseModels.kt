@@ -11,14 +11,14 @@ data class ReadwiseDocResponse(
 
 @Serializable
 data class ReadwiseDocItem(
-    val id: String,
-    val url: String,
+    val id: String = "",
+    val url: String = "",
     val source_url: String? = null,
-    val title: String,
+    val title: String = "",
     val author: String? = null,
     val source: String? = null,
     val category: String? = null,
-    val location: String,
+    val location: String = "",
     val site_name: String? = null,
     val word_count: Int? = null,
     val reading_time: String? = null,
@@ -32,7 +32,8 @@ data class ReadwiseDocItem(
     val html_content: String? = null,
     val tags: Map<String, ReadwiseTagItem> = emptyMap(),
     val saved_at: String? = null,
-    val last_moved_at: String? = null
+    val last_moved_at: String? = null,
+    val parent_id: String? = null
 )
 
 @Serializable
@@ -117,4 +118,47 @@ data class ReadwiseV2TagItem(
 @Serializable
 data class ReadwiseV2TagRequest(
     val name: String
+)
+
+@Serializable
+data class ReadwiseExportResponse(
+    val count: Int,
+    val nextPageCursor: String? = null,
+    val results: List<ReadwiseExportBookItem> = emptyList()
+)
+
+@Serializable
+data class ReadwiseExportBookItem(
+    val user_book_id: Int,
+    val title: String,
+    val source_url: String? = null,
+    val readable_id: String? = null,
+    val asin: String? = null,
+    val external_id: String? = null,
+    val highlights: List<ReadwiseExportHighlightItem> = emptyList()
+)
+
+@Serializable
+data class ReadwiseExportHighlightItem(
+    val id: Int,
+    val text: String,
+    val note: String? = null,
+    val color: String? = null,
+    val location: Int? = null,
+    val highlighted_at: String? = null,
+    val created_at: String? = null,
+    val tags: List<ReadwiseExportTagItem> = emptyList()
+)
+
+@Serializable
+data class ReadwiseExportTagItem(
+    val id: Int,
+    val name: String
+)
+
+@Serializable
+data class ReadwiseTagResponse(
+    val count: Int? = null,
+    val results: List<ReadwiseTagItem> = emptyList(),
+    val nextPageCursor: String? = null
 )

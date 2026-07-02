@@ -9,12 +9,23 @@ import com.readerq.app.data.DocumentEntity
 import com.readerq.app.data.HighlightEntity
 import com.readerq.app.data.SettingEntity
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.encodeToString
+import io.ktor.client.HttpClient
+import io.ktor.client.engine.android.Android
+import io.ktor.client.request.get
+import io.ktor.client.request.header
+import io.ktor.client.statement.bodyAsText
+import io.ktor.http.HttpStatusCode
+import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
+import io.ktor.serialization.kotlinx.json.json
+import io.ktor.client.call.body
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -22,6 +33,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val docDao = db.documentDao()
     private val hlDao = db.highlightDao()
     private val settingDao = db.settingDao()
+
+    private var syncJob: Job? = null
 
     // UI States
     private val _currentView = MutableStateFlow("new") // inbox
@@ -32,6 +45,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _isSyncing = MutableStateFlow(false)
     val isSyncing: StateFlow<Boolean> = _isSyncing.asStateFlow()
+
+    private val _syncStatus = MutableStateFlow("idle")
+    val syncStatus: StateFlow<String> = _syncStatus.asStateFlow()
+
+    private val _syncProgress = MutableStateFlow<SyncProgress?>(null)
+    val syncProgress: StateFlow<SyncProgress?> = _syncProgress.asStateFlow()
+
+    private val _syncCounts = MutableStateFlow(SyncCounts(0, 0, null))
+    val syncCounts: StateFlow<SyncCounts> = _syncCounts.asStateFlow()
 
     private val _syncError = MutableStateFlow<String?>(null)
     val syncError: StateFlow<String?> = _syncError.asStateFlow()
@@ -45,6 +67,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _theme = MutableStateFlow("dark")
     val theme: StateFlow<String> = _theme.asStateFlow()
 
+    // Appearance settings
+    private val _fontSize = MutableStateFlow(16)
+    val fontSize: StateFlow<Int> = _fontSize.asStateFlow()
+
+    private val _fontFamily = MutableStateFlow("sans")
+    val fontFamily: StateFlow<String> = _fontFamily.asStateFlow()
+
+    private val _lineHeight = MutableStateFlow(1.6f)
+    val lineHeight: StateFlow<Float> = _lineHeight.asStateFlow()
+
+    private val _contentWidth = MutableStateFlow(700)
+    val contentWidth: StateFlow<Int> = _contentWidth.asStateFlow()
+
     // OpenAI settings
     private val _openaiApiKey = MutableStateFlow("")
     val openaiApiKey: StateFlow<String> = _openaiApiKey.asStateFlow()
@@ -54,6 +89,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _openaiModel = MutableStateFlow("gpt-4o-mini")
     val openaiModel: StateFlow<String> = _openaiModel.asStateFlow()
+
+    private val _openaiMaxTokens = MutableStateFlow(4096)
+    val openaiMaxTokens: StateFlow<Int> = _openaiMaxTokens.asStateFlow()
 
     // OSS settings
     private val _ossRegion = MutableStateFlow("")
@@ -73,6 +111,33 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _ossPathPrefix = MutableStateFlow("readerq")
     val ossPathPrefix: StateFlow<String> = _ossPathPrefix.asStateFlow()
+
+    // API Test States
+    private val _testStages = MutableStateFlow<List<TestStage>?>(null)
+    val testStages: StateFlow<List<TestStage>?> = _testStages.asStateFlow()
+
+    private val _testResult = MutableStateFlow<TestResult?>(null)
+    val testResult: StateFlow<TestResult?> = _testResult.asStateFlow()
+
+    private val _testLoading = MutableStateFlow(false)
+    val testLoading: StateFlow<Boolean> = _testLoading.asStateFlow()
+
+    // OSS Test States
+    private val _ossTestResult = MutableStateFlow<OssTestResult?>(null)
+    val ossTestResult: StateFlow<OssTestResult?> = _ossTestResult.asStateFlow()
+
+    private val _ossTestLoading = MutableStateFlow(false)
+    val ossTestLoading: StateFlow<Boolean> = _ossTestLoading.asStateFlow()
+
+    // Changelog States
+    private val _githubReleases = MutableStateFlow<List<GitHubRelease>>(emptyList())
+    val githubReleases: StateFlow<List<GitHubRelease>> = _githubReleases.asStateFlow()
+
+    private val _changelogLoading = MutableStateFlow(false)
+    val changelogLoading: StateFlow<Boolean> = _changelogLoading.asStateFlow()
+
+    private val _changelogError = MutableStateFlow<String?>(null)
+    val changelogError: StateFlow<String?> = _changelogError.asStateFlow()
 
     // Chat histories mapping: docId -> list of OpenAiMessages
     private val _chatHistories = MutableStateFlow<Map<String, List<com.readerq.app.api.OpenAiMessage>>>(emptyMap())
@@ -104,10 +169,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch(Dispatchers.IO) {
             _token.value = settingDao.getSetting("readwise_token")?.replace("\"", "")
             _theme.value = settingDao.getSetting("theme")?.replace("\"", "") ?: "dark"
+
+            _fontSize.value = settingDao.getSetting("fontSize")?.replace("\"", "")?.toIntOrNull() ?: 16
+            _fontFamily.value = settingDao.getSetting("fontFamily")?.replace("\"", "") ?: "sans"
+            _lineHeight.value = settingDao.getSetting("lineHeight")?.replace("\"", "")?.toFloatOrNull() ?: 1.6f
+            _contentWidth.value = settingDao.getSetting("contentWidth")?.replace("\"", "")?.toIntOrNull() ?: 700
             
             _openaiApiKey.value = settingDao.getSetting("openai_api_key")?.replace("\"", "") ?: ""
             _openaiBaseUrl.value = settingDao.getSetting("openai_base_url")?.replace("\"", "") ?: "https://api.openai.com/v1"
             _openaiModel.value = settingDao.getSetting("openai_model")?.replace("\"", "") ?: "gpt-4o-mini"
+            _openaiMaxTokens.value = settingDao.getSetting("openai_max_tokens")?.replace("\"", "")?.toIntOrNull() ?: 4096
 
             _ossRegion.value = settingDao.getSetting("oss_region")?.replace("\"", "") ?: ""
             _ossBucket.value = settingDao.getSetting("oss_bucket")?.replace("\"", "") ?: ""
@@ -115,6 +186,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             _ossAccessKeySecret.value = settingDao.getSetting("oss_access_key_secret")?.replace("\"", "") ?: ""
             _ossCustomDomain.value = settingDao.getSetting("oss_custom_domain")?.replace("\"", "") ?: ""
             _ossPathPrefix.value = settingDao.getSetting("oss_path_prefix")?.replace("\"", "") ?: "readerq"
+
+            val lastSync = settingDao.getSetting("lastDocumentSync")?.replace("\"", "")
+            val remoteCount = settingDao.getSetting("remote_doc_count")?.replace("\"", "")?.toIntOrNull() ?: 0
+            val localCount = docDao.getDocumentCount()
+            _syncCounts.value = SyncCounts(local = localCount, remote = remoteCount, lastSync = lastSync)
         }
     }
 
@@ -148,14 +224,29 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun saveOpenAiSettings(apiKey: String, baseUrl: String, model: String) {
+    fun saveOpenAiSettings(apiKey: String, baseUrl: String, model: String, maxTokens: Int) {
         _openaiApiKey.value = apiKey
         _openaiBaseUrl.value = baseUrl
         _openaiModel.value = model
+        _openaiMaxTokens.value = maxTokens
         viewModelScope.launch(Dispatchers.IO) {
             settingDao.setSetting(SettingEntity("openai_api_key", apiKey))
             settingDao.setSetting(SettingEntity("openai_base_url", baseUrl))
             settingDao.setSetting(SettingEntity("openai_model", model))
+            settingDao.setSetting(SettingEntity("openai_max_tokens", maxTokens.toString()))
+        }
+    }
+
+    fun saveAppearanceSettings(fontFamily: String, fontSize: Int, lineHeight: Float, contentWidth: Int) {
+        _fontFamily.value = fontFamily
+        _fontSize.value = fontSize
+        _lineHeight.value = lineHeight
+        _contentWidth.value = contentWidth
+        viewModelScope.launch(Dispatchers.IO) {
+            settingDao.setSetting(SettingEntity("fontFamily", fontFamily))
+            settingDao.setSetting(SettingEntity("fontSize", fontSize.toString()))
+            settingDao.setSetting(SettingEntity("lineHeight", lineHeight.toString()))
+            settingDao.setSetting(SettingEntity("contentWidth", contentWidth.toString()))
         }
     }
 
@@ -358,24 +449,32 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     // Perform full sync
-    fun startSync() {
+    fun startSync(fullSync: Boolean = false) {
         val currentToken = _token.value
         if (currentToken.isNullOrBlank()) {
             _syncError.value = "请先配置 Readwise Token"
+            _syncStatus.value = "error"
             return
         }
         if (_isSyncing.value) return
 
         _isSyncing.value = true
+        _syncStatus.value = "syncing"
         _syncError.value = null
+        _syncProgress.value = SyncProgress("starting", 0, 0)
 
         if (currentToken == "offline") {
-            viewModelScope.launch(Dispatchers.IO) {
+            syncJob = viewModelScope.launch(Dispatchers.IO) {
                 try {
                     seedOfflineData()
+                    val localCount = docDao.getDocumentCount()
+                    _syncCounts.value = _syncCounts.value.copy(local = localCount, lastSync = System.currentTimeMillis().toString())
+                    _syncProgress.value = SyncProgress("done", localCount, localCount)
+                    _syncStatus.value = "idle"
                 } catch (e: Exception) {
                     e.printStackTrace()
                     _syncError.value = e.message ?: "初始化数据失败"
+                    _syncStatus.value = "error"
                 } finally {
                     _isSyncing.value = false
                 }
@@ -383,48 +482,360 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
 
-        viewModelScope.launch(Dispatchers.IO) {
+        syncJob = viewModelScope.launch(Dispatchers.IO) {
             try {
                 val client = ReadwiseClient(currentToken)
+
+                // 1. 验证 Token 是否有效
+                val isValidToken = client.validateToken()
+                if (!isValidToken) {
+                    throw Exception("Readwise API Token 无效")
+                }
+
+                if (fullSync) {
+                    docDao.deleteAll()
+                    hlDao.deleteAll()
+                }
+
+                val lastSyncedAt = if (fullSync) null else settingDao.getSetting("lastDocumentSync")?.replace("\"", "")
+                val lastV2SyncedAt = if (fullSync) null else settingDao.getSetting("lastV2HighlightSync")?.replace("\"", "")
+
+                // 阶段 1: 拉取文档
+                _syncProgress.value = SyncProgress("documents", 0, 0)
                 var pageCursor: String? = null
-                
-                // Fetch all documents incrementally
+                var totalFetchedDocs = 0
+                var remoteDocCount = 0
+
                 do {
-                    val response = client.listDocuments(pageCursor = pageCursor)
-                    val entities = response.results.map { item ->
-                        DocumentEntity(
-                            id = item.id,
-                            url = item.url,
-                            source_url = item.source_url,
-                            title = item.title,
-                            author = item.author,
-                            source = item.source,
-                            category = item.category,
-                            location = item.location,
-                            site_name = item.site_name,
-                            word_count = item.word_count,
-                            reading_time = item.reading_time,
-                            created_at = item.created_at,
-                            updated_at = item.updated_at,
-                            published_date = item.published_date,
-                            summary = item.summary,
-                            notes = item.notes,
-                            image_url = item.image_url,
-                            reading_progress = item.reading_progress,
-                            html_content = null, // load on demand
-                            tags_json = Json.encodeToString(item.tags.mapValues { 1 }),
-                            synced_at = System.currentTimeMillis().toString()
-                        )
+                    if (checkCancelled()) throw kotlinx.coroutines.CancellationException("Sync cancelled by user")
+
+                    val response = client.listDocuments(
+                        updatedAfter = lastSyncedAt,
+                        pageCursor = pageCursor
+                    )
+
+                    if (remoteDocCount == 0 && response.count != null) {
+                        remoteDocCount = response.count
                     }
-                    docDao.insertAll(entities)
+
+                    val results = response.results
+                    val regularDocs = mutableListOf<DocumentEntity>()
+                    val highlightDocs = mutableListOf<HighlightEntity>()
+
+                    for (item in results) {
+                        if (item.category == "highlight") {
+                            val text = item.html_content ?: item.summary ?: item.title
+                            highlightDocs.add(
+                                HighlightEntity(
+                                    id = item.id,
+                                    document_id = item.parent_id ?: "",
+                                    text = text,
+                                    note = item.notes,
+                                    color = "yellow",
+                                    location = 0,
+                                    readwise_highlight_id = item.id,
+                                    tags_json = Json.encodeToString(item.tags.keys.toList())
+                                )
+                            )
+                        } else {
+                            regularDocs.add(
+                                DocumentEntity(
+                                    id = item.id,
+                                    url = item.url,
+                                    source_url = item.source_url,
+                                    title = item.title,
+                                    author = item.author,
+                                    source = item.source,
+                                    category = item.category,
+                                    location = item.location,
+                                    site_name = item.site_name,
+                                    word_count = item.word_count,
+                                    reading_time = item.reading_time,
+                                    created_at = item.created_at,
+                                    updated_at = item.updated_at,
+                                    published_date = item.published_date,
+                                    summary = item.summary,
+                                    notes = item.notes,
+                                    image_url = item.image_url,
+                                    reading_progress = item.reading_progress,
+                                    html_content = null,
+                                    tags_json = Json.encodeToString(item.tags.mapValues { 1 }),
+                                    synced_at = System.currentTimeMillis().toString()
+                                )
+                            )
+                        }
+                    }
+
+                    if (regularDocs.isNotEmpty()) {
+                        docDao.insertAll(regularDocs)
+                    }
+                    if (highlightDocs.isNotEmpty()) {
+                        hlDao.insertAll(highlightDocs)
+                    }
+
+                    totalFetchedDocs += results.size
+                    _syncProgress.value = SyncProgress("documents", totalFetchedDocs, remoteDocCount)
+
                     pageCursor = response.nextPageCursor
                 } while (pageCursor != null)
 
+                // 阶段 2: 拉取 V2 高亮
+                _syncProgress.value = SyncProgress("highlights", 0, 0)
+                client.fetchAllV2Highlights(
+                    updatedAfter = lastV2SyncedAt,
+                    onProgress = { fetched, totalBook ->
+                        _syncProgress.value = SyncProgress("highlights", fetched, totalBook)
+                    },
+                    checkCancel = { checkCancelled() },
+                    onBatch = { batchBooks ->
+                        val highlightsToInsert = mutableListOf<HighlightEntity>()
+                        for (book in batchBooks) {
+                            var documentId = docDao.findDocumentIdBySourceUrl(book.source_url ?: "")
+                            if (documentId == null) {
+                                documentId = docDao.findDocumentIdByTitle(book.title)
+                            }
+                            if (documentId == null) continue
+
+                            for (h in book.highlights) {
+                                highlightsToInsert.add(
+                                    HighlightEntity(
+                                        id = h.id.toString(),
+                                        document_id = documentId,
+                                        text = h.text,
+                                        note = h.note,
+                                        color = h.color ?: "yellow",
+                                        location = h.location ?: 0,
+                                        readwise_highlight_id = h.id.toString(),
+                                        tags_json = Json.encodeToString(h.tags)
+                                    )
+                                )
+                            }
+                        }
+                        if (highlightsToInsert.isNotEmpty()) {
+                            hlDao.insertAll(highlightsToInsert)
+                        }
+                    }
+                )
+
+                // 阶段 3: 拉取标签
+                _syncProgress.value = SyncProgress("tags", 0, 0)
+                client.fetchAllTags(
+                    onProgress = { fetched, total ->
+                        _syncProgress.value = SyncProgress("tags", fetched, total)
+                    },
+                    checkCancel = { checkCancelled() },
+                    onBatch = { batchTags ->
+                        // Android 本地数据库没有 Tags 表，此处解析而不写入，维持进度一致性
+                    }
+                )
+
+                // 保存最后同步时间
+                val now = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", java.util.Locale.US).apply {
+                    timeZone = java.util.TimeZone.getTimeZone("GMT")
+                }.format(java.util.Date())
+
+                settingDao.setSetting(SettingEntity("lastDocumentSync", now))
+                settingDao.setSetting(SettingEntity("lastV2HighlightSync", now))
+                settingDao.setSetting(SettingEntity("remote_doc_count", remoteDocCount.toString()))
+
+                val localCount = docDao.getDocumentCount()
+                _syncCounts.value = SyncCounts(local = localCount, remote = remoteDocCount, lastSync = now)
+                _syncProgress.value = SyncProgress("done", totalFetchedDocs, remoteDocCount)
+                _syncStatus.value = "idle"
+
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                println("Sync cancelled by user")
+                _syncStatus.value = "canceled"
             } catch (e: Exception) {
                 e.printStackTrace()
                 _syncError.value = e.message ?: "同步失败"
+                _syncStatus.value = "error"
             } finally {
                 _isSyncing.value = false
+            }
+        }
+    }
+
+    fun cancelSync() {
+        if (_isSyncing.value) {
+            _syncStatus.value = "canceling"
+            syncJob?.cancel()
+        }
+    }
+
+    private fun checkCancelled(): Boolean {
+        val job = syncJob
+        return job != null && !job.isActive
+    }
+
+    @Suppress("UNUSED_PARAMETER")
+    fun testConfig(apiKey: String, baseUrl: String, model: String, maxTokens: Int) {
+        _testLoading.value = true
+        _testResult.value = null
+        val stages = listOf(
+            TestStage("validate", "配置参数校验", "pending", "等待开始..."),
+            TestStage("connect", "服务器连通性测试", "pending", "等待开始..."),
+            TestStage("chat", "对话模型可用性测试", "pending", "等待开始...")
+        )
+        _testStages.value = stages
+
+        viewModelScope.launch(Dispatchers.IO) {
+            val startTime = System.currentTimeMillis()
+            var step1Success = false
+            var step2Success = false
+            var step3Success = false
+            var finalDuration = 0L
+            var finalReply: String? = null
+            var finalError: String? = null
+
+            // 1. 参数校验
+            updateTestStage("validate", "running", "校验参数中...")
+            if (apiKey.isBlank()) {
+                updateTestStage("validate", "failed", "API Key 不能为空")
+                finalError = "API Key 不能为空"
+            } else if (!baseUrl.startsWith("http://") && !baseUrl.startsWith("https://")) {
+                updateTestStage("validate", "failed", "服务器地址格式错误，必须以 http:// 或 https:// 开头")
+                finalError = "服务器地址格式错误"
+            } else if (model.isBlank()) {
+                updateTestStage("validate", "failed", "模型名称不能为空")
+                finalError = "模型名称不能为空"
+            } else {
+                updateTestStage("validate", "success", "参数校验成功")
+                step1Success = true
+            }
+
+            // 2. 连通性测试
+            if (step1Success) {
+                updateTestStage("connect", "running", "尝试连接服务器...")
+                val tempClient = HttpClient(Android)
+                try {
+                    val endpoint = if (baseUrl.endsWith("/")) "${baseUrl}models" else "$baseUrl/models"
+                    val response = tempClient.get(endpoint) {
+                        header("Authorization", "Bearer $apiKey")
+                    }
+                    updateTestStage("connect", "success", "服务器响应成功，状态码: ${response.status.value}")
+                    step2Success = true
+                } catch (e: Exception) {
+                    updateTestStage("connect", "failed", "无法连接到服务器: ${e.message ?: "未知网络错误"}")
+                    finalError = "网络请求失败，请检查本地网络连接与地址配置。(${e.message})"
+                } finally {
+                    tempClient.close()
+                }
+            }
+
+            // 3. 对话可用性测试
+            if (step2Success) {
+                updateTestStage("chat", "running", "发送对话请求中...")
+                try {
+                    val client = com.readerq.app.api.OpenAiClient(apiKey, baseUrl, model)
+                    val response = client.getCompletion(
+                        listOf(com.readerq.app.api.OpenAiMessage("user", "Hello, please answer with exactly 'Hello Connection Success!'")),
+                        "You are a test assistant."
+                    )
+                    finalReply = response
+                    updateTestStage("chat", "success", "对话模型测试成功")
+                    step3Success = true
+                } catch (e: Exception) {
+                    updateTestStage("chat", "failed", "AI 接口请求失败: ${e.message}")
+                    finalError = "AI 接口请求失败: ${e.message}"
+                }
+            }
+
+            finalDuration = System.currentTimeMillis() - startTime
+            _testResult.value = TestResult(
+                success = step3Success,
+                duration = finalDuration,
+                reply = finalReply,
+                error = finalError
+            )
+            _testLoading.value = false
+        }
+    }
+
+    private fun updateTestStage(id: String, status: String, message: String) {
+        _testStages.value = _testStages.value?.map { stage ->
+            if (stage.id == id) stage.copy(status = status, message = message) else stage
+        }
+    }
+
+    fun testOssConfig(
+        region: String,
+        bucket: String,
+        accessKeyId: String,
+        accessKeySecret: String,
+        customDomain: String,
+        pathPrefix: String
+    ) {
+        _ossTestLoading.value = true
+        _ossTestResult.value = null
+
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                if (region.isBlank() || bucket.isBlank() || accessKeyId.isBlank() || accessKeySecret.isBlank()) {
+                    throw Exception("必填参数不能为空（Region、Bucket、AccessKey ID、AccessKey Secret）")
+                }
+
+                val oss = com.readerq.app.api.OssClient(
+                    region = region,
+                    bucket = bucket,
+                    accessKeyId = accessKeyId,
+                    accessKeySecret = accessKeySecret,
+                    customDomain = if (customDomain.isBlank()) null else customDomain,
+                    pathPrefix = pathPrefix
+                )
+
+                val testContent = "Test OSS Connection from ReaderQ Android Client".toByteArray()
+                val fileName = "test_connection_${System.currentTimeMillis()}.txt"
+                val url = oss.uploadImage(testContent, "test_connection", fileName)
+
+                _ossTestResult.value = OssTestResult(
+                    success = true,
+                    ossUrl = url,
+                    error = null
+                )
+            } catch (e: Exception) {
+                e.printStackTrace()
+                _ossTestResult.value = OssTestResult(
+                    success = false,
+                    ossUrl = null,
+                    error = e.message ?: "OSS 连接测试失败"
+                )
+            } finally {
+                _ossTestLoading.value = false
+            }
+        }
+    }
+
+    fun fetchGithubReleases() {
+        _changelogLoading.value = true
+        _changelogError.value = null
+        _githubReleases.value = emptyList()
+
+        viewModelScope.launch(Dispatchers.IO) {
+            val jsonDecoder = Json {
+                ignoreUnknownKeys = true
+                coerceInputValues = true
+            }
+            val tempClient = HttpClient(Android) {
+                install(io.ktor.client.plugins.contentnegotiation.ContentNegotiation) {
+                    json(jsonDecoder)
+                }
+            }
+
+            try {
+                val url = "https://api.github.com/repos/qxk2005/readerq/releases?per_page=50"
+                val response: List<GitHubRelease> = tempClient.get(url) {
+                    header("Accept", "application/vnd.github.v3+json")
+                    header("User-Agent", "ReaderQ-Android-App")
+                }.body()
+
+                _githubReleases.value = response.filter { !it.draft }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                _changelogError.value = e.message ?: "获取更新日志失败，请检查网络连接。"
+            } finally {
+                tempClient.close()
+                _changelogLoading.value = false
             }
         }
     }
@@ -547,3 +958,45 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 }
+
+data class SyncProgress(val phase: String, val fetched: Int, val total: Int)
+data class SyncCounts(val local: Int, val remote: Int, val lastSync: String?)
+
+data class TestStage(
+    val id: String,
+    val name: String,
+    val status: String, // "pending", "running", "success", "failed"
+    val message: String
+)
+
+data class TestResult(
+    val success: Boolean,
+    val duration: Long,
+    val reply: String?,
+    val error: String?
+)
+
+data class OssTestResult(
+    val success: Boolean,
+    val ossUrl: String?,
+    val error: String?
+)
+
+@Serializable
+data class GitHubRelease(
+    val tag_name: String,
+    val name: String,
+    val body: String? = null,
+    val published_at: String? = null,
+    val prerelease: Boolean = false,
+    val draft: Boolean = false,
+    val html_url: String? = null,
+    val assets: List<GitHubAsset> = emptyList()
+)
+
+@Serializable
+data class GitHubAsset(
+    val name: String,
+    val size: Long,
+    val browser_download_url: String
+)

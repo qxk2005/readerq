@@ -277,4 +277,109 @@ class ReadwiseClient(private val token: String) {
             }
         }
     }
+
+    // 10. 验证 Token 是否有效 (v2 auth 接口)
+    suspend fun validateToken(): Boolean {
+        return try {
+            val url = "https://readwise.io/api/v2/auth/"
+            val response = client.get(url) {
+                authHeaders()
+            }
+            response.status == HttpStatusCode.NoContent
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    // 11. 获取所有 V2 高亮并支持进度和取消
+    suspend fun fetchAllV2Highlights(
+        updatedAfter: String? = null,
+        onProgress: ((Int, Int) -> Unit)? = null,
+        checkCancel: (() -> Boolean)? = null,
+        onBatch: (suspend (List<ReadwiseExportBookItem>) -> Unit)? = null
+    ): Int {
+        var pageCursor: String? = null
+        var fetchedCount = 0
+        var totalBookCount = 0
+
+        do {
+            if (checkCancel != null && checkCancel()) {
+                throw Exception("Sync cancelled by user")
+            }
+
+            val url = "https://readwise.io/api/v2/export/"
+            val response = executeWithRetry(url) {
+                get(url) {
+                    authHeaders()
+                    pageCursor?.let { parameter("pageCursor", it) }
+                    updatedAfter?.let { parameter("updatedAfter", it) }
+                }
+            }
+
+            val data: ReadwiseExportResponse = response.body()
+            if (totalBookCount == 0) {
+                totalBookCount = data.count
+            }
+
+            val results = data.results
+            for (book in results) {
+                fetchedCount += book.highlights.size
+            }
+
+            if (onBatch != null && results.isNotEmpty()) {
+                onBatch(results)
+            }
+
+            pageCursor = data.nextPageCursor
+
+            onProgress?.invoke(fetchedCount, totalBookCount)
+
+        } while (pageCursor != null)
+
+        return fetchedCount
+    }
+
+    // 12. 获取所有 V3 标签并支持进度和取消
+    suspend fun fetchAllTags(
+        onProgress: ((Int, Int) -> Unit)? = null,
+        checkCancel: (() -> Boolean)? = null,
+        onBatch: (suspend (List<ReadwiseTagItem>) -> Unit)? = null
+    ): Int {
+        var pageCursor: String? = null
+        var fetchedCount = 0
+        var totalCount = 0
+
+        do {
+            if (checkCancel != null && checkCancel()) {
+                throw Exception("Sync cancelled by user")
+            }
+
+            val url = "https://readwise.io/api/v3/tags/"
+            val response = executeWithRetry(url) {
+                get(url) {
+                    authHeaders()
+                    pageCursor?.let { parameter("pageCursor", it) }
+                }
+            }
+
+            val data: ReadwiseTagResponse = response.body()
+            if (totalCount == 0) {
+                totalCount = data.count ?: 0
+            }
+
+            val results = data.results
+            fetchedCount += results.size
+
+            if (onBatch != null && results.isNotEmpty()) {
+                onBatch(results)
+            }
+
+            pageCursor = data.nextPageCursor
+
+            onProgress?.invoke(fetchedCount, totalCount)
+
+        } while (pageCursor != null)
+
+        return fetchedCount
+    }
 }
