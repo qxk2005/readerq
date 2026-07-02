@@ -1071,8 +1071,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
             try {
                 val client = ReadwiseClient(currentToken)
-                if (local.readwise_highlight_id != null) {
-                    client.patchHighlight(local.readwise_highlight_id, note)
+                val remoteId = local.readwise_highlight_id
+                if (remoteId != null) {
+                    client.patchHighlight(remoteId, note)
+                    for (tag in tags) {
+                        try {
+                            client.addHighlightTag(remoteId, tag)
+                        } catch (tagErr: Exception) {
+                            tagErr.printStackTrace()
+                        }
+                    }
                 }
             } catch (e: Exception) {
                 e.printStackTrace()

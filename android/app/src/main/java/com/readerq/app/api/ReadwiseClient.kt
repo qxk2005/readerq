@@ -159,6 +159,20 @@ class ReadwiseClient(private val token: String) {
         }
     }
 
+    // 5.5. 为高亮添加标签 (V2 API)
+    suspend fun addHighlightTag(
+        highlightId: String,
+        name: String
+    ): HttpResponse {
+        val url = "https://readwise.io/api/v2/highlights/$highlightId/tags/"
+        return executeWithRetry(url) {
+            post(url) {
+                authHeaders()
+                setBody(ReadwiseV2TagRequest(name = name))
+            }
+        }
+    }
+
     // 6. 删除高亮 (V2 API)
     suspend fun deleteHighlight(highlightId: String): HttpResponse {
         val url = "https://readwise.io/api/v2/highlights/$highlightId"
