@@ -142,29 +142,51 @@ fun DocumentListPane(
             )
             val selectedTabIndex = tabs.indexOfFirst { it.first == currentView }.coerceAtLeast(0)
             
-            TabRow(
-                selectedTabIndex = selectedTabIndex,
-                containerColor = MaterialTheme.colorScheme.surface,
-                contentColor = MaterialTheme.colorScheme.primary,
-                indicator = { tabPositions ->
-                    TabRowDefaults.Indicator(
-                        modifier = Modifier.tabIndicatorOffset(tabPositions[selectedTabIndex]),
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                }
-            ) {
-                tabs.forEachIndexed { index, (key, label) ->
-                    Tab(
-                        selected = selectedTabIndex == index,
-                        onClick = { viewModel.changeView(key) },
-                        text = { 
-                            Text(
-                                label, 
-                                fontSize = 12.sp, 
-                                fontWeight = if (selectedTabIndex == index) FontWeight.Bold else FontWeight.Normal
-                            ) 
+            BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+                val isCompact = maxWidth < 250.dp
+                
+                TabRow(
+                    selectedTabIndex = selectedTabIndex,
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    contentColor = MaterialTheme.colorScheme.primary,
+                    indicator = { tabPositions ->
+                        TabRowDefaults.Indicator(
+                            modifier = Modifier.tabIndicatorOffset(tabPositions[selectedTabIndex]),
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                ) {
+                    tabs.forEachIndexed { index, (key, label) ->
+                        val iconRes = when (key) {
+                            "new" -> R.drawable.ic_inbox
+                            "later" -> R.drawable.ic_bookmark
+                            "archive" -> R.drawable.ic_archive
+                            else -> R.drawable.ic_all
                         }
-                    )
+                        
+                        Tab(
+                            selected = selectedTabIndex == index,
+                            onClick = { viewModel.changeView(key) },
+                            icon = if (isCompact) {
+                                {
+                                    Icon(
+                                        painter = painterResource(id = iconRes),
+                                        contentDescription = label,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                            } else null,
+                            text = if (!isCompact) {
+                                {
+                                    Text(
+                                        label, 
+                                        fontSize = 12.sp, 
+                                        fontWeight = if (selectedTabIndex == index) FontWeight.Bold else FontWeight.Normal
+                                    ) 
+                                }
+                            } else null
+                        )
+                    }
                 }
             }
         }
