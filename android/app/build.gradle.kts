@@ -9,14 +9,14 @@ plugins {
 
 android {
     namespace = "com.readerq.app"
-    compileSdk = 34
+    compileSdk = 35
 
     defaultConfig {
         applicationId = "readerq.qiuyang.ai"
         minSdk = 26
-        targetSdk = 34
-        versionCode = 33
-        versionName = "1.0.33"
+        targetSdk = 35
+        versionCode = 34
+        versionName = "1.0.34"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
