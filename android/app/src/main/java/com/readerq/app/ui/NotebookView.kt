@@ -24,6 +24,10 @@ import androidx.compose.ui.res.painterResource
 import kotlinx.serialization.encodeToString
 import coil.compose.AsyncImage
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.horizontalScroll
 
 @Composable
 fun NotebookView(viewModel: MainViewModel) {
@@ -116,6 +120,7 @@ fun NotebookView(viewModel: MainViewModel) {
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun NotebookHighlightCard(
     hl: HighlightEntity,
@@ -123,6 +128,7 @@ fun NotebookHighlightCard(
     viewModel: MainViewModel
 ) {
     val isDark = theme == "dark"
+    val allExistingTags by viewModel.allTags.collectAsState()
     
     val hlTags = remember(hl.tags_json) {
         try {
@@ -183,7 +189,22 @@ fun NotebookHighlightCard(
 
     var isEditing by remember { mutableStateOf(false) }
     var editNoteText by remember(hl.note, isEditing) { mutableStateOf(hl.note ?: "") }
-    var editTagsText by remember(hlTags, isEditing) { mutableStateOf(hlTags.joinToString(", ")) }
+    
+    // Tag Chip Input State
+    var tagList by remember(hlTags, isEditing) { mutableStateOf(hlTags) }
+    var currentTagInput by remember { mutableStateOf("") }
+
+    // Autocomplete tag candidates
+    val candidates = remember(allExistingTags, currentTagInput, tagList) {
+        val query = currentTagInput.trim()
+        if (query.isEmpty()) {
+            emptyList()
+        } else {
+            allExistingTags
+                .filter { it.contains(query, ignoreCase = true) && !tagList.contains(it) }
+                .take(5)
+        }
+    }
 
     Card(
         colors = CardDefaults.cardColors(containerColor = cardBg),
@@ -269,13 +290,56 @@ fun NotebookHighlightCard(
                     )
                 )
 
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(12.dp))
+                
+                // Tags Title & Chips Layout inside Card Editor
+                Text("标签", fontSize = 11.sp, color = subTextColor, fontWeight = FontWeight.Medium)
+                Spacer(modifier = Modifier.height(4.dp))
+                
+                if (tagList.isNotEmpty()) {
+                    FlowRow(
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        tagList.forEach { tag ->
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(tagBg)
+                                    .clickable { tagList = tagList - tag }
+                                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Text(text = "#$tag", color = subTextColor, fontSize = 11.sp)
+                                    Text(text = "✕", color = subTextColor.copy(alpha = 0.7f), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                    }
+                }
 
                 OutlinedTextField(
-                    value = editTagsText,
-                    onValueChange = { editTagsText = it },
-                    placeholder = { Text("添加标签 (逗号分隔)...", fontSize = 13.sp) },
-                    label = { Text("标签", fontSize = 11.sp) },
+                    value = currentTagInput,
+                    onValueChange = { input ->
+                        // Auto split and commit when pressing commas/spaces
+                        if (input.endsWith(",") || input.endsWith("，") || input.endsWith(" ") || input.endsWith("\n")) {
+                            val newTag = input.trim()
+                                .removeSuffix(",")
+                                .removeSuffix("，")
+                                .trim()
+                            if (newTag.isNotEmpty() && !tagList.contains(newTag)) {
+                                tagList = tagList + newTag
+                            }
+                            currentTagInput = ""
+                        } else {
+                            currentTagInput = input
+                        }
+                    },
+                    placeholder = { Text("输入新标签并以逗号或空格分割...", fontSize = 13.sp) },
                     modifier = Modifier.fillMaxWidth(),
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedTextColor = textColor,
@@ -283,7 +347,40 @@ fun NotebookHighlightCard(
                     )
                 )
 
-                Spacer(modifier = Modifier.height(12.dp))
+                // Autocomplete Suggestions Row
+                if (candidates.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("匹配：", color = subTextColor, fontSize = 11.sp)
+                        candidates.forEach { candidate ->
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f))
+                                    .clickable {
+                                        tagList = tagList + candidate
+                                        currentTagInput = ""
+                                    }
+                                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                            ) {
+                                Text(
+                                    text = candidate,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -300,16 +397,22 @@ fun NotebookHighlightCard(
                     }
 
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        TextButton(onClick = { isEditing = false }) {
+                        TextButton(onClick = { 
+                            isEditing = false
+                            currentTagInput = ""
+                        }) {
                             Text("取消", color = Color.Gray, fontSize = 13.sp)
                         }
                         Button(
                             onClick = {
-                                val tagsList = editTagsText.split(",")
-                                    .map { it.trim() }
-                                    .filter { it.isNotEmpty() }
-                                viewModel.updateHighlight(hl.id, editNoteText, tagsList)
+                                var finalTags = tagList
+                                val residual = currentTagInput.trim()
+                                if (residual.isNotEmpty() && !finalTags.contains(residual)) {
+                                    finalTags = finalTags + residual
+                                }
+                                viewModel.updateHighlight(hl.id, editNoteText, finalTags)
                                 isEditing = false
+                                currentTagInput = ""
                             },
                             contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
                         ) {
