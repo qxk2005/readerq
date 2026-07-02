@@ -81,3 +81,38 @@ jobs:
             dist/*.dmg
             dist/*.exe
             dist/*.zip
+
+  build-android:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: Build Android APK
+        run: |
+          chmod +x android/gradlew
+          cd android && ./gradlew assembleDebug
+
+      - name: Upload Android Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ReaderQ-Android
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Release Android APK
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: android/app/build/outputs/apk/debug/app-debug.apk
+

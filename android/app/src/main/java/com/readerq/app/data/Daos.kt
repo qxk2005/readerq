@@ -43,6 +43,9 @@ interface DocumentDao {
 
     @Query("SELECT id FROM documents WHERE title = :title LIMIT 1")
     suspend fun findDocumentIdByTitle(title: String): String?
+
+    @Query("SELECT * FROM documents WHERE id IN (SELECT DISTINCT document_id FROM highlights) ORDER BY updated_at DESC")
+    fun getDocumentsWithHighlights(): Flow<List<DocumentEntity>>
 }
 
 @Dao

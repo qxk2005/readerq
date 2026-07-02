@@ -30,6 +30,8 @@ import com.readerq.app.ui.TestStage
 import com.readerq.app.ui.TestResult
 import com.readerq.app.ui.OssTestResult
 import com.readerq.app.ui.GitHubRelease
+import com.readerq.app.R
+import androidx.compose.ui.res.painterResource
 
 @Composable
 fun AdaptiveMainScreen(
@@ -37,35 +39,53 @@ fun AdaptiveMainScreen(
     windowSizeClass: WindowSizeClass
 ) {
     val selectedDoc by viewModel.selectedDoc.collectAsState()
-    val isSyncing by viewModel.isSyncing.collectAsState()
-    val syncError by viewModel.syncError.collectAsState()
     val token by viewModel.token.collectAsState()
+    val currentTab by viewModel.currentTab.collectAsState()
 
-    var showSettings by remember { mutableStateOf(false) }
-
-    // Observe theme setting from viewModel
     val theme by viewModel.theme.collectAsState()
-    val isDark = theme == "dark"
 
-    MaterialTheme(
-        colorScheme = if (isDark) {
-            darkColorScheme(
-                background = Color(0xFF121212),
-                surface = Color(0xFF1E1E1E),
-                primary = Color(0xFF6366F1), // Indigo accent
-                onBackground = Color(0xFFE5E7EB),
-                onSurface = Color(0xFFF3F4F6)
-            )
-        } else {
-            lightColorScheme(
-                background = Color(0xFFF9FAFB),
-                surface = Color(0xFFFFFFFF),
-                primary = Color(0xFF4F46E5), // Light Indigo accent
-                onBackground = Color(0xFF111827),
-                onSurface = Color(0xFF1F2937)
-            )
-        }
-    ) {
+    val tabIndicatorColor = when (theme) {
+        "light" -> Color(0xFFE5E7EB)
+        "sepia" -> Color(0xFFE4DFD5)
+        else -> Color(0xFF2D2D2D)
+    }
+    val tabSelectedColor = when (theme) {
+        "light" -> Color(0xFF1A1A1A)
+        "sepia" -> Color(0xFF8B5E3C)
+        else -> Color(0xFFFFFFFF)
+    }
+    val tabUnselectedColor = when (theme) {
+        "light" -> Color(0xFF6B7280)
+        "sepia" -> Color(0xFF8E887E)
+        else -> Color(0xFF9CA3AF)
+    }
+
+    val colorScheme = when (theme) {
+        "light" -> lightColorScheme(
+            background = Color(0xFFFCFCFA),
+            surface = Color(0xFFFFFFFF),
+            primary = Color(0xFF1A1A1A),
+            onBackground = Color(0xFF1A1A1A),
+            onSurface = Color(0xFF2D2D2D)
+        )
+        "sepia" -> lightColorScheme(
+            background = Color(0xFFF4F1EB),
+            surface = Color(0xFFEFECE6),
+            primary = Color(0xFF8B5E3C),
+            onBackground = Color(0xFF2B251F),
+            onSurface = Color(0xFF423A32),
+            outline = Color(0xFFE4DFD5)
+        )
+        else -> darkColorScheme(
+            background = Color(0xFF121212),
+            surface = Color(0xFF1E1E1E),
+            primary = Color(0xFFFFFFFF),
+            onBackground = Color(0xFFE5E7EB),
+            onSurface = Color(0xFFF3F4F6)
+        )
+    }
+
+    MaterialTheme(colorScheme = colorScheme) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -73,13 +93,12 @@ fun AdaptiveMainScreen(
         ) {
             val isCompact = windowSizeClass.widthSizeClass == WindowWidthSizeClass.Compact
 
-            // Wrap readingPane and documentListPane as movableContentOf so that they keep their state
-            // and views (WebView) when they move in the Composable tree during layout transitions (e.g. folding/unfolding)
+            // Remember views
             val documentListPane = remember(viewModel) {
-                movableContentOf { modifier: Modifier ->
+                movableContentOf { isFeedTab: Boolean ->
                     DocumentListPane(
                         viewModel = viewModel,
-                        onOpenSettings = { showSettings = true }
+                        isFeedTab = isFeedTab
                     )
                 }
             }
@@ -95,60 +114,237 @@ fun AdaptiveMainScreen(
             }
 
             if (isCompact) {
-                // --- Single Pane layout (Outer Screen / Narrow view) ---
-                if (selectedDoc == null) {
-                    documentListPane(Modifier.fillMaxSize())
-                } else {
+                // --- Single Pane layout (Phone) ---
+                if (selectedDoc != null) {
                     BackHandler {
                         viewModel.selectDocument(null)
                     }
                     Row(Modifier.fillMaxSize()) {
                         readingPane(Modifier.fillMaxSize()) { viewModel.selectDocument(null) }
                     }
+                } else {
+                    Scaffold(
+                        bottomBar = {
+                            NavigationBar(
+                                containerColor = MaterialTheme.colorScheme.surface,
+                                tonalElevation = 0.dp
+                            ) {
+                                val tabs = listOf(
+                                    Triple("library", "库", R.drawable.ic_tab_library),
+                                    Triple("feed", "订阅", R.drawable.ic_tab_feed),
+                                    Triple("notebook", "笔记本", R.drawable.ic_tab_notebook),
+                                    Triple("settings", "设置", R.drawable.ic_tab_settings)
+                                )
+                                tabs.forEach { (tabId, label, icon) ->
+                                    NavigationBarItem(
+                                        selected = currentTab == tabId,
+                                        onClick = { viewModel.changeTab(tabId) },
+                                        icon = {
+                                            Column(
+                                                horizontalAlignment = Alignment.CenterHorizontally,
+                                                verticalArrangement = Arrangement.Center,
+                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                            ) {
+                                                Icon(
+                                                    painter = painterResource(id = icon),
+                                                    contentDescription = label,
+                                                    modifier = Modifier.size(20.dp)
+                                                )
+                                                Spacer(modifier = Modifier.height(2.dp))
+                                                Text(
+                                                    text = label, 
+                                                    fontSize = 10.sp, 
+                                                    fontWeight = if (currentTab == tabId) FontWeight.Bold else FontWeight.Normal
+                                                )
+                                            }
+                                        },
+                                        label = null,
+                                        colors = NavigationBarItemDefaults.colors(
+                                            selectedIconColor = tabSelectedColor,
+                                            unselectedIconColor = tabUnselectedColor,
+                                            indicatorColor = tabIndicatorColor
+                                        )
+                                    )
+                                }
+                            }
+                        }
+                    ) { paddingValues ->
+                        Box(
+                            modifier = Modifier
+                                .padding(paddingValues)
+                                .fillMaxSize()
+                        ) {
+                            when (currentTab) {
+                                "library" -> documentListPane(false)
+                                "feed" -> documentListPane(true)
+                                "notebook" -> GlobalNotebookPane(viewModel = viewModel)
+                                "settings" -> SettingsPane(viewModel = viewModel)
+                            }
+                        }
+                    }
                 }
             } else {
-                // --- Dual Pane layout (Folded Unfolded / Foldable Screen / Wide view) ---
+                // --- Dual Pane layout (Tablet/Foldable) ---
                 Row(Modifier.fillMaxSize()) {
-                    // Left Pane: List of items
-                    Box(modifier = Modifier.width(360.dp)) {
-                        documentListPane(Modifier.fillMaxSize())
-                    }
-                    
-                    // Divider
-                    Divider(modifier = Modifier.width(1.dp).fillMaxHeight(), color = Color(0xFF2D2D2D))
-
-                    // Right Pane: Content Reader
-                    Box(modifier = Modifier.weight(1f)) {
-                        if (selectedDoc != null) {
-                            readingPane(Modifier.fillMaxSize(), null)
-                        } else {
-                            // Placeholder
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .background(Color(0xFF151515)),
-                                contentAlignment = androidx.compose.ui.Alignment.Center
-                            ) {
-                                Text(
-                                    text = "选择一篇文章开始阅读",
-                                    color = Color(0xFF6B7280),
-                                    style = MaterialTheme.typography.bodyLarge
+                    // Left navigation rail
+                    NavigationRail(
+                        containerColor = MaterialTheme.colorScheme.surface,
+                        header = {
+                            Text(
+                                "ReaderQ",
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(vertical = 16.dp),
+                                fontSize = 16.sp
+                            )
+                        }
+                    ) {
+                        val tabs = listOf(
+                            Triple("library", "库", R.drawable.ic_tab_library),
+                            Triple("feed", "订阅", R.drawable.ic_tab_feed),
+                            Triple("notebook", "笔记本", R.drawable.ic_tab_notebook),
+                            Triple("settings", "设置", R.drawable.ic_tab_settings)
+                        )
+                        tabs.forEach { (tabId, label, icon) ->
+                            NavigationRailItem(
+                                selected = currentTab == tabId,
+                                onClick = { viewModel.changeTab(tabId) },
+                                icon = {
+                                    Column(
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        verticalArrangement = Arrangement.Center,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                    ) {
+                                        Icon(
+                                            painter = painterResource(id = icon),
+                                            contentDescription = label,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                        Spacer(modifier = Modifier.height(2.dp))
+                                        Text(
+                                            text = label, 
+                                            fontSize = 11.sp, 
+                                            fontWeight = if (currentTab == tabId) FontWeight.Bold else FontWeight.Normal
+                                        )
+                                    }
+                                },
+                                label = null,
+                                colors = NavigationRailItemDefaults.colors(
+                                    selectedIconColor = tabSelectedColor,
+                                    unselectedIconColor = tabUnselectedColor,
+                                    indicatorColor = tabIndicatorColor
                                 )
+                            )
+                        }
+                    }
+
+                    Divider(modifier = Modifier.width(1.dp).fillMaxHeight(), color = if (theme == "sepia") Color(0xFFE4DFD5) else Color(0xFF2D2D2D))
+
+                    // Main Area
+                    Box(modifier = Modifier.weight(1f)) {
+                        if (currentTab == "settings") {
+                            SettingsPane(viewModel = viewModel)
+                        } else if (currentTab == "notebook") {
+                            GlobalNotebookPane(viewModel = viewModel)
+                        } else {
+                            // Split layout for reading
+                            Row(Modifier.fillMaxSize()) {
+                                Box(modifier = Modifier.width(360.dp)) {
+                                    documentListPane(currentTab == "feed")
+                                }
+                                
+                                Divider(modifier = Modifier.width(1.dp).fillMaxHeight(), color = if (theme == "sepia") Color(0xFFE4DFD5) else Color(0xFF2D2D2D))
+
+                                Box(modifier = Modifier.weight(1f)) {
+                                    if (selectedDoc != null) {
+                                        readingPane(Modifier.fillMaxSize(), null)
+                                    } else {
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .background(MaterialTheme.colorScheme.background),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(
+                                                text = "选择一篇文章开始阅读",
+                                                color = Color.Gray,
+                                                style = MaterialTheme.typography.bodyLarge
+                                            )
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
                 }
             }
 
-            // Settings Sheet
-            if (showSettings || token.isNullOrBlank()) {
+            // Settings Sheet when token is null or blank
+            if (token.isNullOrBlank()) {
                 SettingsDialog(
                     viewModel = viewModel,
-                    onDismiss = {
-                        if (!token.isNullOrBlank()) {
-                            showSettings = false
-                        }
+                    onDismiss = {}
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun SettingsDialog(
+    viewModel: MainViewModel,
+    onDismiss: () -> Unit
+) {
+    val theme by viewModel.theme.collectAsState()
+    val dialogBg = MaterialTheme.colorScheme.surface
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0x99000000))
+            .clickable(enabled = true, onClick = {}),
+        contentAlignment = Alignment.Center
+    ) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth(0.9f)
+                .fillMaxHeight(0.85f)
+                .padding(16.dp),
+            shape = RoundedCornerShape(12.dp),
+            colors = CardDefaults.cardColors(containerColor = dialogBg),
+            elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+        ) {
+            Column(modifier = Modifier.fillMaxSize()) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            painter = painterResource(id = R.drawable.ic_tab_settings),
+                            contentDescription = "Settings",
+                            tint = MaterialTheme.colorScheme.onBackground,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Text(
+                            text = "首次使用请配置 API Token",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 16.sp,
+                            color = MaterialTheme.colorScheme.onBackground
+                        )
                     }
+                }
+                Divider(color = if (theme == "sepia") Color(0xFFE4DFD5) else Color(0xFF2D2D2D))
+                SettingsPane(
+                    viewModel = viewModel,
+                    modifier = Modifier.weight(1f),
+                    showSaveButton = true,
+                    onSaveSuccess = onDismiss
                 )
             }
         }
@@ -157,9 +353,11 @@ fun AdaptiveMainScreen(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsDialog(
+fun SettingsPane(
     viewModel: MainViewModel,
-    onDismiss: () -> Unit
+    modifier: Modifier = Modifier,
+    showSaveButton: Boolean = true,
+    onSaveSuccess: (() -> Unit)? = null
 ) {
     val token by viewModel.token.collectAsState()
     val openaiApiKey by viewModel.openaiApiKey.collectAsState()
@@ -198,11 +396,10 @@ fun SettingsDialog(
     val changelogError by viewModel.changelogError.collectAsState()
 
     val isDark = theme == "dark"
-    val dialogBg = if (isDark) Color(0xFF1E1E1E) else Color(0xFFFFFFFF)
-    val sidebarBg = if (isDark) Color(0xFF151515) else Color(0xFFF3F4F6)
-    val dividerColor = if (isDark) Color(0xFF2D2D2D) else Color(0xFFE5E7EB)
-    val textColor = if (isDark) Color(0xFFE5E7EB) else Color(0xFF111827)
-    val labelColor = if (isDark) Color(0xFF9CA3AF) else Color(0xFF4B5563)
+    val dialogBg = MaterialTheme.colorScheme.surface
+    val sidebarBg = if (theme == "dark") Color(0xFF151515) else if (theme == "sepia") Color(0xFFEFECE6) else Color(0xFFF3F4F6)
+    val dividerColor = if (theme == "dark") Color(0xFF2D2D2D) else if (theme == "sepia") Color(0xFFE4DFD5) else Color(0xFFE5E7EB)
+    val textColor = MaterialTheme.colorScheme.onBackground
 
     var activeTab by remember { mutableStateOf("api") }
     var showChangelog by remember { mutableStateOf(false) }
@@ -232,285 +429,240 @@ fun SettingsDialog(
     val screenWidth = configuration.screenWidthDp.dp
     val isMobile = screenWidth < 600.dp
 
-    val cardModifier = if (isMobile) {
-        Modifier
-            .fillMaxWidth(0.95f)
-            .fillMaxHeight(0.9f)
-            .padding(8.dp)
-    } else {
-        Modifier
-            .width(680.dp)
-            .height(500.dp)
-            .padding(16.dp)
-    }
-
     val sidebarWidth = if (isMobile) 95.dp else 140.dp
     val tabFontSize = if (isMobile) 11.sp else 13.sp
     val contentPadding = if (isMobile) 8.dp else 16.dp
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color(0x99000000))
-            .clickable(enabled = true, onClick = {}),
-        contentAlignment = Alignment.Center
-    ) {
-            Card(
-                modifier = cardModifier,
-                shape = RoundedCornerShape(12.dp),
-                colors = CardDefaults.cardColors(containerColor = dialogBg),
-                elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+    Column(modifier = modifier.fillMaxSize().background(dialogBg)) {
+        Row(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth(),
+            horizontalArrangement = Arrangement.Start
+        ) {
+            // Left Tab SideBar
+            Column(
+                modifier = Modifier
+                    .width(sidebarWidth)
+                    .fillMaxHeight()
+                    .background(sidebarBg)
+                    .padding(vertical = 8.dp)
             ) {
-                Column(modifier = Modifier.fillMaxSize()) {
-                    // 1. Header
-                    Row(
+                val tabs = listOf(
+                    Triple("api", "API 配置", R.drawable.ic_settings_api),
+                    Triple("oss", "图床配置", R.drawable.ic_settings_oss),
+                    Triple("appearance", "外观设置", R.drawable.ic_settings_appearance),
+                    Triple("sync", "数据同步", R.drawable.ic_settings_sync),
+                    Triple("shortcuts", "快捷键", R.drawable.ic_settings_shortcuts),
+                    Triple("about", "关于", R.drawable.ic_settings_about)
+                )
+                tabs.forEach { (tabId, label, icon) ->
+                    val isSelected = activeTab == tabId
+                    TextButton(
+                        onClick = { 
+                            activeTab = tabId
+                            if (tabId != "about") showChangelog = false
+                        },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 12.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                            .padding(horizontal = 4.dp, vertical = 2.dp),
+                        colors = ButtonDefaults.textButtonColors(
+                            containerColor = if (isSelected) (if (isDark) Color(0xFF2E2E2E) else if (theme == "sepia") Color(0xFFE4DFD5) else Color(0xFFE5E7EB)) else Color.Transparent
+                        ),
+                        shape = RoundedCornerShape(8.dp)
                     ) {
-                        Text(
-                            text = "⚙️ 系统设置",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 18.sp,
-                            color = textColor
-                        )
-                        IconButton(onClick = onDismiss) {
-                            Text("✕", color = labelColor, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                        }
-                    }
-                    Divider(color = dividerColor, modifier = Modifier.fillMaxWidth())
-
-                    // 2. Body (Side bar + Content area)
-                    Row(
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxWidth(),
-                        horizontalArrangement = Arrangement.Start
-                    ) {
-                        // Left Tab SideBar
-                        Column(
-                            modifier = Modifier
-                                .width(sidebarWidth)
-                                .fillMaxHeight()
-                                .background(sidebarBg)
-                                .padding(vertical = 8.dp)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            val tabs = listOf(
-                                "api" to "🔑 API 配置",
-                                "oss" to "🖼️ 图床配置",
-                                "appearance" to "🎨 外观设置",
-                                "sync" to "🔄 数据同步",
-                                "shortcuts" to "⌨️ 快捷键",
-                                "about" to "ℹ️ 关于"
+                            Icon(
+                                painter = painterResource(id = icon),
+                                contentDescription = label,
+                                tint = if (isSelected) MaterialTheme.colorScheme.primary else textColor,
+                                modifier = Modifier.size(16.dp)
                             )
-                            tabs.forEach { (tabId, label) ->
-                                val isSelected = activeTab == tabId
-                                TextButton(
-                                    onClick = { 
-                                        activeTab = tabId
-                                        if (tabId != "about") showChangelog = false
-                                    },
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(horizontal = 4.dp, vertical = 2.dp),
-                                    colors = ButtonDefaults.textButtonColors(
-                                        containerColor = if (isSelected) (if (isDark) Color(0xFF2E2E2E) else Color(0xFFE5E7EB)) else Color.Transparent
-                                    ),
-                                    shape = RoundedCornerShape(8.dp)
-                                ) {
-                                    Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterStart) {
-                                        Text(
-                                            text = label,
-                                            color = if (isSelected) MaterialTheme.colorScheme.primary else textColor,
-                                            fontSize = tabFontSize,
-                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                    }
-                                }
-                            }
-                        }
-
-                        Divider(modifier = Modifier.width(1.dp).fillMaxHeight(), color = dividerColor)
-
-                        // Right Content Panel
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .fillMaxHeight()
-                                .padding(contentPadding)
-                        ) {
-                            val scrollState = rememberScrollState()
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .verticalScroll(scrollState),
-                                verticalArrangement = Arrangement.spacedBy(16.dp)
-                            ) {
-                                when (activeTab) {
-                                    "api" -> TabAPIContent(
-                                        token = tokenInput,
-                                        onTokenChange = { tokenInput = it },
-                                        apiKey = openaiApiKeyInput,
-                                        onApiKeyChange = { openaiApiKeyInput = it },
-                                        baseUrl = openaiBaseUrlInput,
-                                        onBaseUrlChange = { openaiBaseUrlInput = it },
-                                        model = openaiModelInput,
-                                        onModelChange = { openaiModelInput = it },
-                                        maxTokens = openaiMaxTokensInput,
-                                        onMaxTokensChange = { openaiMaxTokensInput = it },
-                                        testLoading = testLoading,
-                                        testStages = testStages,
-                                        testResult = testResult,
-                                        isDark = isDark,
-                                        onTestClick = {
-                                            viewModel.testConfig(
-                                                openaiApiKeyInput,
-                                                openaiBaseUrlInput,
-                                                openaiModelInput,
-                                                openaiMaxTokensInput
-                                            )
-                                        }
-                                    )
-                                    "oss" -> TabOSSContent(
-                                        region = ossRegionInput,
-                                        onRegionChange = { ossRegionInput = it },
-                                        bucket = ossBucketInput,
-                                        onBucketChange = { ossBucketInput = it },
-                                        accessKeyId = ossAccessKeyIdInput,
-                                        onAccessKeyIdChange = { ossAccessKeyIdInput = it },
-                                        accessKeySecret = ossAccessKeySecretInput,
-                                        onAccessKeySecretChange = { ossAccessKeySecretInput = it },
-                                        customDomain = ossCustomDomainInput,
-                                        onCustomDomainChange = { ossCustomDomainInput = it },
-                                        pathPrefix = ossPathPrefixInput,
-                                        onPathPrefixChange = { ossPathPrefixInput = it },
-                                        testLoading = ossTestLoading,
-                                        testResult = ossTestResult,
-                                        isDark = isDark,
-                                        onTestClick = {
-                                            viewModel.testOssConfig(
-                                                ossRegionInput,
-                                                ossBucketInput,
-                                                ossAccessKeyIdInput,
-                                                ossAccessKeySecretInput,
-                                                ossCustomDomainInput,
-                                                ossPathPrefixInput
-                                            )
-                                        }
-                                    )
-                                    "appearance" -> TabAppearanceContent(
-                                        theme = theme,
-                                        onThemeChange = { viewModel.toggleTheme() },
-                                        fontFamily = fontFamily,
-                                        onFontFamilyChange = {
-                                            viewModel.saveAppearanceSettings(it, fontSize, lineHeight, contentWidth)
-                                        },
-                                        fontSize = fontSize,
-                                        onFontSizeChange = {
-                                            viewModel.saveAppearanceSettings(fontFamily, it, lineHeight, contentWidth)
-                                        },
-                                        lineHeight = lineHeight,
-                                        onLineHeightChange = {
-                                            viewModel.saveAppearanceSettings(fontFamily, fontSize, it, contentWidth)
-                                        },
-                                        contentWidth = contentWidth,
-                                        onContentWidthChange = {
-                                            viewModel.saveAppearanceSettings(fontFamily, fontSize, lineHeight, it)
-                                        },
-                                        textColor = textColor
-                                    )
-                                    "sync" -> TabSyncContent(
-                                        syncCounts = syncCounts,
-                                        syncStatus = syncStatus,
-                                        syncProgress = syncProgress,
-                                        syncError = syncError,
-                                        isSyncing = isSyncing,
-                                        isDark = isDark,
-                                        onSyncClick = { fullSync ->
-                                            viewModel.startSync(fullSync)
-                                        },
-                                        onCancelClick = {
-                                            viewModel.cancelSync()
-                                        }
-                                    )
-                                    "shortcuts" -> TabShortcutsContent(textColor = textColor, dividerColor = dividerColor)
-                                    "about" -> TabAboutContent(
-                                        showChangelog = showChangelog,
-                                        onShowChangelogClick = { showChangelog = !showChangelog },
-                                        githubReleases = githubReleases,
-                                        changelogLoading = changelogLoading,
-                                        changelogError = changelogError,
-                                        textColor = textColor,
-                                        isDark = isDark
-                                    )
-                                }
-                            }
-                        }
-                    }
-                    Divider(color = dividerColor, modifier = Modifier.fillMaxWidth())
-
-                    // 3. Footer
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(12.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Box(modifier = Modifier.weight(1f)) {
-                            // 可扩展显示“已保存状态”等
-                        }
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            if (activeTab == "sync" && tokenInput == "offline") {
-                                TextButton(onClick = {
-                                    tokenInput = ""
-                                }) {
-                                    Text("配置 Token", color = MaterialTheme.colorScheme.primary)
-                                }
-                            } else if (activeTab == "api" && tokenInput.isBlank()) {
-                                TextButton(onClick = {
-                                    tokenInput = "offline"
-                                    viewModel.saveToken("offline")
-                                }) {
-                                    Text("使用本地离线模式", color = MaterialTheme.colorScheme.primary)
-                                }
-                            }
-                            Button(
-                                onClick = {
-                                    viewModel.saveToken(tokenInput)
-                                    viewModel.saveOpenAiSettings(
-                                        openaiApiKeyInput,
-                                        openaiBaseUrlInput,
-                                        openaiModelInput,
-                                        openaiMaxTokensInput
-                                    )
-                                    viewModel.saveOssSettings(
-                                        ossRegionInput,
-                                        ossBucketInput,
-                                        ossAccessKeyIdInput,
-                                        ossAccessKeySecretInput,
-                                        ossCustomDomainInput,
-                                        ossPathPrefixInput
-                                    )
-                                    onDismiss()
-                                },
-                                enabled = tokenInput.isNotBlank() || activeTab != "api"
-                            ) {
-                                Text("保存配置")
-                            }
-                            TextButton(onClick = onDismiss) {
-                                Text("关闭", color = labelColor)
-                            }
+                            Text(
+                                text = label,
+                                color = if (isSelected) MaterialTheme.colorScheme.primary else textColor,
+                                fontSize = tabFontSize,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
                         }
                     }
                 }
             }
+
+            Divider(modifier = Modifier.width(1.dp).fillMaxHeight(), color = dividerColor)
+
+            // Right Content Panel
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight()
+                    .padding(contentPadding)
+            ) {
+                val scrollState = rememberScrollState()
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .verticalScroll(scrollState),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    when (activeTab) {
+                        "api" -> TabAPIContent(
+                            token = tokenInput,
+                            onTokenChange = { tokenInput = it },
+                            apiKey = openaiApiKeyInput,
+                            onApiKeyChange = { openaiApiKeyInput = it },
+                            baseUrl = openaiBaseUrlInput,
+                            onBaseUrlChange = { openaiBaseUrlInput = it },
+                            model = openaiModelInput,
+                            onModelChange = { openaiModelInput = it },
+                            maxTokens = openaiMaxTokensInput,
+                            onMaxTokensChange = { openaiMaxTokensInput = it },
+                            testLoading = testLoading,
+                            testStages = testStages,
+                            testResult = testResult,
+                            isDark = isDark,
+                            onTestClick = {
+                                viewModel.testConfig(
+                                    openaiApiKeyInput,
+                                    openaiBaseUrlInput,
+                                    openaiModelInput,
+                                    openaiMaxTokensInput
+                                )
+                            }
+                        )
+                        "oss" -> TabOSSContent(
+                            region = ossRegionInput,
+                            onRegionChange = { ossRegionInput = it },
+                            bucket = ossBucketInput,
+                            onBucketChange = { ossBucketInput = it },
+                            accessKeyId = ossAccessKeyIdInput,
+                            onAccessKeyIdChange = { ossAccessKeyIdInput = it },
+                            accessKeySecret = ossAccessKeySecretInput,
+                            onAccessKeySecretChange = { ossAccessKeySecretInput = it },
+                            customDomain = ossCustomDomainInput,
+                            onCustomDomainChange = { ossCustomDomainInput = it },
+                            pathPrefix = ossPathPrefixInput,
+                            onPathPrefixChange = { ossPathPrefixInput = it },
+                            testLoading = ossTestLoading,
+                            testResult = ossTestResult,
+                            isDark = isDark,
+                            onTestClick = {
+                                viewModel.testOssConfig(
+                                    ossRegionInput,
+                                    ossBucketInput,
+                                    ossAccessKeyIdInput,
+                                    ossAccessKeySecretInput,
+                                    ossCustomDomainInput,
+                                    ossPathPrefixInput
+                                )
+                            }
+                        )
+                        "appearance" -> TabAppearanceContent(
+                            theme = theme,
+                            onThemeChange = { viewModel.toggleTheme() },
+                            fontFamily = fontFamily,
+                            onFontFamilyChange = {
+                                viewModel.saveAppearanceSettings(it, fontSize, lineHeight, contentWidth)
+                            },
+                            fontSize = fontSize,
+                            onFontSizeChange = {
+                                viewModel.saveAppearanceSettings(fontFamily, it, lineHeight, contentWidth)
+                            },
+                            lineHeight = lineHeight,
+                            onLineHeightChange = {
+                                viewModel.saveAppearanceSettings(fontFamily, fontSize, it, contentWidth)
+                            },
+                            contentWidth = contentWidth,
+                            onContentWidthChange = {
+                                viewModel.saveAppearanceSettings(fontFamily, fontSize, lineHeight, it)
+                            },
+                            textColor = textColor
+                        )
+                        "sync" -> TabSyncContent(
+                            syncCounts = syncCounts,
+                            syncStatus = syncStatus,
+                            syncProgress = syncProgress,
+                            syncError = syncError,
+                            isSyncing = isSyncing,
+                            isDark = isDark,
+                            onSyncClick = { fullSync ->
+                                viewModel.startSync(fullSync)
+                            },
+                            onCancelClick = {
+                                viewModel.cancelSync()
+                            }
+                        )
+                        "shortcuts" -> TabShortcutsContent(textColor = textColor, dividerColor = dividerColor)
+                        "about" -> TabAboutContent(
+                            showChangelog = showChangelog,
+                            onShowChangelogClick = { showChangelog = !showChangelog },
+                            githubReleases = githubReleases,
+                            changelogLoading = changelogLoading,
+                            changelogError = changelogError,
+                            textColor = textColor,
+                            isDark = isDark
+                        )
+                    }
+                }
+            }
+        }
+
+        if (showSaveButton) {
+            Divider(color = dividerColor, modifier = Modifier.fillMaxWidth())
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(12.dp),
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (activeTab == "sync" && tokenInput == "offline") {
+                    TextButton(onClick = { tokenInput = "" }) {
+                        Text("配置 Token", color = MaterialTheme.colorScheme.primary)
+                    }
+                } else if (activeTab == "api" && tokenInput.isBlank()) {
+                    TextButton(onClick = {
+                        tokenInput = "offline"
+                        viewModel.saveToken("offline")
+                    }) {
+                        Text("使用本地离线模式", color = MaterialTheme.colorScheme.primary)
+                    }
+                }
+                Spacer(modifier = Modifier.width(8.dp))
+                Button(
+                    onClick = {
+                        viewModel.saveToken(tokenInput)
+                        viewModel.saveOpenAiSettings(
+                            openaiApiKeyInput,
+                            openaiBaseUrlInput,
+                            openaiModelInput,
+                            openaiMaxTokensInput
+                        )
+                        viewModel.saveOssSettings(
+                            ossRegionInput,
+                            ossBucketInput,
+                            ossAccessKeyIdInput,
+                            ossAccessKeySecretInput,
+                            ossCustomDomainInput,
+                            ossPathPrefixInput
+                        )
+                        onSaveSuccess?.invoke()
+                    },
+                    enabled = tokenInput.isNotBlank() || activeTab != "api"
+                ) {
+                    Text("保存配置")
+                }
+            }
         }
     }
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

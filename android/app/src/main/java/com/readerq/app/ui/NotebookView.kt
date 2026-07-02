@@ -19,6 +19,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.readerq.app.data.HighlightEntity
 import kotlinx.serialization.json.Json
+import com.readerq.app.R
+import androidx.compose.ui.res.painterResource
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonPrimitive
 
@@ -51,12 +53,12 @@ fun NotebookView(viewModel: MainViewModel) {
         // Document Notes Editor Card
         item {
             Card(
-                colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1E1E)),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
                 shape = RoundedCornerShape(12.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(modifier = Modifier.padding(12.dp)) {
-                    Text("文档笔记", fontWeight = FontWeight.Bold, color = Color.White, fontSize = 14.sp)
+                    Text("文档笔记", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface, fontSize = 14.sp)
                     Spacer(modifier = Modifier.height(8.dp))
                     OutlinedTextField(
                         value = docNote,
@@ -64,8 +66,8 @@ fun NotebookView(viewModel: MainViewModel) {
                         placeholder = { Text("添加文档总结或备注...") },
                         modifier = Modifier.fillMaxWidth(),
                         colors = OutlinedTextFieldDefaults.colors(
-                            focusedTextColor = Color.White,
-                            unfocusedTextColor = Color.LightGray
+                            focusedTextColor = MaterialTheme.colorScheme.onSurface,
+                            unfocusedTextColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
                         )
                     )
                     Spacer(modifier = Modifier.height(8.dp))
@@ -76,8 +78,8 @@ fun NotebookView(viewModel: MainViewModel) {
                         modifier = Modifier.fillMaxWidth(),
                         label = { Text("文档标签") },
                         colors = OutlinedTextFieldDefaults.colors(
-                            focusedTextColor = Color.White,
-                            unfocusedTextColor = Color.LightGray
+                            focusedTextColor = MaterialTheme.colorScheme.onSurface,
+                            unfocusedTextColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
                         )
                     )
                     Spacer(modifier = Modifier.height(12.dp))
@@ -101,7 +103,7 @@ fun NotebookView(viewModel: MainViewModel) {
             Text(
                 "高亮与批注 (${highlights.size})",
                 fontWeight = FontWeight.Bold,
-                color = Color.White,
+                color = MaterialTheme.colorScheme.onBackground,
                 fontSize = 15.sp
             )
         }
@@ -128,7 +130,7 @@ fun NotebookView(viewModel: MainViewModel) {
             }
 
             Card(
-                colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1E1E)),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
                 shape = RoundedCornerShape(12.dp),
                 modifier = Modifier
                     .fillMaxWidth()
@@ -155,7 +157,7 @@ fun NotebookView(viewModel: MainViewModel) {
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
                             text = hl.text,
-                            color = Color.White,
+                            color = MaterialTheme.colorScheme.onSurface,
                             fontSize = 13.sp,
                             lineHeight = 18.sp
                         )
@@ -224,13 +226,23 @@ fun NotebookView(viewModel: MainViewModel) {
                     } else {
                         // Render static info: note & tags
                         if (!hl.note.isNullOrBlank()) {
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Text(
-                                text = "✍️ ${hl.note}",
-                                color = Color.LightGray,
-                                fontStyle = FontStyle.Italic,
-                                fontSize = 12.sp
-                            )
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Icon(
+                                    painter = painterResource(id = R.drawable.ic_edit_note),
+                                    contentDescription = "Note",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                                Text(
+                                    text = hl.note,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    fontStyle = FontStyle.Italic,
+                                    fontSize = 12.sp
+                                )
+                            }
                         }
 
                         if (hlTags.isNotEmpty()) {
@@ -243,10 +255,10 @@ fun NotebookView(viewModel: MainViewModel) {
                                     Box(
                                         modifier = Modifier
                                             .clip(RoundedCornerShape(4.dp))
-                                            .background(Color(0xFF2D2D2D))
+                                            .background(MaterialTheme.colorScheme.surfaceVariant)
                                             .padding(horizontal = 6.dp, vertical = 2.dp)
                                     ) {
-                                        Text(text = "#$tag", color = Color.Gray, fontSize = 10.sp)
+                                        Text(text = "#$tag", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
                                     }
                                 }
                             }

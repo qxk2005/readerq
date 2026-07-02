@@ -27,6 +27,7 @@ import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.serialization.kotlinx.json.json
 import io.ktor.client.call.body
 
+@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val db = (application as ReaderQApp).database
@@ -39,6 +40,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     // UI States
     private val _currentView = MutableStateFlow("new") // inbox
     val currentView: StateFlow<String> = _currentView.asStateFlow()
+
+    private val _currentTab = MutableStateFlow("library") // library, feed, notebook, settings
+    val currentTab: StateFlow<String> = _currentTab.asStateFlow()
 
     private val _selectedDoc = MutableStateFlow<DocumentEntity?>(null)
     val selectedDoc: StateFlow<DocumentEntity?> = _selectedDoc.asStateFlow()
@@ -165,6 +169,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         .flowOn(Dispatchers.IO)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    // Load documents that contain highlights
+    val documentsWithHighlights: StateFlow<List<DocumentEntity>> = docDao.getDocumentsWithHighlights()
+        .flowOn(Dispatchers.IO)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
     init {
         viewModelScope.launch(Dispatchers.IO) {
             _token.value = settingDao.getSetting("readwise_token")?.replace("\"", "")
@@ -205,6 +214,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _currentView.value = view
     }
 
+    fun changeTab(tab: String) {
+        _currentTab.value = tab
+    }
+
     fun saveToken(newToken: String) {
         viewModelScope.launch(Dispatchers.IO) {
             settingDao.setSetting(SettingEntity("readwise_token", newToken))
@@ -217,10 +230,61 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun toggleTheme() {
-        val newTheme = if (_theme.value == "dark") "light" else "dark"
+        val newTheme = when (_theme.value) {
+            "light" -> "sepia"
+            "sepia" -> "dark"
+            else -> "light"
+        }
         _theme.value = newTheme
         viewModelScope.launch(Dispatchers.IO) {
             settingDao.setSetting(SettingEntity("theme", newTheme))
+        }
+    }
+
+    fun setTheme(newTheme: String) {
+        _theme.value = newTheme
+        viewModelScope.launch(Dispatchers.IO) {
+            settingDao.setSetting(SettingEntity("theme", newTheme))
+        }
+    }
+
+    fun archiveDocument(docId: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val doc = docDao.getDocumentById(docId) ?: return@launch
+            val updated = doc.copy(location = "archive")
+            docDao.insertDocument(updated)
+            if (_selectedDoc.value?.id == docId) {
+                _selectedDoc.value = updated
+            }
+            
+            val currentToken = _token.value ?: return@launch
+            if (currentToken != "offline") {
+                try {
+                    val client = ReadwiseClient(currentToken)
+                    client.updateDocument(docId, location = "archive")
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            }
+        }
+    }
+
+    fun deleteDocument(docId: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            docDao.deleteDocument(docId)
+            if (_selectedDoc.value?.id == docId) {
+                _selectedDoc.value = null
+            }
+            
+            val currentToken = _token.value ?: return@launch
+            if (currentToken != "offline") {
+                try {
+                    val client = ReadwiseClient(currentToken)
+                    client.deleteDocument(docId)
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            }
         }
     }
 
