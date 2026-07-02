@@ -224,7 +224,9 @@ fun HtmlContentViewer(
                 addJavascriptInterface(object {
                     @JavascriptInterface
                     fun onTextSelected(text: String) {
-                        onTextSelected(text)
+                        post {
+                            onTextSelected(text)
+                        }
                     }
                 }, "AndroidBridge")
             }
