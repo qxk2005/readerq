@@ -169,6 +169,69 @@ fun DocumentListPane(
             }
         }
 
+        // Category / Tag active filter indicators
+        val selectedCategory by viewModel.selectedCategory.collectAsState()
+        val selectedTag by viewModel.selectedTag.collectAsState()
+
+        if (selectedCategory != null || selectedTag != null) {
+            val filterText = if (selectedCategory != null) {
+                val displayName = when (selectedCategory) {
+                    "article" -> "Articles"
+                    "book" -> "Books"
+                    "pdf" -> "PDFs"
+                    "video" -> "Videos"
+                    "email" -> "Emails"
+                    "tweet" -> "Tweets"
+                    else -> selectedCategory
+                }
+                "分类: $displayName"
+            } else {
+                "标签: #${selectedTag}"
+            }
+
+            Surface(
+                color = MaterialTheme.colorScheme.surfaceVariant,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                shape = RoundedCornerShape(8.dp)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier
+                                .size(6.dp)
+                                .clip(RoundedCornerShape(3.dp))
+                                .background(MaterialTheme.colorScheme.primary)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = filterText ?: "",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                    Text(
+                        text = "清除 ✕",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(4.dp))
+                            .clickable { viewModel.clearFilters() }
+                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                    )
+                }
+            }
+        }
+
         // List
         LazyColumn(
             modifier = Modifier

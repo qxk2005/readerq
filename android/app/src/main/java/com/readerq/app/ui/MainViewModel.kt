@@ -71,6 +71,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _theme = MutableStateFlow("dark")
     val theme: StateFlow<String> = _theme.asStateFlow()
 
+    // Category & Tag filter states
+    private val _selectedCategory = MutableStateFlow<String?>(null)
+    val selectedCategory: StateFlow<String?> = _selectedCategory.asStateFlow()
+
+    private val _selectedTag = MutableStateFlow<String?>(null)
+    val selectedTag: StateFlow<String?> = _selectedTag.asStateFlow()
+
+    private data class DocFilter(val view: String, val query: String, val category: String?, val tag: String?)
+
     // Appearance settings
     private val _fontSize = MutableStateFlow(16)
     val fontSize: StateFlow<Int> = _fontSize.asStateFlow()
@@ -154,19 +163,73 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _chatHistories = MutableStateFlow<Map<String, List<com.readerq.app.api.OpenAiMessage>>>(emptyMap())
     val chatHistories: StateFlow<Map<String, List<com.readerq.app.api.OpenAiMessage>>> = _chatHistories.asStateFlow()
 
-    // Load active documents based on location filter and search query
-    val documents: StateFlow<List<DocumentEntity>> = combine(_currentView, _searchQuery) { view, query ->
-        Pair(view, query)
-    }.flatMapLatest { (view, query) ->
-        val cleanQuery = "%${query.trim()}%"
-        if (view == "all") {
-            if (query.isBlank()) docDao.getAllDocuments() else docDao.searchAllDocuments(cleanQuery)
+    // Load active documents based on location filter, search query, category, and tag filters
+    val documents: StateFlow<List<DocumentEntity>> = combine(
+        _currentView, 
+        _searchQuery, 
+        _selectedCategory, 
+        _selectedTag
+    ) { view, query, category, tag ->
+        DocFilter(view, query, category, tag)
+    }.flatMapLatest { filter ->
+        val cleanQuery = "%${filter.query.trim()}%"
+        val docsFlow = if (filter.view == "all") {
+            if (filter.query.isBlank()) docDao.getAllDocuments() else docDao.searchAllDocuments(cleanQuery)
         } else {
-            if (query.isBlank()) docDao.getDocumentsByLocation(view) else docDao.searchDocumentsByLocation(view, cleanQuery)
+            if (filter.query.isBlank()) docDao.getDocumentsByLocation(filter.view) else docDao.searchDocumentsByLocation(filter.view, cleanQuery)
+        }
+        docsFlow.map { list ->
+            var filtered = list
+            if (filter.category != null) {
+                filtered = filtered.filter { it.category?.lowercase() == filter.category.lowercase() }
+            }
+            if (filter.tag != null) {
+                filtered = filtered.filter { doc ->
+                    val tagsMap = try {
+                        doc.tags_json?.let { Json.decodeFromString<Map<String, Int>>(it) } ?: emptyMap()
+                    } catch (e: Exception) {
+                        emptyMap()
+                    }
+                    tagsMap.containsKey(filter.tag)
+                }
+            }
+            filtered
         }
     }
     .flowOn(Dispatchers.IO)
     .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    // Live counts of documents grouped by category
+    val categoryCounts: StateFlow<Map<String, Int>> = docDao.getAllDocuments()
+        .map { list ->
+            val counts = mutableMapOf<String, Int>()
+            list.forEach { doc ->
+                val cat = doc.category?.lowercase() ?: ""
+                if (cat.isNotEmpty()) {
+                    counts[cat] = counts.getOrDefault(cat, 0) + 1
+                }
+            }
+            counts
+        }
+        .flowOn(Dispatchers.IO)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
+
+    // Live list of all tags present in the documents database
+    val allTags: StateFlow<List<String>> = docDao.getAllDocuments()
+        .map { list ->
+            val tagsSet = mutableSetOf<String>()
+            list.forEach { doc ->
+                try {
+                    doc.tags_json?.let {
+                        val tagsMap = Json.decodeFromString<Map<String, Int>>(it)
+                        tagsSet.addAll(tagsMap.keys)
+                    }
+                } catch (e: Exception) {}
+            }
+            tagsSet.sorted()
+        }
+        .flowOn(Dispatchers.IO)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     // Load highlights for currently selected document
     val highlights: StateFlow<List<HighlightEntity>> = _selectedDoc
@@ -237,6 +300,25 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setSearchQuery(query: String) {
         _searchQuery.value = query
+    }
+
+    fun selectCategory(category: String?) {
+        _selectedCategory.value = category
+        _selectedTag.value = null
+        _currentView.value = "all"
+        _currentTab.value = "library"
+    }
+
+    fun selectTag(tag: String?) {
+        _selectedTag.value = tag
+        _selectedCategory.value = null
+        _currentView.value = "all"
+        _currentTab.value = "library"
+    }
+
+    fun clearFilters() {
+        _selectedCategory.value = null
+        _selectedTag.value = null
     }
 
     fun toggleTheme() {

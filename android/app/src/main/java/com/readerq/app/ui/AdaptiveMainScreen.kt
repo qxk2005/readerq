@@ -137,7 +137,7 @@ fun AdaptiveMainScreen(
                                 val tabs = listOf(
                                     Triple("library", "库", R.drawable.ic_tab_library),
                                     Triple("feed", "订阅", R.drawable.ic_tab_feed),
-                                    Triple("notebook", "笔记本", R.drawable.ic_tab_notebook),
+                                    Triple("notebook", "浏览", R.drawable.ic_tab_notebook),
                                     Triple("settings", "设置", R.drawable.ic_tab_settings)
                                 )
                                 tabs.forEach { (tabId, label, icon) ->
@@ -207,7 +207,7 @@ fun AdaptiveMainScreen(
                         val tabs = listOf(
                             Triple("library", "库", R.drawable.ic_tab_library),
                             Triple("feed", "订阅", R.drawable.ic_tab_feed),
-                            Triple("notebook", "笔记本", R.drawable.ic_tab_notebook),
+                            Triple("notebook", "浏览", R.drawable.ic_tab_notebook),
                             Triple("settings", "设置", R.drawable.ic_tab_settings)
                         )
                         tabs.forEach { (tabId, label, icon) ->
