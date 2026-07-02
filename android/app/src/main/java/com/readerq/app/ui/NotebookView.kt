@@ -150,7 +150,7 @@ fun NotebookHighlightCard(
         }
     }
 
-    val hlColor = when (hl.color) {
+    val hlColor = when (hl.color?.lowercase()) {
         "yellow" -> Color(0xFFFDE047)
         "green" -> Color(0xFF86EFAC)
         "blue" -> Color(0xFF93C5FD)
@@ -201,6 +201,7 @@ fun NotebookHighlightCard(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .height(IntrinsicSize.Max)
                     .clickable(enabled = !isEditing) {
                         isEditing = true
                     }
@@ -208,7 +209,7 @@ fun NotebookHighlightCard(
                 Box(
                     modifier = Modifier
                         .width(4.dp)
-                        .height(32.dp)
+                        .fillMaxHeight()
                         .background(hlColor)
                 )
                 Spacer(modifier = Modifier.width(8.dp))
