@@ -127,7 +127,25 @@ fun NotebookHighlightCard(
     
     val hlTags = remember(hl.tags_json) {
         try {
-            hl.tags_json?.let { Json.decodeFromString<List<String>>(it) } ?: emptyList()
+            if (hl.tags_json.isNullOrBlank()) {
+                emptyList()
+            } else {
+                try {
+                    Json.decodeFromString<List<String>>(hl.tags_json)
+                } catch (e1: Exception) {
+                    try {
+                        val objList = Json.decodeFromString<List<com.readerq.app.api.ReadwiseExportTagItem>>(hl.tags_json)
+                        objList.map { it.name }
+                    } catch (e2: Exception) {
+                        try {
+                            val map = Json.decodeFromString<Map<String, Int>>(hl.tags_json)
+                            map.keys.toList()
+                        } catch (e3: Exception) {
+                            emptyList()
+                        }
+                    }
+                }
+            }
         } catch (e: Exception) {
             emptyList()
         }

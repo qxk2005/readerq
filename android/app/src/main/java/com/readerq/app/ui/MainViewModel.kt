@@ -777,7 +777,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                                         color = h.color ?: "yellow",
                                         location = h.location ?: 0,
                                         readwise_highlight_id = h.id.toString(),
-                                        tags_json = Json.encodeToString(h.tags)
+                                        tags_json = Json.encodeToString(h.tags.map { it.name })
                                     )
                                 )
                             }
