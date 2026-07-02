@@ -84,6 +84,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _contentWidth = MutableStateFlow(700)
     val contentWidth: StateFlow<Int> = _contentWidth.asStateFlow()
 
+    // Sidebar Drag & Collapse States
+    private val _sidebarWidthDp = MutableStateFlow(360f)
+    val sidebarWidthDp: StateFlow<Float> = _sidebarWidthDp.asStateFlow()
+
+    private val _isSidebarCollapsed = MutableStateFlow(false)
+    val isSidebarCollapsed: StateFlow<Boolean> = _isSidebarCollapsed.asStateFlow()
+
     // OpenAI settings
     private val _openaiApiKey = MutableStateFlow("")
     val openaiApiKey: StateFlow<String> = _openaiApiKey.asStateFlow()
@@ -183,6 +190,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             _fontFamily.value = settingDao.getSetting("fontFamily")?.replace("\"", "") ?: "sans"
             _lineHeight.value = settingDao.getSetting("lineHeight")?.replace("\"", "")?.toFloatOrNull() ?: 1.6f
             _contentWidth.value = settingDao.getSetting("contentWidth")?.replace("\"", "")?.toIntOrNull() ?: 700
+            
+            _sidebarWidthDp.value = settingDao.getSetting("sidebar_width")?.replace("\"", "")?.toFloatOrNull() ?: 360f
+            _isSidebarCollapsed.value = settingDao.getSetting("sidebar_collapsed")?.replace("\"", "")?.toBooleanStrictOrNull() ?: false
             
             _openaiApiKey.value = settingDao.getSetting("openai_api_key")?.replace("\"", "") ?: ""
             _openaiBaseUrl.value = settingDao.getSetting("openai_base_url")?.replace("\"", "") ?: "https://api.openai.com/v1"
@@ -336,6 +346,21 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             settingDao.setSetting(SettingEntity("oss_access_key_secret", accessKeySecret))
             settingDao.setSetting(SettingEntity("oss_custom_domain", customDomain))
             settingDao.setSetting(SettingEntity("oss_path_prefix", pathPrefix))
+        }
+    }
+
+    fun updateSidebarWidth(width: Float) {
+        _sidebarWidthDp.value = width
+        viewModelScope.launch(Dispatchers.IO) {
+            settingDao.setSetting(SettingEntity("sidebar_width", width.toString()))
+        }
+    }
+
+    fun toggleSidebarCollapsed() {
+        val newState = !_isSidebarCollapsed.value
+        _isSidebarCollapsed.value = newState
+        viewModelScope.launch(Dispatchers.IO) {
+            settingDao.setSetting(SettingEntity("sidebar_collapsed", newState.toString()))
         }
     }
 

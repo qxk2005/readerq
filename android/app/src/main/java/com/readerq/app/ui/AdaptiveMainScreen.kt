@@ -32,6 +32,11 @@ import com.readerq.app.ui.OssTestResult
 import com.readerq.app.ui.GitHubRelease
 import com.readerq.app.R
 import androidx.compose.ui.res.painterResource
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.foundation.border
+import androidx.compose.ui.draw.clip
 
 @Composable
 fun AdaptiveMainScreen(
@@ -248,28 +253,105 @@ fun AdaptiveMainScreen(
                             GlobalNotebookPane(viewModel = viewModel)
                         } else {
                             // Split layout for reading
-                            Row(Modifier.fillMaxSize()) {
-                                Box(modifier = Modifier.width(360.dp)) {
-                                    documentListPane(currentTab == "feed")
+                            val sidebarWidthDp by viewModel.sidebarWidthDp.collectAsState()
+                            val isSidebarCollapsed by viewModel.isSidebarCollapsed.collectAsState()
+                            
+                            BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+                                val maxWidthVal = maxWidth
+                                val density = LocalDensity.current.density
+                                val maxAllowedWidth = maxWidthVal.value * 0.6f
+                                val currentSidebarWidth = if (isSidebarCollapsed) {
+                                    0.dp
+                                } else {
+                                    sidebarWidthDp.coerceIn(200f, maxAllowedWidth).dp
                                 }
-                                
-                                Divider(modifier = Modifier.width(1.dp).fillMaxHeight(), color = if (theme == "sepia") Color(0xFFE4DFD5) else Color(0xFF2D2D2D))
 
-                                Box(modifier = Modifier.weight(1f)) {
-                                    if (selectedDoc != null) {
-                                        readingPane(Modifier.fillMaxSize(), null)
-                                    } else {
+                                Row(Modifier.fillMaxSize()) {
+                                    if (currentSidebarWidth > 0.dp) {
+                                        Box(modifier = Modifier.width(currentSidebarWidth)) {
+                                            documentListPane(currentTab == "feed")
+                                        }
+                                    }
+                                    
+                                    // Draggable Split Divider and Collapse Toggle Bar
+                                    Box(
+                                        modifier = Modifier
+                                            .width(12.dp)
+                                            .fillMaxHeight()
+                                            .pointerInput(Unit) {
+                                                detectDragGestures { change, dragAmount ->
+                                                    change.consume()
+                                                    val newWidth = sidebarWidthDp + dragAmount.x / density
+                                                    if (newWidth >= 200f && newWidth <= maxAllowedWidth) {
+                                                        viewModel.updateSidebarWidth(newWidth)
+                                                        if (isSidebarCollapsed) {
+                                                            viewModel.toggleSidebarCollapsed()
+                                                        }
+                                                    } else if (newWidth < 150f && !isSidebarCollapsed) {
+                                                        viewModel.toggleSidebarCollapsed()
+                                                    }
+                                                }
+                                            },
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Divider(
+                                            modifier = Modifier
+                                                .width(1.dp)
+                                                .fillMaxHeight(),
+                                            color = if (theme == "sepia") Color(0xFFE4DFD5) else Color(0xFF2D2D2D)
+                                        )
+
                                         Box(
                                             modifier = Modifier
-                                                .fillMaxSize()
-                                                .background(MaterialTheme.colorScheme.background),
+                                                .size(width = 16.dp, height = 50.dp)
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .background(if (theme == "sepia") Color(0xFFEFECE6) else Color(0xFF1E1E1E))
+                                                .border(
+                                                    width = 1.dp,
+                                                    color = if (theme == "sepia") Color(0xFFE4DFD5) else Color(0xFF2D2D2D),
+                                                    shape = RoundedCornerShape(8.dp)
+                                                )
+                                                .clickable {
+                                                    viewModel.toggleSidebarCollapsed()
+                                                },
                                             contentAlignment = Alignment.Center
                                         ) {
-                                            Text(
-                                                text = "选择一篇文章开始阅读",
-                                                color = Color.Gray,
-                                                style = MaterialTheme.typography.bodyLarge
-                                            )
+                                            Row(
+                                                horizontalArrangement = Arrangement.spacedBy(2.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Box(
+                                                    modifier = Modifier
+                                                        .width(1.dp)
+                                                        .height(12.dp)
+                                                        .background(if (theme == "sepia") Color(0xFF8E887E) else Color.LightGray)
+                                                )
+                                                Box(
+                                                    modifier = Modifier
+                                                        .width(1.dp)
+                                                        .height(12.dp)
+                                                        .background(if (theme == "sepia") Color(0xFF8E887E) else Color.LightGray)
+                                                )
+                                            }
+                                        }
+                                    }
+
+                                    Box(modifier = Modifier.weight(1f)) {
+                                        if (selectedDoc != null) {
+                                            readingPane(Modifier.fillMaxSize(), null)
+                                        } else {
+                                            Box(
+                                                modifier = Modifier
+                                                    .fillMaxSize()
+                                                    .background(MaterialTheme.colorScheme.background),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Text(
+                                                    text = "选择一篇文章开始阅读",
+                                                    color = Color.Gray,
+                                                    style = MaterialTheme.typography.bodyLarge
+                                                )
+                                            }
                                         }
                                     }
                                 }
