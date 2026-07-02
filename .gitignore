@@ -76,3 +76,6 @@ Thumbs.db
 *.deb
 *.rpm
 *.pkg
+
+#打包
+/打包
