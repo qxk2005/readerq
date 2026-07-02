@@ -617,7 +617,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                                     reading_time = item.reading_time,
                                     created_at = item.created_at,
                                     updated_at = item.updated_at,
-                                    published_date = item.published_date,
+                                    published_date = item.publishedDateString,
                                     summary = item.summary,
                                     notes = item.notes,
                                     image_url = item.image_url,

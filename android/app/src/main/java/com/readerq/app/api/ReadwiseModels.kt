@@ -1,6 +1,9 @@
 package com.readerq.app.api
 
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
 
 @Serializable
 data class ReadwiseDocResponse(
@@ -24,7 +27,7 @@ data class ReadwiseDocItem(
     val reading_time: String? = null,
     val created_at: String? = null,
     val updated_at: String? = null,
-    val published_date: String? = null,
+    val published_date: JsonElement? = null,
     val summary: String? = null,
     val notes: String? = null,
     val image_url: String? = null,
@@ -34,7 +37,13 @@ data class ReadwiseDocItem(
     val saved_at: String? = null,
     val last_moved_at: String? = null,
     val parent_id: String? = null
-)
+) {
+    val publishedDateString: String?
+        get() {
+            val content = (published_date as? JsonPrimitive)?.contentOrNull
+            return if (content == "0" || content.isNullOrBlank()) null else content
+        }
+}
 
 @Serializable
 data class ReadwiseTagItem(
