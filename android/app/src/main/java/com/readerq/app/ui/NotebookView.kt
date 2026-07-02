@@ -28,6 +28,7 @@ import kotlinx.serialization.json.jsonPrimitive
 fun NotebookView(viewModel: MainViewModel) {
     val highlights by viewModel.highlights.collectAsState()
     val doc by viewModel.selectedDoc.collectAsState()
+    val theme by viewModel.theme.collectAsState()
 
     var docNote by remember(doc) { mutableStateOf(doc?.notes ?: "") }
     // Parse tags from doc tags JSON
@@ -129,8 +130,29 @@ fun NotebookView(viewModel: MainViewModel) {
                 else -> Color(0xFFFDE047)
             }
 
+            val cardBg = when (theme) {
+                "light" -> Color(0xFFF3F4F6)
+                "sepia" -> Color(0xFFEFECE6)
+                else -> Color(0xFF1E1E1E)
+            }
+            val mainTextColor = when (theme) {
+                "light" -> Color(0xFF111827)
+                "sepia" -> Color(0xFF2B251F)
+                else -> Color(0xFFF3F4F6)
+            }
+            val subTextColor = when (theme) {
+                "light" -> Color(0xFF4B5563)
+                "sepia" -> Color(0xFF5C5246)
+                else -> Color(0xFF9CA3AF)
+            }
+            val tagBg = when (theme) {
+                "light" -> Color(0xFFE5E7EB)
+                "sepia" -> Color(0xFFE4DFD5)
+                else -> Color(0xFF2D2D2D)
+            }
+
             Card(
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
+                colors = CardDefaults.cardColors(containerColor = cardBg),
                 shape = RoundedCornerShape(12.dp),
                 modifier = Modifier
                     .fillMaxWidth()
@@ -157,9 +179,10 @@ fun NotebookView(viewModel: MainViewModel) {
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
                             text = hl.text,
-                            color = MaterialTheme.colorScheme.onSurface,
+                            color = mainTextColor,
                             fontSize = 13.sp,
-                            lineHeight = 18.sp
+                            lineHeight = 18.sp,
+                            modifier = Modifier.weight(1f)
                         )
                     }
 
@@ -233,12 +256,12 @@ fun NotebookView(viewModel: MainViewModel) {
                                 Icon(
                                     painter = painterResource(id = R.drawable.ic_edit_note),
                                     contentDescription = "Note",
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    tint = subTextColor,
                                     modifier = Modifier.size(14.dp)
                                 )
                                 Text(
                                     text = hl.note,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    color = subTextColor,
                                     fontStyle = FontStyle.Italic,
                                     fontSize = 12.sp
                                 )
@@ -255,10 +278,10 @@ fun NotebookView(viewModel: MainViewModel) {
                                     Box(
                                         modifier = Modifier
                                             .clip(RoundedCornerShape(4.dp))
-                                            .background(MaterialTheme.colorScheme.surfaceVariant)
+                                            .background(tagBg)
                                             .padding(horizontal = 6.dp, vertical = 2.dp)
                                     ) {
-                                        Text(text = "#$tag", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
+                                        Text(text = "#$tag", color = subTextColor, fontSize = 10.sp)
                                     }
                                 }
                             }
