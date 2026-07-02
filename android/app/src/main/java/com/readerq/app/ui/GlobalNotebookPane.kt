@@ -19,6 +19,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.readerq.app.R
+import androidx.compose.ui.res.painterResource
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -37,15 +39,14 @@ fun GlobalNotebookPane(
     val textColor = MaterialTheme.colorScheme.onBackground
     val mutedColor = if (isDark) Color.Gray else if (isSepia) Color(0xFF8D8275) else Color.Gray
     val dividerColor = if (isDark) Color(0xFF262626) else if (isSepia) Color(0xFFE4DFD5) else Color(0xFFEEEEEE)
-    val cardBg = if (isDark) Color(0xFF1E1E1E) else if (isSepia) Color(0xFFEFECE6) else Color(0xFFF3F4F6)
 
     val categories = listOf(
-        Triple("article", "📄 Articles (文章)", "article"),
-        Triple("book", "📚 Books (书籍)", "book"),
-        Triple("pdf", "📎 PDFs (电子书/PDF)", "pdf"),
-        Triple("video", "🎥 Videos (视频)", "video"),
-        Triple("email", "✉️ Emails (邮件)", "email"),
-        Triple("tweet", "🐦 Tweets (推特/短文)", "tweet")
+        Triple("article", "文章", R.drawable.ic_cat_article),
+        Triple("book", "书籍", R.drawable.ic_cat_book),
+        Triple("pdf", "电子书/PDF", R.drawable.ic_cat_pdf),
+        Triple("video", "视频", R.drawable.ic_cat_video),
+        Triple("email", "邮件", R.drawable.ic_cat_email),
+        Triple("tweet", "推特/短文", R.drawable.ic_cat_tweet)
     )
 
     LazyColumn(
@@ -63,10 +64,10 @@ fun GlobalNotebookPane(
             )
         }
 
-        // --- Types 标题 ---
+        // --- 类型 标题 ---
         item {
             Text(
-                text = "Types",
+                text = "类型",
                 fontWeight = FontWeight.Bold,
                 fontSize = 15.sp,
                 color = textColor,
@@ -74,14 +75,24 @@ fun GlobalNotebookPane(
             )
         }
 
-        // --- Types 分类列表 ---
-        items(categories) { (catKey, label, categoryName) ->
+        // --- 类型 分类列表 ---
+        items(categories) { (catKey, label, iconRes) ->
             val count = categoryCounts[catKey] ?: 0
             
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clickable {
+                        // Map key to standard category names in MainViewModel
+                        val categoryName = when (catKey) {
+                            "article" -> "article"
+                            "book" -> "book"
+                            "pdf" -> "pdf"
+                            "video" -> "video"
+                            "email" -> "email"
+                            "tweet" -> "tweet"
+                            else -> catKey
+                        }
                         viewModel.selectCategory(categoryName)
                     }
             ) {
@@ -92,12 +103,24 @@ fun GlobalNotebookPane(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Text(
-                        text = label,
-                        fontSize = 14.sp,
-                        color = textColor,
-                        fontWeight = FontWeight.Medium
-                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Icon(
+                            painter = painterResource(id = iconRes),
+                            contentDescription = label,
+                            tint = textColor.copy(alpha = 0.7f),
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Text(
+                            text = label,
+                            fontSize = 14.sp,
+                            color = textColor,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                    
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         if (count > 0) {
                             Text(
@@ -115,25 +138,24 @@ fun GlobalNotebookPane(
             }
         }
 
-        // --- Tags 标题 ---
+        // --- 标签 标题 ---
         item {
-            Spacer(modifier = Modifier.height(16.dp))
             Text(
-                text = "Tags",
+                text = "标签",
                 fontWeight = FontWeight.Bold,
                 fontSize = 15.sp,
                 color = textColor,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 16.dp)
             )
         }
 
-        // --- Find Tag 搜索过滤框 ---
+        // --- 搜索过滤框 ---
         item {
             OutlinedTextField(
                 value = tagSearchQuery,
                 onValueChange = { tagSearchQuery = it },
                 leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Search", tint = mutedColor) },
-                placeholder = { Text("Find tag...", color = mutedColor, fontSize = 14.sp) },
+                placeholder = { Text("搜索标签...", color = mutedColor, fontSize = 14.sp) },
                 singleLine = true,
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedTextColor = textColor,
@@ -147,7 +169,7 @@ fun GlobalNotebookPane(
             )
         }
 
-        // --- Tags 列表 ---
+        // --- 标签列表 ---
         val filteredTags = allTags.filter { it.contains(tagSearchQuery, ignoreCase = true) }
         
         if (filteredTags.isEmpty()) {
