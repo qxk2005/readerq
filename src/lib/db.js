@@ -358,15 +358,117 @@ export function upsertHighlight(highlight) {
   // 插入一个占位 document 防止外键约束失败（增量同步时可能会遇到子元素先于父元素被处理或只返回子元素）
   db.prepare(`INSERT OR IGNORE INTO documents (id) VALUES (?)`).run(highlight.document_id);
 
-  db.prepare(`
-    INSERT OR REPLACE INTO highlights
-    (id, document_id, text, note, color, location_start, location_end, created_at, tags_json, readwise_highlight_id)
-    VALUES (@id, @document_id, @text, @note, @color, @location_start, @location_end, @created_at, @tags_json, @readwise_highlight_id)
-  `).run({
-    ...highlight,
-    tags_json: JSON.stringify(highlight.tags || {}),
-    readwise_highlight_id: highlight.readwise_highlight_id || null
-  });
+  const cleanText = (t) => (t || '').replace(/\r\n/g, '\n').trim();
+  const highlightText = cleanText(highlight.text);
+
+  const getIdPriority = (id) => {
+    if (!id) return 0;
+    if (id.startsWith('local_')) return 1;
+    if (id.startsWith('readwise-v2-')) return 2;
+    return 3; // UUID
+  };
+
+  // 1. 查找是否已存在相同文本的高亮
+  const docHighlights = db.prepare('SELECT * FROM highlights WHERE document_id = ?').all(highlight.document_id);
+  const existingByText = docHighlights.find(h => h.id !== highlight.id && cleanText(h.text) === highlightText);
+
+  if (existingByText) {
+    const existingPriority = getIdPriority(existingByText.id);
+    const newPriority = getIdPriority(highlight.id);
+
+    if (existingPriority >= newPriority) {
+      // 数据库已存的高亮更好，保留已存的，把传入的内容合入
+      const mergedReadwiseId = highlight.readwise_highlight_id || existingByText.readwise_highlight_id;
+      const updatedTags = { ...JSON.parse(existingByText.tags_json || '{}'), ...(highlight.tags || {}) };
+      const mergedNote = highlight.note || existingByText.note || '';
+
+      db.prepare(`
+        UPDATE highlights SET
+          note = @note,
+          tags_json = @tags_json,
+          readwise_highlight_id = @readwise_highlight_id
+        WHERE id = @id
+      `).run({
+        id: existingByText.id,
+        note: mergedNote,
+        tags_json: JSON.stringify(updatedTags),
+        readwise_highlight_id: mergedReadwiseId || null
+      });
+
+      // 如果当前处理的 highlight.id 在数据库里原本就存在，删除它以清理重复
+      db.prepare('DELETE FROM highlights WHERE id = ?').run(highlight.id);
+      
+      console.log(`[排重合并] 保留优先级更高的已有记录 ${existingByText.id} (级:${existingPriority})，合并并清除传入的 ${highlight.id} (级:${newPriority})`);
+      return;
+    } else {
+      // 传入的高亮更好，删除已存的高亮，并合入有用的字段
+      // 1. 删除数据库中旧的高亮（以及如果原本就存在同名主键也删掉防止冲突）
+      db.prepare('DELETE FROM highlights WHERE id = ?').run(existingByText.id);
+      db.prepare('DELETE FROM highlights WHERE id = ?').run(highlight.id);
+
+      // 2. 合并信息
+      const mergedReadwiseId = highlight.readwise_highlight_id || existingByText.readwise_highlight_id;
+      const mergedTags = { ...JSON.parse(existingByText.tags_json || '{}'), ...(highlight.tags || {}) };
+      const mergedNote = highlight.note || existingByText.note || '';
+
+      // 3. 插入新的高亮
+      db.prepare(`
+        INSERT INTO highlights
+        (id, document_id, text, note, color, location_start, location_end, created_at, tags_json, readwise_highlight_id)
+        VALUES (@id, @document_id, @text, @note, @color, @location_start, @location_end, @created_at, @tags_json, @readwise_highlight_id)
+      `).run({
+        location_start: null,
+        location_end: null,
+        created_at: new Date().toISOString(),
+        ...highlight,
+        note: mergedNote,
+        tags_json: JSON.stringify(mergedTags),
+        readwise_highlight_id: mergedReadwiseId || null
+      });
+
+      console.log(`[排重合并] 保留优先级更高的传入记录 ${highlight.id} (级:${newPriority})，替代并清除了已有记录 ${existingByText.id} (级:${existingPriority})`);
+      return;
+    }
+  }
+
+  // 2. 文本无冲突，执行常规更新或插入
+  const existingById = db.prepare('SELECT * FROM highlights WHERE id = ?').get(highlight.id);
+
+  if (existingById) {
+    db.prepare(`
+      UPDATE highlights SET
+        document_id = @document_id,
+        text = @text,
+        note = @note,
+        color = @color,
+        location_start = COALESCE(@location_start, location_start),
+        location_end = COALESCE(@location_end, location_end),
+        created_at = @created_at,
+        tags_json = @tags_json,
+        readwise_highlight_id = COALESCE(@readwise_highlight_id, readwise_highlight_id)
+      WHERE id = @id
+    `).run({
+      location_start: null,
+      location_end: null,
+      created_at: new Date().toISOString(),
+      ...highlight,
+      tags_json: JSON.stringify(highlight.tags || {}),
+      readwise_highlight_id: highlight.readwise_highlight_id || null
+    });
+  } else {
+    db.prepare(`
+      INSERT INTO highlights
+      (id, document_id, text, note, color, location_start, location_end, created_at, tags_json, readwise_highlight_id)
+      VALUES (@id, @document_id, @text, @note, @color, @location_start, @location_end, @created_at, @tags_json, @readwise_highlight_id)
+    `).run({
+      location_start: null,
+      location_end: null,
+      created_at: new Date().toISOString(),
+      ...highlight,
+      tags_json: JSON.stringify(highlight.tags || {}),
+      readwise_highlight_id: highlight.readwise_highlight_id || null
+    });
+  }
 }
 
 /**

@@ -552,6 +552,7 @@ class ReadwiseAPI {
           const highlights = book.highlights.map(h => ({
             id: h.external_id || `readwise-v2-${h.id}`,
             readwise_id: h.id,
+            readwise_highlight_id: String(h.id),
             text: h.text || '',
             note: h.note || '',
             color: h.color || 'yellow',
@@ -663,6 +664,7 @@ class ReadwiseAPI {
           return (book.highlights || []).map(h => ({
             id: h.external_id || `readwise-v2-${h.id}`,
             readwise_id: h.id,
+            readwise_highlight_id: String(h.id),
             text: h.text || '',
             note: h.note || '',
             color: h.color || 'yellow',

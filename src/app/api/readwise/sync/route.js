@@ -134,6 +134,7 @@ async function runSync(client, fullSync, location) {
               document_id: documentId,
               location_start: h.location,
               location_end: null,
+              readwise_highlight_id: h.readwise_highlight_id,
             }));
 
             if (highlightsToInsert.length > 0) {
