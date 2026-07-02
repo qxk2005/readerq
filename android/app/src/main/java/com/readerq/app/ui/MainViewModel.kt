@@ -747,7 +747,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     totalFetchedDocs += results.size
                     _syncProgress.value = SyncProgress("documents", totalFetchedDocs, remoteDocCount)
 
-                    pageCursor = response.nextPageCursor
+                    pageCursor = response.nextPageCursorString
                 } while (pageCursor != null)
 
                 // 阶段 2: 拉取 V2 高亮

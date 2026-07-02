@@ -331,7 +331,7 @@ class ReadwiseClient(private val token: String) {
                 onBatch(results)
             }
 
-            pageCursor = data.nextPageCursor
+            pageCursor = data.nextPageCursorString
 
             onProgress?.invoke(fetchedCount, totalBookCount)
 
@@ -375,7 +375,7 @@ class ReadwiseClient(private val token: String) {
                 onBatch(results)
             }
 
-            pageCursor = data.nextPageCursor
+            pageCursor = data.nextPageCursorString
 
             onProgress?.invoke(fetchedCount, totalCount)
 

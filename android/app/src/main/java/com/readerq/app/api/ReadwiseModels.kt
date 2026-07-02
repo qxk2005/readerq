@@ -9,8 +9,11 @@ import kotlinx.serialization.json.contentOrNull
 data class ReadwiseDocResponse(
     val count: Int? = null,
     val results: List<ReadwiseDocItem> = emptyList(),
-    val nextPageCursor: String? = null
-)
+    val nextPageCursor: JsonElement? = null
+) {
+    val nextPageCursorString: String?
+        get() = (nextPageCursor as? JsonPrimitive)?.contentOrNull
+}
 
 @Serializable
 data class ReadwiseDocItem(
@@ -133,9 +136,12 @@ data class ReadwiseV2TagRequest(
 @Serializable
 data class ReadwiseExportResponse(
     val count: Int,
-    val nextPageCursor: String? = null,
+    val nextPageCursor: JsonElement? = null,
     val results: List<ReadwiseExportBookItem> = emptyList()
-)
+) {
+    val nextPageCursorString: String?
+        get() = (nextPageCursor as? JsonPrimitive)?.contentOrNull
+}
 
 @Serializable
 data class ReadwiseExportBookItem(
@@ -170,5 +176,8 @@ data class ReadwiseExportTagItem(
 data class ReadwiseTagResponse(
     val count: Int? = null,
     val results: List<ReadwiseTagItem> = emptyList(),
-    val nextPageCursor: String? = null
-)
+    val nextPageCursor: JsonElement? = null
+) {
+    val nextPageCursorString: String?
+        get() = (nextPageCursor as? JsonPrimitive)?.contentOrNull
+}
