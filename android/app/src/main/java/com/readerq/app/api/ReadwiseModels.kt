@@ -181,3 +181,9 @@ data class ReadwiseTagResponse(
     val nextPageCursorString: String?
         get() = (nextPageCursor as? JsonPrimitive)?.contentOrNull
 }
+
+@Serializable
+data class HighlightImage(
+    val src: String,
+    val alt: String
+)

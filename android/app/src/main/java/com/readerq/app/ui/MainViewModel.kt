@@ -17,6 +17,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.encodeToString
+import com.readerq.app.api.HighlightImage
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.android.Android
 import io.ktor.client.request.get
@@ -1012,13 +1013,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     // Highlighting - Create
-    fun addHighlight(text: String, note: String? = null, color: String = "yellow", location: Int = 0) {
+    fun addHighlight(
+        text: String,
+        note: String? = null,
+        color: String = "yellow",
+        location: Int = 0,
+        images: List<HighlightImage> = emptyList()
+    ) {
         val doc = _selectedDoc.value ?: return
         val currentToken = _token.value ?: return
 
         viewModelScope.launch(Dispatchers.IO) {
             val localId = "local_" + System.currentTimeMillis()
-            val localHl = HighlightEntity(
+            var localHl = HighlightEntity(
                 id = localId,
                 document_id = doc.id,
                 text = text,
@@ -1031,6 +1038,53 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             // Insert local first (Optimistic update)
             hlDao.insertHighlight(localHl)
 
+            var updatedText = text
+            if (images.isNotEmpty()) {
+                val region = _ossRegion.value
+                val bucket = _ossBucket.value
+                val accessKeyId = _ossAccessKeyId.value
+                val accessKeySecret = _ossAccessKeySecret.value
+                val customDomain = _ossCustomDomain.value
+                val pathPrefix = _ossPathPrefix.value
+
+                if (region.isNotBlank() && bucket.isNotBlank() && accessKeyId.isNotBlank() && accessKeySecret.isNotBlank()) {
+                    val httpClient = HttpClient(Android)
+                    val oss = com.readerq.app.api.OssClient(
+                        region = region,
+                        bucket = bucket,
+                        accessKeyId = accessKeyId,
+                        accessKeySecret = accessKeySecret,
+                        customDomain = if (customDomain.isBlank()) null else customDomain,
+                        pathPrefix = pathPrefix
+                    )
+
+                    var hasUploadSuccess = false
+                    for (img in images) {
+                        try {
+                            val httpResponse = httpClient.get(img.src)
+                            if (httpResponse.status.value in 200..299) {
+                                val bytes = httpResponse.body<ByteArray>()
+                                val fileName = if (img.src.contains("/")) img.src.substringAfterLast("/") else "image.jpg"
+                                val ossUrl = oss.uploadImage(bytes, doc.id, fileName)
+                                
+                                val placeholder = "[图片: ${img.alt}]"
+                                val markdownImg = "![${img.alt}]($ossUrl)"
+                                updatedText = updatedText.replace(placeholder, markdownImg)
+                                hasUploadSuccess = true
+                            }
+                        } catch (err: Exception) {
+                            err.printStackTrace()
+                        }
+                    }
+                    httpClient.close()
+
+                    if (hasUploadSuccess && updatedText != text) {
+                        localHl = localHl.copy(text = updatedText)
+                        hlDao.insertHighlight(localHl)
+                    }
+                }
+            }
+
             if (currentToken == "offline") {
                 val finalId = "offline_" + System.currentTimeMillis()
                 hlDao.deleteHighlight(localId)
@@ -1041,7 +1095,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             try {
                 val client = ReadwiseClient(currentToken)
                 val response = client.createHighlight(
-                    text = text,
+                    text = updatedText,
                     title = doc.title,
                     sourceUrl = doc.source_url ?: doc.url,
                     note = note,

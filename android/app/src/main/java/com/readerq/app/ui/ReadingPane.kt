@@ -31,6 +31,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import com.readerq.app.data.DocumentEntity
 import com.readerq.app.data.HighlightEntity
 import kotlinx.serialization.json.Json
+import com.readerq.app.api.HighlightImage
 import com.readerq.app.R
 import androidx.compose.ui.res.painterResource
 
@@ -51,6 +52,7 @@ fun ReadingPane(
     val contentWidth by viewModel.contentWidth.collectAsState()
 
     var selectedTextForHighlight by remember { mutableStateOf<String?>(null) }
+    var selectedImagesForHighlight by remember { mutableStateOf<List<HighlightImage>>(emptyList()) }
     var showHighlightCreator by remember { mutableStateOf(false) }
 
     var showAaSheet by remember { mutableStateOf(false) }
@@ -177,8 +179,9 @@ fun ReadingPane(
                     fontSize = fontSize,
                     lineHeight = lineHeight,
                     contentWidth = contentWidth,
-                    onTextSelected = { text ->
+                    onTextSelected = { text, images ->
                         selectedTextForHighlight = text
+                        selectedImagesForHighlight = images
                         showHighlightCreator = true
                     }
                 )
@@ -274,10 +277,12 @@ fun ReadingPane(
                                             onClick = {
                                                 viewModel.addHighlight(
                                                     text = selectedTextForHighlight!!,
-                                                    color = colorName
+                                                    color = colorName,
+                                                    images = selectedImagesForHighlight
                                                 )
                                                 showHighlightCreator = false
                                                 selectedTextForHighlight = null
+                                                selectedImagesForHighlight = emptyList()
                                             },
                                             modifier = Modifier
                                                 .size(24.dp)
@@ -290,6 +295,7 @@ fun ReadingPane(
                                 TextButton(onClick = {
                                     showHighlightCreator = false
                                     selectedTextForHighlight = null
+                                    selectedImagesForHighlight = emptyList()
                                 }) {
                                     Text("取消", color = Color.Gray)
                                 }
@@ -656,7 +662,7 @@ fun HtmlContentViewer(
     fontSize: Int,
     lineHeight: Float,
     contentWidth: Int,
-    onTextSelected: (String) -> Unit
+    onTextSelected: (String, List<HighlightImage>) -> Unit
 ) {
     val highlightsJson = highlights.joinToString(separator = ",", prefix = "[", postfix = "]") { hl ->
         val escapedText = hl.text.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n").replace("\r", "")
@@ -692,8 +698,13 @@ fun HtmlContentViewer(
                             "javascript:(function() { " +
                                     "document.addEventListener('selectionchange', () => { " +
                                     "  var sel = window.getSelection(); " +
-                                    "  if (!sel.isCollapsed && sel.toString().trim().length > 0) { " +
-                                    "    AndroidBridge.onTextSelected(sel.toString()); " +
+                                    "  if (!sel.isCollapsed && sel.rangeCount > 0) { " +
+                                    "    var range = sel.getRangeAt(0); " +
+                                    "    var text = extractSelectionText(range); " +
+                                    "    var images = extractImagesFromRange(range); " +
+                                    "    if (text.trim().length > 0 || images.length > 0) { " +
+                                    "      AndroidBridge.onTextSelected(text, JSON.stringify(images)); " +
+                                    "    } " +
                                     "  } " +
                                     "}); " +
                                     "})()"
@@ -703,9 +714,14 @@ fun HtmlContentViewer(
                 
                 addJavascriptInterface(object {
                     @JavascriptInterface
-                    fun onTextSelected(text: String) {
+                    fun onTextSelected(text: String, imagesJson: String) {
                         post {
-                            onTextSelected(text)
+                            val images = try {
+                                Json.decodeFromString<List<HighlightImage>>(imagesJson)
+                            } catch (e: Exception) {
+                                emptyList()
+                            }
+                            onTextSelected(text, images)
                         }
                     }
                 }, "AndroidBridge")
@@ -746,6 +762,73 @@ fun HtmlContentViewer(
                     $html
                     
                     <script>
+                        function extractImagesFromRange(range) {
+                          const fragment = range.cloneContents();
+                          const images = [];
+                          const imgElements = fragment.querySelectorAll('img');
+                          imgElements.forEach(img => {
+                            const src = img.getAttribute('src');
+                            if (src && (src.startsWith('http://') || src.startsWith('https://'))) {
+                              images.push({
+                                src: src,
+                                alt: img.getAttribute('alt') || '图片'
+                              });
+                            }
+                          });
+                          return images;
+                        }
+
+                        function extractSelectionText(range) {
+                          const BLOCK_ELEMENTS = new Set([
+                            'P', 'DIV', 'LI', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6',
+                            'BR', 'HR', 'BLOCKQUOTE', 'PRE', 'TR', 'DT', 'DD',
+                            'SECTION', 'ARTICLE', 'HEADER', 'FOOTER', 'FIGURE', 'FIGCAPTION'
+                          ]);
+                          
+                          const fragment = range.cloneContents();
+                          const parts = [];
+                          
+                          function walk(node, olCounter) {
+                            if (node.nodeType === Node.TEXT_NODE) {
+                              parts.push(node.textContent);
+                            } else if (node.nodeType === Node.ELEMENT_NODE) {
+                              const tagName = node.tagName;
+                              if (tagName === 'BR') {
+                                parts.push('\n');
+                                return;
+                              }
+                              if (tagName === 'IMG') {
+                                const alt = node.getAttribute('alt') || '图片';
+                                parts.push('[图片: ' + alt + ']');
+                                return;
+                              }
+                              const isBlock = BLOCK_ELEMENTS.has(tagName);
+                              if (isBlock && parts.length > 0 && parts[parts.length - 1] !== '\n') {
+                                parts.push('\n');
+                              }
+                              if (tagName === 'LI') {
+                                if (olCounter) {
+                                  parts.push(olCounter.value++ + '. ');
+                                } else {
+                                  parts.push('• ');
+                                }
+                              }
+                              const childCounter = (tagName === 'OL') ? { value: 1 } : olCounter;
+                              for (let i = 0; i < node.childNodes.length; i++) {
+                                walk(node.childNodes[i], childCounter);
+                              }
+                              if (isBlock && parts.length > 0 && parts[parts.length - 1] !== '\n') {
+                                parts.push('\n');
+                              }
+                            }
+                          }
+                          
+                          for (let i = 0; i < fragment.childNodes.length; i++) {
+                            walk(fragment.childNodes[i], null);
+                          }
+                          return parts.join('').trim();
+                        }
+
                         function getTextOffset(root, node, offset) {
                           let currentOffset = 0;
                           const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null, false);

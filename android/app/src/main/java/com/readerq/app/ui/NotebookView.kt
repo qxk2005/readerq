@@ -218,56 +218,56 @@ fun NotebookHighlightCard(
             )
     ) {
         Column(modifier = Modifier.padding(12.dp)) {
-            // Read-only Row which catches click event only when not editing
-            Row(
+            // Parse markdown image syntax: ![description](url)
+            val imageRegex = Regex("""!\[[^]]*]\((https?://[^)]+)\)""")
+            val matchResult = imageRegex.find(hl.text)
+            val displayImageUrl = matchResult?.groups?.get(1)?.value
+            val cleanText = if (displayImageUrl != null) {
+                hl.text.replace(imageRegex, "").trim()
+            } else {
+                hl.text
+            }
+
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(IntrinsicSize.Max)
                     .clickable(enabled = !isEditing) {
                         isEditing = true
                     }
             ) {
-                Box(
-                    modifier = Modifier
-                        .width(4.dp)
-                        .fillMaxHeight()
-                        .background(hlColor)
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                
-                // Parse markdown image syntax: ![description](url)
-                val imageRegex = Regex("""!\[[^]]*]\((https?://[^)]+)\)""")
-                val matchResult = imageRegex.find(hl.text)
-                val displayImageUrl = matchResult?.groups?.get(1)?.value
-                val cleanText = if (displayImageUrl != null) {
-                    hl.text.replace(imageRegex, "").trim()
-                } else {
-                    hl.text
+                if (displayImageUrl != null) {
+                    AsyncImage(
+                        model = displayImageUrl,
+                        contentDescription = "Highlight Image",
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 200.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .border(1.dp, tagBg, RoundedCornerShape(8.dp))
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
                 }
 
-                Column(modifier = Modifier.weight(1f)) {
-                    if (cleanText.isNotEmpty()) {
+                if (cleanText.isNotEmpty()) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(IntrinsicSize.Max)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .width(4.dp)
+                                .fillMaxHeight()
+                                .background(hlColor)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
                         Text(
                             text = cleanText,
                             color = mainTextColor,
                             fontSize = 13.sp,
-                            lineHeight = 18.sp
-                        )
-                        if (displayImageUrl != null) {
-                            Spacer(modifier = Modifier.height(8.dp))
-                        }
-                    }
-                    
-                    if (displayImageUrl != null) {
-                        AsyncImage(
-                            model = displayImageUrl,
-                            contentDescription = "Highlight Image",
-                            contentScale = ContentScale.Fit,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .heightIn(max = 200.dp)
-                                .clip(RoundedCornerShape(8.dp))
-                                .border(1.dp, tagBg, RoundedCornerShape(8.dp))
+                            lineHeight = 18.sp,
+                            modifier = Modifier.weight(1f)
                         )
                     }
                 }
