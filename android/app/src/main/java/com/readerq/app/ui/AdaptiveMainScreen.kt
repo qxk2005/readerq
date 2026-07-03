@@ -8,6 +8,7 @@ import androidx.compose.material3.*
 import androidx.compose.material3.windowsizeclass.WindowSizeClass
 import androidx.compose.material3.windowsizeclass.WindowWidthSizeClass
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
@@ -46,8 +47,11 @@ fun AdaptiveMainScreen(
     val selectedDoc by viewModel.selectedDoc.collectAsState()
     val token by viewModel.token.collectAsState()
     val currentTab by viewModel.currentTab.collectAsState()
+    var isNavBarCollapsed by rememberSaveable { mutableStateOf(false) }
 
     val theme by viewModel.theme.collectAsState()
+    val detailPaneType by viewModel.detailPaneType.collectAsState()
+    val isDetailPaneCollapsed by viewModel.isDetailPaneCollapsed.collectAsState()
 
     val tabIndicatorColor = when (theme) {
         "light" -> Color(0xFFE5E7EB)
@@ -96,6 +100,184 @@ fun AdaptiveMainScreen(
                 .fillMaxSize()
                 .background(MaterialTheme.colorScheme.background)
         ) {
+            val bottomBarContent = @Composable {
+                if (isNavBarCollapsed) {
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(52.dp),
+                        color = MaterialTheme.colorScheme.surface,
+                        tonalElevation = 0.dp
+                    ) {
+                        Column {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(0.5.dp)
+                                    .background(tabIndicatorColor.copy(alpha = 0.5f))
+                            )
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(horizontal = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceAround
+                            ) {
+                                val tabs = listOf(
+                                    Triple("library", "库", R.drawable.ic_tab_library),
+                                    Triple("feed", "订阅", R.drawable.ic_tab_feed),
+                                    Triple("notebook", "浏览", R.drawable.ic_tab_notebook),
+                                    Triple("settings", "设置", R.drawable.ic_tab_settings)
+                                )
+                                
+                                tabs.forEach { (tabId, label, icon) ->
+                                    val isSelected = currentTab == tabId
+                                    Row(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .fillMaxHeight()
+                                            .padding(vertical = 6.dp, horizontal = 2.dp)
+                                            .clip(RoundedCornerShape(16.dp))
+                                            .background(if (isSelected) tabIndicatorColor else Color.Transparent)
+                                            .clickable {
+                                                if ((tabId == "library" || tabId == "feed") && selectedDoc != null && detailPaneType != null && !isDetailPaneCollapsed) {
+                                                    viewModel.showSidebarAndCloseDetail()
+                                                }
+                                                viewModel.changeTab(tabId)
+                                            }
+                                            .padding(horizontal = 4.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.Center
+                                    ) {
+                                        Icon(
+                                            painter = painterResource(id = icon),
+                                            contentDescription = label,
+                                            modifier = Modifier.size(18.dp),
+                                            tint = if (isSelected) tabSelectedColor else tabUnselectedColor
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(
+                                            text = label,
+                                            fontSize = 11.sp,
+                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                            color = if (isSelected) tabSelectedColor else tabUnselectedColor,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                }
+                                
+                                Row(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .fillMaxHeight()
+                                        .padding(vertical = 6.dp, horizontal = 2.dp)
+                                        .clip(RoundedCornerShape(16.dp))
+                                        .clickable { isNavBarCollapsed = false }
+                                        .padding(horizontal = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.Center
+                                ) {
+                                    Icon(
+                                        painter = painterResource(id = R.drawable.ic_tab_expand),
+                                        contentDescription = "展开",
+                                        modifier = Modifier.size(18.dp),
+                                        tint = tabUnselectedColor
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = "展开",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Normal,
+                                        color = tabUnselectedColor,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    NavigationBar(
+                        containerColor = MaterialTheme.colorScheme.surface,
+                        tonalElevation = 0.dp
+                    ) {
+                        val tabs = listOf(
+                            Triple("library", "库", R.drawable.ic_tab_library),
+                            Triple("feed", "订阅", R.drawable.ic_tab_feed),
+                            Triple("notebook", "浏览", R.drawable.ic_tab_notebook),
+                            Triple("settings", "设置", R.drawable.ic_tab_settings)
+                        )
+                        tabs.forEach { (tabId, label, icon) ->
+                            NavigationBarItem(
+                                selected = currentTab == tabId,
+                                onClick = {
+                                    if ((tabId == "library" || tabId == "feed") && selectedDoc != null && detailPaneType != null && !isDetailPaneCollapsed) {
+                                        viewModel.showSidebarAndCloseDetail()
+                                    }
+                                    viewModel.changeTab(tabId)
+                                },
+                                icon = {
+                                    Column(
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        verticalArrangement = Arrangement.Center,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                    ) {
+                                        Icon(
+                                            painter = painterResource(id = icon),
+                                            contentDescription = label,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                        Spacer(modifier = Modifier.height(2.dp))
+                                        Text(
+                                            text = label, 
+                                            fontSize = 10.sp, 
+                                            fontWeight = if (currentTab == tabId) FontWeight.Bold else FontWeight.Normal
+                                        )
+                                    }
+                                },
+                                label = null,
+                                colors = NavigationBarItemDefaults.colors(
+                                    selectedIconColor = tabSelectedColor,
+                                    unselectedIconColor = tabUnselectedColor,
+                                    indicatorColor = tabIndicatorColor
+                                )
+                            )
+                        }
+                        
+                        NavigationBarItem(
+                            selected = false,
+                            onClick = { isNavBarCollapsed = true },
+                            icon = {
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.Center,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                ) {
+                                    Icon(
+                                        painter = painterResource(id = R.drawable.ic_tab_collapse),
+                                        contentDescription = "收窄",
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text(
+                                        text = "收窄", 
+                                        fontSize = 10.sp, 
+                                        fontWeight = FontWeight.Normal
+                                    )
+                                }
+                            },
+                            label = null,
+                            colors = NavigationBarItemDefaults.colors(
+                                selectedIconColor = tabSelectedColor,
+                                unselectedIconColor = tabUnselectedColor,
+                                indicatorColor = tabIndicatorColor
+                            )
+                        )
+                    }
+                }
+            }
+
             val isCompact = windowSizeClass.widthSizeClass == WindowWidthSizeClass.Compact
 
             // Remember views
@@ -129,50 +311,7 @@ fun AdaptiveMainScreen(
                     }
                 } else {
                     Scaffold(
-                        bottomBar = {
-                            NavigationBar(
-                                containerColor = MaterialTheme.colorScheme.surface,
-                                tonalElevation = 0.dp
-                            ) {
-                                val tabs = listOf(
-                                    Triple("library", "库", R.drawable.ic_tab_library),
-                                    Triple("feed", "订阅", R.drawable.ic_tab_feed),
-                                    Triple("notebook", "浏览", R.drawable.ic_tab_notebook),
-                                    Triple("settings", "设置", R.drawable.ic_tab_settings)
-                                )
-                                tabs.forEach { (tabId, label, icon) ->
-                                    NavigationBarItem(
-                                        selected = currentTab == tabId,
-                                        onClick = { viewModel.changeTab(tabId) },
-                                        icon = {
-                                            Column(
-                                                horizontalAlignment = Alignment.CenterHorizontally,
-                                                verticalArrangement = Arrangement.Center,
-                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
-                                            ) {
-                                                Icon(
-                                                    painter = painterResource(id = icon),
-                                                    contentDescription = label,
-                                                    modifier = Modifier.size(20.dp)
-                                                )
-                                                Spacer(modifier = Modifier.height(2.dp))
-                                                Text(
-                                                    text = label, 
-                                                    fontSize = 10.sp, 
-                                                    fontWeight = if (currentTab == tabId) FontWeight.Bold else FontWeight.Normal
-                                                )
-                                            }
-                                        },
-                                        label = null,
-                                        colors = NavigationBarItemDefaults.colors(
-                                            selectedIconColor = tabSelectedColor,
-                                            unselectedIconColor = tabUnselectedColor,
-                                            indicatorColor = tabIndicatorColor
-                                        )
-                                    )
-                                }
-                            }
-                        }
+                        bottomBar = bottomBarContent
                     ) { paddingValues ->
                         Box(
                             modifier = Modifier
@@ -191,50 +330,7 @@ fun AdaptiveMainScreen(
             } else {
                 // --- Dual Pane layout (Tablet/Foldable) ---
                 Scaffold(
-                    bottomBar = {
-                        NavigationBar(
-                            containerColor = MaterialTheme.colorScheme.surface,
-                            tonalElevation = 0.dp
-                        ) {
-                            val tabs = listOf(
-                                Triple("library", "库", R.drawable.ic_tab_library),
-                                Triple("feed", "订阅", R.drawable.ic_tab_feed),
-                                Triple("notebook", "浏览", R.drawable.ic_tab_notebook),
-                                Triple("settings", "设置", R.drawable.ic_tab_settings)
-                            )
-                            tabs.forEach { (tabId, label, icon) ->
-                                NavigationBarItem(
-                                    selected = currentTab == tabId,
-                                    onClick = { viewModel.changeTab(tabId) },
-                                    icon = {
-                                        Column(
-                                            horizontalAlignment = Alignment.CenterHorizontally,
-                                            verticalArrangement = Arrangement.Center,
-                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
-                                        ) {
-                                            Icon(
-                                                painter = painterResource(id = icon),
-                                                contentDescription = label,
-                                                modifier = Modifier.size(20.dp)
-                                            )
-                                            Spacer(modifier = Modifier.height(2.dp))
-                                            Text(
-                                                text = label, 
-                                                fontSize = 10.sp, 
-                                                fontWeight = if (currentTab == tabId) FontWeight.Bold else FontWeight.Normal
-                                            )
-                                        }
-                                    },
-                                    label = null,
-                                    colors = NavigationBarItemDefaults.colors(
-                                        selectedIconColor = tabSelectedColor,
-                                        unselectedIconColor = tabUnselectedColor,
-                                        indicatorColor = tabIndicatorColor
-                                    )
-                                )
-                            }
-                        }
-                    }
+                    bottomBar = bottomBarContent
                 ) { paddingValues ->
                     Row(
                         Modifier
@@ -251,87 +347,118 @@ fun AdaptiveMainScreen(
                                 // Split layout for reading
                                 val sidebarWidthDp by viewModel.sidebarWidthDp.collectAsState()
                                 val isSidebarCollapsed by viewModel.isSidebarCollapsed.collectAsState()
+                                val detailPaneWidthDp by viewModel.detailPaneWidthDp.collectAsState()
                                 
                                 BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
                                     val maxWidthVal = maxWidth
                                     val density = LocalDensity.current.density
-                                    val maxAllowedWidth = maxWidthVal.value * 0.6f
-                                    val currentSidebarWidth = if (isSidebarCollapsed) {
+                                    
+                                    // Calculate left sidebar width
+                                    val maxAllowedSidebarWidth = maxWidthVal.value * 0.6f
+                                    val isSidebarCollapsedActual = isSidebarCollapsed || (detailPaneType != null && !isDetailPaneCollapsed)
+                                    val currentSidebarWidth = if (isSidebarCollapsedActual) {
                                         0.dp
                                     } else {
-                                        sidebarWidthDp.coerceIn(200f, maxAllowedWidth).dp
+                                        sidebarWidthDp.coerceIn(200f, maxAllowedSidebarWidth).dp
+                                    }
+
+                                    // Calculate right detail pane width
+                                    val maxAllowedDetailWidth = maxWidthVal.value * 0.6f
+                                    val isDetailCollapsedActual = isDetailPaneCollapsed || detailPaneType == null
+                                    val currentDetailWidth = if (isDetailCollapsedActual) {
+                                        0.dp
+                                    } else {
+                                        detailPaneWidthDp.coerceIn(200f, maxAllowedDetailWidth).dp
                                     }
 
                                     Row(Modifier.fillMaxSize()) {
-                                        if (currentSidebarWidth > 0.dp) {
+                                        if (isSidebarCollapsedActual) {
+                                            // 侧栏折叠时，渲染一个最左侧的极窄边缘把手，以便用户重新展开侧栏
+                                            Box(
+                                                modifier = Modifier
+                                                    .width(16.dp)
+                                                    .fillMaxHeight()
+                                                    .clickable { viewModel.toggleSidebarCollapsed() }
+                                                    .background(Color.Transparent),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Box(
+                                                    modifier = Modifier
+                                                        .size(width = 6.dp, height = 50.dp)
+                                                        .clip(RoundedCornerShape(3.dp))
+                                                        .background(if (theme == "sepia") Color(0xFF8E887E).copy(alpha = 0.5f) else Color.LightGray.copy(alpha = 0.5f))
+                                                )
+                                            }
+                                        } else {
                                             Box(modifier = Modifier.width(currentSidebarWidth)) {
                                                 documentListPane(currentTab == "feed")
                                             }
-                                        }
-                                        
-                                        // Draggable Split Divider and Collapse Toggle Bar
-                                        Box(
-                                            modifier = Modifier
-                                                .width(12.dp)
-                                                .fillMaxHeight()
-                                                .pointerInput(Unit) {
-                                                    detectDragGestures { change, dragAmount ->
-                                                        change.consume()
-                                                        val newWidth = sidebarWidthDp + dragAmount.x / density
-                                                        if (newWidth >= 200f && newWidth <= maxAllowedWidth) {
-                                                            viewModel.updateSidebarWidth(newWidth)
-                                                            if (isSidebarCollapsed) {
-                                                                viewModel.toggleSidebarCollapsed()
-                                                            }
-                                                        } else if (newWidth < 150f && !isSidebarCollapsed) {
-                                                            viewModel.toggleSidebarCollapsed()
-                                                        }
-                                                    }
-                                                },
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            Divider(
-                                                modifier = Modifier
-                                                    .width(1.dp)
-                                                    .fillMaxHeight(),
-                                                color = if (theme == "sepia") Color(0xFFE4DFD5) else Color(0xFF2D2D2D)
-                                            )
-
+                                            
+                                            // Left Draggable Split Divider
                                             Box(
                                                 modifier = Modifier
-                                                    .size(width = 16.dp, height = 50.dp)
-                                                    .clip(RoundedCornerShape(8.dp))
-                                                    .background(if (theme == "sepia") Color(0xFFEFECE6) else Color(0xFF1E1E1E))
-                                                    .border(
-                                                        width = 1.dp,
-                                                        color = if (theme == "sepia") Color(0xFFE4DFD5) else Color(0xFF2D2D2D),
-                                                        shape = RoundedCornerShape(8.dp)
-                                                    )
-                                                    .clickable {
-                                                        viewModel.toggleSidebarCollapsed()
+                                                    .width(12.dp)
+                                                    .fillMaxHeight()
+                                                    .pointerInput(Unit) {
+                                                        detectDragGestures { change, dragAmount ->
+                                                            change.consume()
+                                                            val newWidth = sidebarWidthDp + dragAmount.x / density
+                                                            if (newWidth >= 200f && newWidth <= maxAllowedSidebarWidth) {
+                                                                viewModel.updateSidebarWidth(newWidth)
+                                                                if (isSidebarCollapsed) {
+                                                                    viewModel.toggleSidebarCollapsed()
+                                                                }
+                                                            } else if (newWidth < 150f && !isSidebarCollapsed) {
+                                                                viewModel.toggleSidebarCollapsed()
+                                                            }
+                                                        }
                                                     },
                                                 contentAlignment = Alignment.Center
                                             ) {
-                                                Row(
-                                                    horizontalArrangement = Arrangement.spacedBy(2.dp),
-                                                    verticalAlignment = Alignment.CenterVertically
+                                                Divider(
+                                                    modifier = Modifier
+                                                        .width(1.dp)
+                                                        .fillMaxHeight(),
+                                                    color = if (theme == "sepia") Color(0xFFE4DFD5) else Color(0xFF2D2D2D)
+                                                )
+
+                                                Box(
+                                                    modifier = Modifier
+                                                        .size(width = 16.dp, height = 50.dp)
+                                                        .clip(RoundedCornerShape(8.dp))
+                                                        .background(if (theme == "sepia") Color(0xFFEFECE6) else Color(0xFF1E1E1E))
+                                                        .border(
+                                                            width = 1.dp,
+                                                            color = if (theme == "sepia") Color(0xFFE4DFD5) else Color(0xFF2D2D2D),
+                                                            shape = RoundedCornerShape(8.dp)
+                                                        )
+                                                        .clickable {
+                                                            viewModel.toggleSidebarCollapsed()
+                                                        },
+                                                    contentAlignment = Alignment.Center
                                                 ) {
-                                                    Box(
-                                                        modifier = Modifier
-                                                            .width(1.dp)
-                                                            .height(12.dp)
-                                                            .background(if (theme == "sepia") Color(0xFF8E887E) else Color.LightGray)
-                                                    )
-                                                    Box(
-                                                        modifier = Modifier
-                                                            .width(1.dp)
-                                                            .height(12.dp)
-                                                            .background(if (theme == "sepia") Color(0xFF8E887E) else Color.LightGray)
-                                                    )
+                                                    Row(
+                                                        horizontalArrangement = Arrangement.spacedBy(2.dp),
+                                                        verticalAlignment = Alignment.CenterVertically
+                                                    ) {
+                                                        Box(
+                                                            modifier = Modifier
+                                                                .width(1.dp)
+                                                                .height(12.dp)
+                                                                .background(if (theme == "sepia") Color(0xFF8E887E) else Color.LightGray)
+                                                        )
+                                                        Box(
+                                                            modifier = Modifier
+                                                                .width(1.dp)
+                                                                .height(12.dp)
+                                                                .background(if (theme == "sepia") Color(0xFF8E887E) else Color.LightGray)
+                                                        )
+                                                    }
                                                 }
                                             }
                                         }
 
+                                        // Main Reading Area
                                         Box(modifier = Modifier.weight(1f)) {
                                             if (selectedDoc != null) {
                                                 readingPane(Modifier.fillMaxSize(), null)
@@ -348,6 +475,75 @@ fun AdaptiveMainScreen(
                                                         style = MaterialTheme.typography.bodyLarge
                                                     )
                                                 }
+                                            }
+                                        }
+
+                                        // Right Draggable Split Divider for Detail Pane
+                                        if (currentDetailWidth > 0.dp) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .width(12.dp)
+                                                    .fillMaxHeight()
+                                                    .pointerInput(Unit) {
+                                                        detectDragGestures { change, dragAmount ->
+                                                            change.consume()
+                                                            val newWidth = detailPaneWidthDp - dragAmount.x / density
+                                                            if (newWidth >= 200f && newWidth <= maxAllowedDetailWidth) {
+                                                                viewModel.updateDetailPaneWidth(newWidth)
+                                                            } else if (newWidth < 150f) {
+                                                                viewModel.closeDetailPane()
+                                                            }
+                                                        }
+                                                    },
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Divider(
+                                                    modifier = Modifier
+                                                        .width(1.dp)
+                                                        .fillMaxHeight(),
+                                                    color = if (theme == "sepia") Color(0xFFE4DFD5) else Color(0xFF2D2D2D)
+                                                )
+
+                                                Box(
+                                                    modifier = Modifier
+                                                        .size(width = 16.dp, height = 50.dp)
+                                                        .clip(RoundedCornerShape(8.dp))
+                                                        .background(if (theme == "sepia") Color(0xFFEFECE6) else Color(0xFF1E1E1E))
+                                                        .border(
+                                                            width = 1.dp,
+                                                            color = if (theme == "sepia") Color(0xFFE4DFD5) else Color(0xFF2D2D2D),
+                                                            shape = RoundedCornerShape(8.dp)
+                                                        )
+                                                        .clickable {
+                                                            viewModel.toggleDetailPaneCollapsed()
+                                                        },
+                                                    contentAlignment = Alignment.Center
+                                                ) {
+                                                    Row(
+                                                        horizontalArrangement = Arrangement.spacedBy(2.dp),
+                                                        verticalAlignment = Alignment.CenterVertically
+                                                    ) {
+                                                        Box(
+                                                            modifier = Modifier
+                                                                .width(1.dp)
+                                                                .height(12.dp)
+                                                                .background(if (theme == "sepia") Color(0xFF8E887E) else Color.LightGray)
+                                                        )
+                                                        Box(
+                                                            modifier = Modifier
+                                                                .width(1.dp)
+                                                                .height(12.dp)
+                                                                .background(if (theme == "sepia") Color(0xFF8E887E) else Color.LightGray)
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                        }
+
+                                        // Right Detail Pane
+                                        if (currentDetailWidth > 0.dp) {
+                                            Box(modifier = Modifier.width(currentDetailWidth)) {
+                                                DetailPane(viewModel = viewModel)
                                             }
                                         }
                                     }

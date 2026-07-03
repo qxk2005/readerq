@@ -29,20 +29,47 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.horizontalScroll
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun NotebookView(viewModel: MainViewModel) {
     val highlights by viewModel.highlights.collectAsState()
     val doc by viewModel.selectedDoc.collectAsState()
     val theme by viewModel.theme.collectAsState()
+    val allExistingTags by viewModel.allTags.collectAsState()
+
+    val subTextColor = when (theme) {
+        "light" -> Color(0xFF4B5563)
+        "sepia" -> Color(0xFF5C5246)
+        else -> Color(0xFF9CA3AF)
+    }
+    val tagBg = when (theme) {
+        "light" -> Color(0xFFE5E7EB)
+        "sepia" -> Color(0xFFE4DFD5)
+        else -> Color(0xFF2D2D2D)
+    }
+    val textColor = MaterialTheme.colorScheme.onSurface
 
     var docNote by remember(doc) { mutableStateOf(doc?.notes ?: "") }
-    var docTagsText by remember(doc) {
+    var docTagsList by remember(doc) {
         val tagsMap = try {
             doc?.tags_json?.let { Json.decodeFromString<Map<String, Int>>(it) } ?: emptyMap()
         } catch (e: Exception) {
             emptyMap()
         }
-        mutableStateOf(tagsMap.keys.joinToString(", "))
+        mutableStateOf(tagsMap.keys.toList())
+    }
+    var currentDocTagInput by remember { mutableStateOf("") }
+
+    // Autocomplete tag candidates
+    val candidates = remember(allExistingTags, currentDocTagInput, docTagsList) {
+        val query = currentDocTagInput.trim()
+        if (query.isEmpty()) {
+            emptyList()
+        } else {
+            allExistingTags
+                .filter { it.contains(query, ignoreCase = true) && !docTagsList.contains(it) }
+                .take(5)
+        }
     }
 
     LazyColumn(
@@ -71,25 +98,106 @@ fun NotebookView(viewModel: MainViewModel) {
                             unfocusedTextColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
                         )
                     )
-                    Spacer(modifier = Modifier.height(8.dp))
+                    Spacer(modifier = Modifier.height(12.dp))
+                    
+                    // Tags Title & Chips Layout
+                    Text("文档标签", fontSize = 11.sp, color = subTextColor, fontWeight = FontWeight.Medium)
+                    Spacer(modifier = Modifier.height(4.dp))
+                    
+                    if (docTagsList.isNotEmpty()) {
+                        FlowRow(
+                            modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            docTagsList.forEach { tag ->
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .background(tagBg)
+                                        .clickable { docTagsList = docTagsList - tag }
+                                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Text(text = "#$tag", color = subTextColor, fontSize = 11.sp)
+                                        Text(text = "✕", color = subTextColor.copy(alpha = 0.7f), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     OutlinedTextField(
-                        value = docTagsText,
-                        onValueChange = { docTagsText = it },
-                        placeholder = { Text("添加标签 (逗号分隔)...") },
+                        value = currentDocTagInput,
+                        onValueChange = { input ->
+                            // Auto split and commit when pressing commas/spaces/newlines
+                            if (input.endsWith(",") || input.endsWith("，") || input.endsWith(" ") || input.endsWith("\n")) {
+                                val newTag = input.trim()
+                                    .removeSuffix(",")
+                                    .removeSuffix("，")
+                                    .trim()
+                                if (newTag.isNotEmpty() && !docTagsList.contains(newTag)) {
+                                    docTagsList = docTagsList + newTag
+                                }
+                                currentDocTagInput = ""
+                            } else {
+                                currentDocTagInput = input
+                            }
+                        },
+                        placeholder = { Text("输入新标签并以逗号或空格分割...", fontSize = 13.sp) },
                         modifier = Modifier.fillMaxWidth(),
-                        label = { Text("文档标签") },
                         colors = OutlinedTextFieldDefaults.colors(
-                            focusedTextColor = MaterialTheme.colorScheme.onSurface,
-                            unfocusedTextColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
+                            focusedTextColor = textColor,
+                            unfocusedTextColor = textColor
                         )
                     )
+
+                    // Autocomplete Suggestions Row
+                    if (candidates.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("匹配：", color = subTextColor, fontSize = 11.sp)
+                            candidates.forEach { candidate ->
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f))
+                                        .clickable {
+                                            docTagsList = docTagsList + candidate
+                                            currentDocTagInput = ""
+                                        }
+                                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                                ) {
+                                    Text(
+                                        text = candidate,
+                                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                }
+                            }
+                        }
+                    }
+
                     Spacer(modifier = Modifier.height(12.dp))
                     Button(
                         onClick = {
-                            val tagsList = docTagsText.split(",")
-                                .map { it.trim() }
-                                .filter { it.isNotEmpty() }
-                            viewModel.updateDocumentMetadata(docNote, tagsList)
+                            var finalTags = docTagsList
+                            val residual = currentDocTagInput.trim()
+                            if (residual.isNotEmpty() && !finalTags.contains(residual)) {
+                                finalTags = finalTags + residual
+                            }
+                            viewModel.updateDocumentMetadata(docNote, finalTags)
+                            currentDocTagInput = ""
                         },
                         modifier = Modifier.align(Alignment.End)
                     ) {

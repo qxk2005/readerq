@@ -101,6 +101,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _isSidebarCollapsed = MutableStateFlow(false)
     val isSidebarCollapsed: StateFlow<Boolean> = _isSidebarCollapsed.asStateFlow()
 
+    // Detail Pane Toggling & Width States
+    private val _detailPaneType = MutableStateFlow<String?>(null)
+    val detailPaneType: StateFlow<String?> = _detailPaneType.asStateFlow()
+
+    private val _detailPaneWidthDp = MutableStateFlow(320f)
+    val detailPaneWidthDp: StateFlow<Float> = _detailPaneWidthDp.asStateFlow()
+
+    private val _isDetailPaneCollapsed = MutableStateFlow(true)
+    val isDetailPaneCollapsed: StateFlow<Boolean> = _isDetailPaneCollapsed.asStateFlow()
+
     // OpenAI settings
     private val _openaiApiKey = MutableStateFlow("")
     val openaiApiKey: StateFlow<String> = _openaiApiKey.asStateFlow()
@@ -444,6 +454,41 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _isSidebarCollapsed.value = newState
         viewModelScope.launch(Dispatchers.IO) {
             settingDao.setSetting(SettingEntity("sidebar_collapsed", newState.toString()))
+        }
+    }
+
+    fun openDetailPane(type: String) {
+        _detailPaneType.value = type
+        _isDetailPaneCollapsed.value = false
+        _isSidebarCollapsed.value = true
+        viewModelScope.launch(Dispatchers.IO) {
+            settingDao.setSetting(SettingEntity("sidebar_collapsed", "true"))
+        }
+    }
+
+    fun closeDetailPane() {
+        _detailPaneType.value = null
+        _isDetailPaneCollapsed.value = true
+    }
+
+    fun updateDetailPaneWidth(width: Float) {
+        _detailPaneWidthDp.value = width
+    }
+
+    fun toggleDetailPaneCollapsed() {
+        val newState = !_isDetailPaneCollapsed.value
+        _isDetailPaneCollapsed.value = newState
+        if (newState) {
+            _detailPaneType.value = null
+        }
+    }
+
+    fun showSidebarAndCloseDetail() {
+        _isSidebarCollapsed.value = false
+        _isDetailPaneCollapsed.value = true
+        _detailPaneType.value = null
+        viewModelScope.launch(Dispatchers.IO) {
+            settingDao.setSetting(SettingEntity("sidebar_collapsed", "false"))
         }
     }
 
