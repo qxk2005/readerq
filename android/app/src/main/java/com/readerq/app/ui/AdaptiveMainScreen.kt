@@ -355,7 +355,11 @@ fun AdaptiveMainScreen(
                                     
                                     // Calculate left sidebar width
                                     val maxAllowedSidebarWidth = maxWidthVal.value * 0.6f
-                                    val isSidebarCollapsedActual = isSidebarCollapsed || (detailPaneType != null && !isDetailPaneCollapsed)
+                                    val isSidebarCollapsedActual = if (selectedDoc == null) {
+                                        false
+                                    } else {
+                                        isSidebarCollapsed || (detailPaneType != null && !isDetailPaneCollapsed)
+                                    }
                                     val currentSidebarWidth = if (isSidebarCollapsedActual) {
                                         0.dp
                                     } else {

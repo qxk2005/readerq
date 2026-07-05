@@ -225,6 +225,8 @@ fun ReadingPane(
                     fontSize = fontSize,
                     lineHeight = lineHeight,
                     contentWidth = contentWidth,
+                    docId = currentDoc.id,
+                    viewModel = viewModel,
                     onTextSelected = { text, images ->
                         selectedTextForHighlight = text
                         selectedImagesForHighlight = images
@@ -482,6 +484,8 @@ fun HtmlContentViewer(
     fontSize: Int,
     lineHeight: Float,
     contentWidth: Int,
+    docId: String,
+    viewModel: MainViewModel,
     onTextSelected: (String, List<HighlightImage>) -> Unit
 ) {
     val highlightsJson = highlights.joinToString(separator = ",", prefix = "[", postfix = "]") { hl ->
@@ -491,9 +495,47 @@ fun HtmlContentViewer(
         """{"id":"${hl.id}","text":"$escapedText","note":"$escapedNote","color":"$color","location_start":${hl.location}}"""
     }
 
+    val webViewRef = remember { mutableStateOf<WebView?>(null) }
+    
+    LaunchedEffect(viewModel) {
+        viewModel.scrollToHighlightEvent.collect { hlId ->
+            webViewRef.value?.evaluateJavascript(
+                "if (typeof window.scrollToHighlight === 'function') { window.scrollToHighlight('$hlId'); }",
+                null
+            )
+        }
+    }
+
+
+    val cleanHtml = if (
+        html.trim().equals("undefined", ignoreCase = true) ||
+        html.trim().contains("undefined", ignoreCase = true) ||
+        html.trim().equals("null", ignoreCase = true) ||
+        html.trim().isEmpty() ||
+        html == "加载中..."
+    ) {
+        "<div style='display:flex;flex-direction:column;align-items:center;justify-content:center;height:80vh;color:#888;font-style:italic;'><p>内容正在加载中...</p></div>"
+    } else {
+        html
+    }
+
+    val lastLoadedKey = remember { mutableStateOf("") }
+    val currentKey = "${docId}_${cleanHtml.hashCode()}_${theme}_${fontFamily}_${fontSize}_${lineHeight}_${contentWidth}"
+    val pageReady = remember { mutableStateOf(false) }
+
     AndroidView(
         factory = { context ->
             WebView(context).apply {
+                webViewRef.value = this
+                
+                webViewClient = object : android.webkit.WebViewClient() {
+                    override fun onPageFinished(view: WebView?, url: String?) {
+                        super.onPageFinished(view, url)
+                        // pageReady 改由 JS 端通过 AndroidBridge.onPageReady() 在
+                        // window.originalHtml 初始化完毕后再设置，避免竞态
+                    }
+                }
+                
                 settings.javaScriptEnabled = true
                 settings.domStorageEnabled = true
                 
@@ -544,6 +586,20 @@ fun HtmlContentViewer(
                             onTextSelected(text, images)
                         }
                     }
+
+                    @JavascriptInterface
+                    fun onHighlightClicked(hlId: String) {
+                        post {
+                            viewModel.onHighlightClickedFromWeb(hlId)
+                        }
+                    }
+
+                    @JavascriptInterface
+                    fun onPageReady() {
+                        post {
+                            pageReady.value = true
+                        }
+                    }
                 }, "AndroidBridge")
             }
         },
@@ -579,7 +635,7 @@ fun HtmlContentViewer(
                 </style>
                 </head>
                 <body>
-                    $html
+                    $cleanHtml
                     
                     <script>
                         function extractImagesFromRange(range) {
@@ -779,28 +835,82 @@ fun HtmlContentViewer(
                                   const middle = n.splitText(start);
                                   middle.splitText(end - start);
                                   mark.appendChild(middle.cloneNode(true));
-                                  middle.parentNode.replaceChild(mark, middle);
+                                  if (middle.parentNode) {
+                                    middle.parentNode.replaceChild(mark, middle);
+                                  }
                                   mark.style.cursor = 'pointer';
+                                  mark.onclick = function(e) {
+                                    e.stopPropagation();
+                                    if (window.AndroidBridge && typeof window.AndroidBridge.onHighlightClicked === 'function') {
+                                      window.AndroidBridge.onHighlightClicked(hl.id);
+                                    }
+                                  };
                                 }
                               });
                             }
                           }
                         }
 
-                        setTimeout(() => {
-                          try {
-                            const highlights = $highlightsJson;
-                            restoreHighlights(document.body, highlights);
-                          } catch(e) {
-                            console.error("Failed to restore highlights:", e);
+                        window.updateHighlights = function(newHighlights) {
+                          if (typeof window.originalHtml === 'undefined' || window.originalHtml === null) {
+                            return;
                           }
-                        }, 50);
+                          try {
+                            const scrollTop = document.documentElement.scrollTop || document.body.scrollTop;
+                            document.body.innerHTML = window.originalHtml;
+                            restoreHighlights(document.body, newHighlights);
+                            document.documentElement.scrollTop = scrollTop;
+                            document.body.scrollTop = scrollTop;
+                            setTimeout(() => {
+                              document.documentElement.scrollTop = scrollTop;
+                              document.body.scrollTop = scrollTop;
+                            }, 10);
+                          } catch(e) {
+                            console.error("Failed to update highlights:", e);
+                          }
+                        };
+
+                        window.scrollToHighlight = function(hlId) {
+                          try {
+                            const mark = document.querySelector('mark[data-highlight-id="' + hlId + '"]');
+                            if (mark) {
+                              const containerRect = document.body.getBoundingClientRect();
+                              const elementRect = mark.getBoundingClientRect();
+                              const relativeTop = elementRect.top - containerRect.top;
+                              const targetScrollTop = relativeTop - (window.innerHeight / 2) + (elementRect.height / 2);
+                              window.scrollTo({
+                                top: targetScrollTop,
+                                behavior: 'smooth'
+                              });
+                            }
+                          } catch(e) {
+                            console.error("Failed to scrollToHighlight:", e);
+                          }
+                        };
+
+                        try {
+                          window.originalHtml = document.body.innerHTML;
+                          var highlights = $highlightsJson;
+                          restoreHighlights(document.body, highlights);
+                        } catch(e) {
+                          console.error("Failed to restore highlights:", e);
+                        }
+                        if (window.AndroidBridge && typeof window.AndroidBridge.onPageReady === 'function') {
+                          window.AndroidBridge.onPageReady();
+                        }
                     </script>
                 </body>
                 </html>
             """.trimIndent()
 
-            webView.loadDataWithBaseURL(null, styledHtml, "text/html", "UTF-8", null)
+            val keyChanged = lastLoadedKey.value != currentKey
+            if (keyChanged) {
+                pageReady.value = false
+                lastLoadedKey.value = currentKey
+                webView.loadDataWithBaseURL(null, styledHtml, "text/html", "UTF-8", null)
+            } else if (pageReady.value) {
+                webView.evaluateJavascript("if (typeof window.updateHighlights === 'function') { window.updateHighlights($highlightsJson); }", null)
+            }
         },
         modifier = Modifier.fillMaxSize()
     )

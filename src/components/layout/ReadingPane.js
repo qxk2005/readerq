@@ -10,6 +10,24 @@ import HighlightEditor from '@/components/HighlightEditor';
 import TagInput from '@/components/TagInput';
 import { BookOpen, Link, Info, Edit3, Bot, Loader2, ClipboardList, AlertTriangle, RefreshCw, CheckCircle2, XCircle, ImageIcon, Upload } from 'lucide-react';
 
+const scrollToElement = (container, element) => {
+  if (!container || !element) return;
+  const containerRect = container.getBoundingClientRect();
+  const elementRect = element.getBoundingClientRect();
+  
+  const relativeTop = elementRect.top - containerRect.top + container.scrollTop;
+  const targetScrollTop = relativeTop - (containerRect.height / 2) + (elementRect.height / 2);
+  
+  if (typeof container.scrollTo === 'function') {
+    container.scrollTo({
+      top: targetScrollTop,
+      behavior: 'smooth'
+    });
+  } else {
+    container.scrollTop = targetScrollTop;
+  }
+};
+
 export default function ReadingPane() {
   const { 
     selectedDoc, 
@@ -50,6 +68,8 @@ export default function ReadingPane() {
     setSelection(null);
   }
 
+  const lastRenderedDocIdRef = useRef(null);
+  const lastSyncedHlIdRef = useRef(null);
   const articleRef = useRef(null);
 
   // 加载文档的标签和备注
@@ -114,6 +134,12 @@ export default function ReadingPane() {
   useEffect(() => {
     let timerId = null;
     if (articleRef.current && !isContentLoading && !isLoadingHighlights && selectedDoc?.html_content) {
+      const scrollContainer = document.getElementById('article-scroll-container');
+      const shouldPreserveScroll = lastRenderedDocIdRef.current === selectedDoc?.id;
+      const prevScrollTop = (shouldPreserveScroll && scrollContainer) ? scrollContainer.scrollTop : 0;
+      
+      lastRenderedDocIdRef.current = selectedDoc?.id;
+
       // 必须先重置 DOM 避免多次添加 <mark> 导致文本 offset 计算错误
       articleRef.current.innerHTML = sanitizeArticleHtml(selectedDoc.html_content);
       timerId = setTimeout(() => {
@@ -122,6 +148,9 @@ export default function ReadingPane() {
           const rect = e.target.getBoundingClientRect();
           setEditingHighlight({ ...hl, rect });
         });
+        if (shouldPreserveScroll && scrollContainer) {
+          scrollContainer.scrollTop = prevScrollTop;
+        }
       }, 50);
     }
     return () => {
@@ -129,6 +158,46 @@ export default function ReadingPane() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedDoc?.id, isContentLoading, isLoadingHighlights, highlights]);
+
+  // 当正文中选中或点击某个高亮段落时，同步展开并定位右侧边栏的对应项目
+  useEffect(() => {
+    if (editingHighlight) {
+      if (lastSyncedHlIdRef.current === editingHighlight.id) {
+        return;
+      }
+      lastSyncedHlIdRef.current = editingHighlight.id;
+
+      if (rightPanelTab !== 'notebook') {
+        setRightPanelTab('notebook');
+      }
+      setSidebarEditingId(editingHighlight.id);
+      setSidebarEditNote(editingHighlight.note || '');
+      setSidebarEditTags(editingHighlight.tags ? Object.keys(editingHighlight.tags) : []);
+      
+      const scrollTimer = setTimeout(() => {
+        const card = document.getElementById(`sidebar-hl-${editingHighlight.id}`);
+        if (card) {
+          let container = card.parentElement;
+          while (container && container !== document.body) {
+            const style = window.getComputedStyle(container);
+            if (style.overflowY === 'auto' || style.overflowY === 'scroll') {
+              break;
+            }
+            container = container.parentElement;
+          }
+          if (container && container !== document.body) {
+            scrollToElement(container, card);
+          } else {
+            card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+          }
+        }
+      }, 150);
+      return () => clearTimeout(scrollTimer);
+    } else {
+      lastSyncedHlIdRef.current = null;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editingHighlight]);
 
   // 从选区 Range 中提取包含的 <img> 元素 URL
   const extractImagesFromRange = (range) => {
@@ -926,6 +995,7 @@ export default function ReadingPane() {
                     return (
                     <div 
                       key={hl.id} 
+                      id={`sidebar-hl-${hl.id}`}
                       className="highlight-card"
                       style={{ 
                         padding: 'var(--space-3)', 
@@ -937,12 +1007,15 @@ export default function ReadingPane() {
                         transition: 'border-color 0.15s, box-shadow 0.15s'
                       }}
                       onClick={() => {
-                        if (isEditing) return;
                         // 滚动到正文中的高亮位置
                         const mark = articleRef.current?.querySelector(`mark[data-highlight-id="${hl.id}"]`);
-                        if (mark) {
-                          mark.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        const scrollContainer = document.getElementById('article-scroll-container');
+                        if (mark && scrollContainer) {
+                          scrollToElement(scrollContainer, mark);
                         }
+                        
+                        if (isEditing) return;
+                        
                         // 展开侧边栏编辑
                         setSidebarEditingId(hl.id);
                         setSidebarEditNote(hl.note || '');

@@ -111,6 +111,25 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _isDetailPaneCollapsed = MutableStateFlow(true)
     val isDetailPaneCollapsed: StateFlow<Boolean> = _isDetailPaneCollapsed.asStateFlow()
 
+    // Highlight Synchronization and Navigation Flows
+    private val _scrollToHighlightEvent = MutableSharedFlow<String>(extraBufferCapacity = 1)
+    val scrollToHighlightEvent = _scrollToHighlightEvent.asSharedFlow()
+
+    private val _scrollNotebookToHighlightEvent = MutableSharedFlow<String>(extraBufferCapacity = 1)
+    val scrollNotebookToHighlightEvent = _scrollNotebookToHighlightEvent.asSharedFlow()
+
+    fun triggerScrollToHighlight(hlId: String) {
+        viewModelScope.launch {
+            _scrollToHighlightEvent.emit(hlId)
+        }
+    }
+
+    fun onHighlightClickedFromWeb(hlId: String) {
+        viewModelScope.launch {
+            _scrollNotebookToHighlightEvent.emit(hlId)
+        }
+    }
+
     // OpenAI settings
     private val _openaiApiKey = MutableStateFlow("")
     val openaiApiKey: StateFlow<String> = _openaiApiKey.asStateFlow()

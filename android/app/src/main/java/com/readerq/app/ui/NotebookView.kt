@@ -4,8 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -36,6 +35,18 @@ fun NotebookView(viewModel: MainViewModel) {
     val doc by viewModel.selectedDoc.collectAsState()
     val theme by viewModel.theme.collectAsState()
     val allExistingTags by viewModel.allTags.collectAsState()
+
+    val listState = rememberLazyListState()
+    var editingHighlightId by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(viewModel) {
+        viewModel.scrollNotebookToHighlightEvent.collect { hlId ->
+            val index = highlights.indexOfFirst { it.id == hlId }
+            if (index >= 0) {
+                listState.animateScrollToItem(index + 2)
+            }
+        }
+    }
 
     val subTextColor = when (theme) {
         "light" -> Color(0xFF4B5563)
@@ -73,6 +84,7 @@ fun NotebookView(viewModel: MainViewModel) {
     }
 
     LazyColumn(
+        state = listState,
         modifier = Modifier
             .fillMaxSize()
             .padding(16.dp),
@@ -222,7 +234,11 @@ fun NotebookView(viewModel: MainViewModel) {
             NotebookHighlightCard(
                 hl = hl,
                 theme = theme,
-                viewModel = viewModel
+                viewModel = viewModel,
+                isEditing = editingHighlightId == hl.id,
+                onEditingChange = { editing ->
+                    editingHighlightId = if (editing) hl.id else null
+                }
             )
         }
     }
@@ -233,7 +249,9 @@ fun NotebookView(viewModel: MainViewModel) {
 fun NotebookHighlightCard(
     hl: HighlightEntity,
     theme: String,
-    viewModel: MainViewModel
+    viewModel: MainViewModel,
+    isEditing: Boolean,
+    onEditingChange: (Boolean) -> Unit
 ) {
     val isDark = theme == "dark"
     val allExistingTags by viewModel.allTags.collectAsState()
@@ -295,7 +313,6 @@ fun NotebookHighlightCard(
     }
     val textColor = MaterialTheme.colorScheme.onBackground
 
-    var isEditing by remember { mutableStateOf(false) }
     var editNoteText by remember(hl.note, isEditing) { mutableStateOf(hl.note ?: "") }
     
     // Tag Chip Input State
@@ -340,7 +357,8 @@ fun NotebookHighlightCard(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clickable(enabled = !isEditing) {
-                        isEditing = true
+                        onEditingChange(true)
+                        viewModel.triggerScrollToHighlight(hl.id)
                     }
             ) {
                 if (displayImageUrl != null) {
@@ -490,41 +508,116 @@ fun NotebookHighlightCard(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    TextButton(
-                        onClick = {
-                            viewModel.deleteHighlight(hl.id)
-                            isEditing = false
-                        }
+                BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+                    val isNarrow = maxWidth < 220.dp
+                    
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("删除", color = Color(0xFFFCA5A5), fontSize = 13.sp)
-                    }
-
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        TextButton(onClick = { 
-                            isEditing = false
-                            currentTagInput = ""
-                        }) {
-                            Text("取消", color = Color.Gray, fontSize = 13.sp)
-                        }
-                        Button(
-                            onClick = {
-                                var finalTags = tagList
-                                val residual = currentTagInput.trim()
-                                if (residual.isNotEmpty() && !finalTags.contains(residual)) {
-                                    finalTags = finalTags + residual
+                        // 删除按钮
+                        if (isNarrow) {
+                            IconButton(
+                                onClick = {
+                                    viewModel.deleteHighlight(hl.id)
+                                    onEditingChange(false)
                                 }
-                                viewModel.updateHighlight(hl.id, editNoteText, finalTags)
-                                isEditing = false
-                                currentTagInput = ""
-                            },
-                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
-                        ) {
-                            Text("保存", fontSize = 13.sp)
+                            ) {
+                                Icon(
+                                    painter = painterResource(id = R.drawable.ic_delete),
+                                    contentDescription = "删除",
+                                    tint = subTextColor,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        } else {
+                            TextButton(
+                                onClick = {
+                                    viewModel.deleteHighlight(hl.id)
+                                    onEditingChange(false)
+                                }
+                            ) {
+                                Icon(
+                                    painter = painterResource(id = R.drawable.ic_delete),
+                                    contentDescription = null,
+                                    tint = subTextColor,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("删除", color = subTextColor, fontSize = 13.sp)
+                            }
+                        }
+
+                        Row(horizontalArrangement = Arrangement.spacedBy(if (isNarrow) 4.dp else 8.dp)) {
+                            // 取消按钮
+                            if (isNarrow) {
+                                IconButton(
+                                    onClick = {
+                                        onEditingChange(false)
+                                        currentTagInput = ""
+                                    }
+                                ) {
+                                    Icon(
+                                        painter = painterResource(id = R.drawable.ic_close),
+                                        contentDescription = "取消",
+                                        tint = subTextColor,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                            } else {
+                                TextButton(onClick = { 
+                                    onEditingChange(false)
+                                    currentTagInput = ""
+                                }) {
+                                    Text("取消", color = subTextColor, fontSize = 13.sp)
+                                }
+                            }
+
+                            // 保存按钮
+                            if (isNarrow) {
+                                IconButton(
+                                    onClick = {
+                                        var finalTags = tagList
+                                        val residual = currentTagInput.trim()
+                                        if (residual.isNotEmpty() && !finalTags.contains(residual)) {
+                                            finalTags = finalTags + residual
+                                        }
+                                        viewModel.updateHighlight(hl.id, editNoteText, finalTags)
+                                        onEditingChange(false)
+                                        currentTagInput = ""
+                                    }
+                                ) {
+                                    Icon(
+                                        painter = painterResource(id = R.drawable.ic_check),
+                                        contentDescription = "保存",
+                                        tint = subTextColor,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                            } else {
+                                Button(
+                                    onClick = {
+                                        var finalTags = tagList
+                                        val residual = currentTagInput.trim()
+                                        if (residual.isNotEmpty() && !finalTags.contains(residual)) {
+                                            finalTags = finalTags + residual
+                                        }
+                                        viewModel.updateHighlight(hl.id, editNoteText, finalTags)
+                                        onEditingChange(false)
+                                        currentTagInput = ""
+                                    },
+                                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
+                                ) {
+                                    Icon(
+                                        painter = painterResource(id = R.drawable.ic_check),
+                                        contentDescription = null,
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("保存", fontSize = 13.sp)
+                                }
+                            }
                         }
                     }
                 }

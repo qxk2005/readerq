@@ -173,7 +173,9 @@ export function restoreHighlights(root, highlights, onHighlightClick) {
             middle.splitText(end - start);
             
             mark.appendChild(middle.cloneNode(true));
-            middle.parentNode.replaceChild(mark, middle);
+            if (middle.parentNode) {
+              middle.parentNode.replaceChild(mark, middle);
+            }
             
             if (onHighlightClick) {
               // onclick is handled by event delegation in ReadingPane to avoid conflicts
