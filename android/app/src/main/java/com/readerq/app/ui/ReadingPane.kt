@@ -1,9 +1,14 @@
 package com.readerq.app.ui
 
 import android.annotation.SuppressLint
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.widget.Toast
+import androidx.compose.animation.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -22,6 +27,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -44,6 +50,8 @@ fun ReadingPane(
 ) {
     val doc by viewModel.selectedDoc.collectAsState()
     val highlights by viewModel.highlights.collectAsState()
+    val ttsState by viewModel.ttsState.collectAsState()
+    val context = LocalContext.current
 
     val theme by viewModel.theme.collectAsState()
     val fontSize by viewModel.fontSize.collectAsState()
@@ -179,6 +187,43 @@ fun ReadingPane(
                             expanded = showOverflowMenu,
                             onDismissRequest = { showOverflowMenu = false }
                         ) {
+                            DropdownMenuItem(
+                                text = { Text("朗读文章") },
+                                leadingIcon = {
+                                    Icon(
+                                        painter = painterResource(id = R.drawable.ic_play),
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp),
+                                        tint = textColor
+                                    )
+                                },
+                                onClick = {
+                                    showOverflowMenu = false
+                                    currentDoc.html_content?.let { html ->
+                                        viewModel.startTts(html)
+                                    }
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("分享文章") },
+                                leadingIcon = {
+                                    Icon(
+                                        painter = painterResource(id = R.drawable.ic_share),
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp),
+                                        tint = textColor
+                                    )
+                                },
+                                onClick = {
+                                    showOverflowMenu = false
+                                    val shareUrl = currentDoc.source_url ?: currentDoc.url
+                                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                    val clip = ClipData.newPlainText("文章链接", shareUrl)
+                                    clipboard.setPrimaryClip(clip)
+                                    Toast.makeText(context, "文章链接已复制到剪贴板", Toast.LENGTH_SHORT).show()
+                                }
+                            )
+                            Divider(color = Color.Gray.copy(alpha = 0.2f))
                             DropdownMenuItem(
                                 text = { Text("元数据关于") },
                                 onClick = {
@@ -347,6 +392,96 @@ fun ReadingPane(
                                 }) {
                                     Text("取消", color = Color.Gray)
                                 }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // --- TTS 播放控制条 ---
+            AnimatedVisibility(
+                visible = ttsState.isActive,
+                enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
+                exit = slideOutVertically(targetOffsetY = { it }) + fadeOut()
+            ) {
+                Surface(
+                    color = MaterialTheme.colorScheme.surface,
+                    tonalElevation = 4.dp,
+                    shadowElevation = 8.dp
+                ) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        // 进度条
+                        LinearProgressIndicator(
+                            progress = ttsState.progress,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(3.dp),
+                            color = MaterialTheme.colorScheme.primary,
+                            trackColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f),
+                        )
+
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            // 朗读信息
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Icon(
+                                    painter = painterResource(id = R.drawable.ic_play),
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp),
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = if (ttsState.isPlaying) "正在朗读..." else "已暂停",
+                                    fontSize = 13.sp,
+                                    color = textColor.copy(alpha = 0.7f)
+                                )
+                                if (ttsState.totalChunks > 0) {
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = "${ttsState.currentChunk + 1}/${ttsState.totalChunks}",
+                                        fontSize = 11.sp,
+                                        color = textColor.copy(alpha = 0.4f)
+                                    )
+                                }
+                            }
+
+                            // 播放/暂停按钮
+                            IconButton(
+                                onClick = { viewModel.toggleTts() },
+                                modifier = Modifier.size(40.dp)
+                            ) {
+                                Icon(
+                                    painter = painterResource(
+                                        id = if (ttsState.isPlaying) R.drawable.ic_pause else R.drawable.ic_play
+                                    ),
+                                    contentDescription = if (ttsState.isPlaying) "暂停" else "播放",
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(22.dp)
+                                )
+                            }
+
+                            // 关闭按钮
+                            IconButton(
+                                onClick = { viewModel.stopTts() },
+                                modifier = Modifier.size(36.dp)
+                            ) {
+                                Icon(
+                                    painter = painterResource(id = R.drawable.ic_close),
+                                    contentDescription = "关闭朗读",
+                                    tint = textColor.copy(alpha = 0.5f),
+                                    modifier = Modifier.size(18.dp)
+                                )
                             }
                         }
                     }

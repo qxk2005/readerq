@@ -307,6 +307,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun selectDocument(doc: DocumentEntity?) {
+        // 切换文档时停止 TTS 播放
+        if (_selectedDoc.value?.id != doc?.id) {
+            stopTts()
+        }
         _selectedDoc.value = doc
         if (doc != null && doc.html_content == null) {
             fetchDocumentContent(doc.id)
@@ -1253,6 +1257,27 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 e.printStackTrace()
             }
         }
+    }
+
+    // --- TTS 文章朗读 ---
+    private val ttsManager = TtsManager(application)
+    val ttsState: StateFlow<TtsState> = ttsManager.ttsState
+
+    fun startTts(htmlContent: String) {
+        ttsManager.speak(htmlContent)
+    }
+
+    fun toggleTts() {
+        ttsManager.togglePlayPause()
+    }
+
+    fun stopTts() {
+        ttsManager.stop()
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        ttsManager.shutdown()
     }
 }
 
