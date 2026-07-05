@@ -279,6 +279,14 @@ fun DocumentListPane(
                     }
                 )
 
+                // 关键修复：当 dismissState 停留在已完成滑动的状态时，立即重置为默认状态
+                // 这可以防止归档/删除后绿色/红色背景持续显示遮挡文章标题
+                LaunchedEffect(dismissState.currentValue) {
+                    if (dismissState.currentValue != DismissValue.Default) {
+                        dismissState.reset()
+                    }
+                }
+
                 SwipeToDismiss(
                     state = dismissState,
                     background = {
