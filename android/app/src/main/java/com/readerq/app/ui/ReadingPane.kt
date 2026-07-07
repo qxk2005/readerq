@@ -231,22 +231,57 @@ fun ReadingPane(
                                     showInfoSheet = true
                                 }
                             )
-                            DropdownMenuItem(
-                                text = { Text("归档文章", color = MaterialTheme.colorScheme.primary) },
-                                onClick = {
-                                    showOverflowMenu = false
-                                    viewModel.archiveDocument(currentDoc.id)
-                                    onBack?.invoke()
-                                }
-                            )
-                            DropdownMenuItem(
-                                text = { Text("删除文章", color = Color.Red) },
-                                onClick = {
-                                    showOverflowMenu = false
-                                    viewModel.deleteDocument(currentDoc.id)
-                                    onBack?.invoke()
-                                }
-                            )
+                            if (currentDoc.location == "trash") {
+                                DropdownMenuItem(
+                                    text = { Text("恢复文章", color = MaterialTheme.colorScheme.primary) },
+                                    leadingIcon = {
+                                        Icon(
+                                            painter = painterResource(id = R.drawable.ic_check),
+                                            contentDescription = null,
+                                            modifier = Modifier.size(18.dp),
+                                            tint = MaterialTheme.colorScheme.primary
+                                        )
+                                    },
+                                    onClick = {
+                                        showOverflowMenu = false
+                                        viewModel.restoreDocument(currentDoc.id)
+                                        onBack?.invoke()
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("彻底删除", color = Color.Red) },
+                                    leadingIcon = {
+                                        Icon(
+                                            painter = painterResource(id = R.drawable.ic_delete),
+                                            contentDescription = null,
+                                            modifier = Modifier.size(18.dp),
+                                            tint = Color.Red
+                                        )
+                                    },
+                                    onClick = {
+                                        showOverflowMenu = false
+                                        viewModel.permanentlyDeleteDocument(currentDoc.id)
+                                        onBack?.invoke()
+                                    }
+                                )
+                            } else {
+                                DropdownMenuItem(
+                                    text = { Text("归档文章", color = MaterialTheme.colorScheme.primary) },
+                                    onClick = {
+                                        showOverflowMenu = false
+                                        viewModel.archiveDocument(currentDoc.id)
+                                        onBack?.invoke()
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("删除文章", color = Color.Red) },
+                                    onClick = {
+                                        showOverflowMenu = false
+                                        viewModel.deleteDocument(currentDoc.id)
+                                        onBack?.invoke()
+                                    }
+                                )
+                            }
                         }
                     }
                 },

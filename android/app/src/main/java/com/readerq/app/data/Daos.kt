@@ -5,17 +5,20 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface DocumentDao {
-    @Query("SELECT * FROM documents ORDER BY created_at DESC")
+    @Query("SELECT * FROM documents WHERE location != 'trash' ORDER BY created_at DESC")
     fun getAllDocuments(): Flow<List<DocumentEntity>>
 
-    @Query("SELECT * FROM documents WHERE location = :location ORDER BY CASE WHEN :location = 'archive' THEN coalesce(updated_at, created_at) ELSE created_at END DESC")
+    @Query("SELECT * FROM documents WHERE location = :location ORDER BY CASE WHEN :location = 'archive' OR :location = 'trash' THEN coalesce(updated_at, created_at) ELSE created_at END DESC")
     fun getDocumentsByLocation(location: String): Flow<List<DocumentEntity>>
 
-    @Query("SELECT * FROM documents WHERE (title LIKE :query OR author LIKE :query OR summary LIKE :query) ORDER BY created_at DESC")
+    @Query("SELECT * FROM documents WHERE location != 'trash' AND (title LIKE :query OR author LIKE :query OR summary LIKE :query) ORDER BY created_at DESC")
     fun searchAllDocuments(query: String): Flow<List<DocumentEntity>>
 
-    @Query("SELECT * FROM documents WHERE location = :location AND (title LIKE :query OR author LIKE :query OR summary LIKE :query) ORDER BY CASE WHEN :location = 'archive' THEN coalesce(updated_at, created_at) ELSE created_at END DESC")
+    @Query("SELECT * FROM documents WHERE location = :location AND (title LIKE :query OR author LIKE :query OR summary LIKE :query) ORDER BY CASE WHEN :location = 'archive' OR :location = 'trash' THEN coalesce(updated_at, created_at) ELSE created_at END DESC")
     fun searchDocumentsByLocation(location: String, query: String): Flow<List<DocumentEntity>>
+
+    @Query("SELECT id FROM documents WHERE location = 'trash'")
+    suspend fun getTrashDocumentIds(): List<String>
 
     @Query("SELECT * FROM documents WHERE id = :id LIMIT 1")
     suspend fun getDocumentById(id: String): DocumentEntity?

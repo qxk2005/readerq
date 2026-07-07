@@ -400,11 +400,49 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun deleteDocument(docId: String) {
         viewModelScope.launch(Dispatchers.IO) {
+            val doc = docDao.getDocumentById(docId) ?: return@launch
+            val nowStr = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", java.util.Locale.US).apply {
+                timeZone = java.util.TimeZone.getTimeZone("UTC")
+            }.format(java.util.Date())
+            val updated = doc.copy(location = "trash", updated_at = nowStr)
+            docDao.insertDocument(updated)
+            if (_selectedDoc.value?.id == docId) {
+                _selectedDoc.value = updated
+            }
+            
+            val currentToken = _token.value ?: return@launch
+            if (currentToken != "offline") {
+                try {
+                    val client = ReadwiseClient(currentToken)
+                    client.deleteDocument(docId)
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            }
+        }
+    }
+
+    fun restoreDocument(docId: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val doc = docDao.getDocumentById(docId) ?: return@launch
+            val nowStr = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", java.util.Locale.US).apply {
+                timeZone = java.util.TimeZone.getTimeZone("UTC")
+            }.format(java.util.Date())
+            val updated = doc.copy(location = "new", updated_at = nowStr)
+            docDao.insertDocument(updated)
+            if (_selectedDoc.value?.id == docId) {
+                _selectedDoc.value = updated
+            }
+        }
+    }
+
+    fun permanentlyDeleteDocument(docId: String) {
+        viewModelScope.launch(Dispatchers.IO) {
             docDao.deleteDocument(docId)
+            hlDao.deleteHighlightsForDocument(docId)
             if (_selectedDoc.value?.id == docId) {
                 _selectedDoc.value = null
             }
-            
             val currentToken = _token.value ?: return@launch
             if (currentToken != "offline") {
                 try {
@@ -745,6 +783,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
                 // 阶段 1: 拉取文档
                 _syncProgress.value = SyncProgress("documents", 0, 0)
+                val trashIdsSet = docDao.getTrashDocumentIds().toSet()
                 var pageCursor: String? = null
                 var totalFetchedDocs = 0
                 var remoteDocCount = 0
@@ -781,6 +820,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                                 )
                             )
                         } else {
+                            val targetLocation = if (trashIdsSet.contains(item.id)) "trash" else item.location
                             regularDocs.add(
                                 DocumentEntity(
                                     id = item.id,
@@ -790,7 +830,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                                     author = item.author,
                                     source = item.source,
                                     category = item.category,
-                                    location = item.location,
+                                    location = targetLocation,
                                     site_name = item.site_name,
                                     word_count = item.word_count,
                                     reading_time = item.reading_time,

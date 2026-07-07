@@ -138,6 +138,7 @@ fun DocumentListPane(
                 "new" to "收件箱",
                 "later" to "稍后读",
                 "archive" to "归档",
+                "trash" to "垃圾箱",
                 "all" to "全部"
             )
             val selectedTabIndex = tabs.indexOfFirst { it.first == currentView }.coerceAtLeast(0)
@@ -161,6 +162,7 @@ fun DocumentListPane(
                             "new" -> R.drawable.ic_inbox
                             "later" -> R.drawable.ic_bookmark
                             "archive" -> R.drawable.ic_archive
+                            "trash" -> R.drawable.ic_delete
                             else -> R.drawable.ic_all
                         }
                         
@@ -267,11 +269,19 @@ fun DocumentListPane(
                     confirmValueChange = { dismissValue ->
                         when (dismissValue) {
                             DismissValue.DismissedToEnd -> {
-                                viewModel.archiveDocument(doc.id)
+                                if (currentView == "trash") {
+                                    viewModel.restoreDocument(doc.id)
+                                } else {
+                                    viewModel.archiveDocument(doc.id)
+                                }
                                 true
                             }
                             DismissValue.DismissedToStart -> {
-                                viewModel.deleteDocument(doc.id)
+                                if (currentView == "trash") {
+                                    viewModel.permanentlyDeleteDocument(doc.id)
+                                } else {
+                                    viewModel.deleteDocument(doc.id)
+                                }
                                 true
                             }
                             else -> false
@@ -292,16 +302,18 @@ fun DocumentListPane(
                     background = {
                         val direction = dismissState.dismissDirection ?: return@SwipeToDismiss
                         val color = when (direction) {
-                            DismissDirection.StartToEnd -> Color(0xFF22C55E) // Green for Archive
-                            DismissDirection.EndToStart -> Color(0xFFEF4444) // Red for Delete
+                            DismissDirection.StartToEnd -> {
+                                if (currentView == "trash") Color(0xFF3B82F6) else Color(0xFF22C55E)
+                            }
+                            DismissDirection.EndToStart -> Color(0xFFEF4444)
                         }
                         val alignment = when (direction) {
                             DismissDirection.StartToEnd -> Alignment.CenterStart
                             DismissDirection.EndToStart -> Alignment.CenterEnd
                         }
                         val iconText = when (direction) {
-                            DismissDirection.StartToEnd -> "归档"
-                            DismissDirection.EndToStart -> "删除"
+                            DismissDirection.StartToEnd -> if (currentView == "trash") "恢复" else "归档"
+                            DismissDirection.EndToStart -> if (currentView == "trash") "彻底删除" else "删除"
                         }
                         Box(
                             modifier = Modifier
