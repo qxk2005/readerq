@@ -377,7 +377,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun archiveDocument(docId: String) {
         viewModelScope.launch(Dispatchers.IO) {
             val doc = docDao.getDocumentById(docId) ?: return@launch
-            val updated = doc.copy(location = "archive")
+            val nowStr = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", java.util.Locale.US).apply {
+                timeZone = java.util.TimeZone.getTimeZone("UTC")
+            }.format(java.util.Date())
+            val updated = doc.copy(location = "archive", updated_at = nowStr)
             docDao.insertDocument(updated)
             if (_selectedDoc.value?.id == docId) {
                 _selectedDoc.value = updated

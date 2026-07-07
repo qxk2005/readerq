@@ -701,6 +701,13 @@ fun HtmlContentViewer(
                                     "    var images = extractImagesFromRange(range); " +
                                     "    if (text.trim().length > 0 || images.length > 0) { " +
                                     "      AndroidBridge.onTextSelected(text, JSON.stringify(images)); " +
+                                    "      var rect = range.getBoundingClientRect(); " +
+                                    "      var viewportHeight = window.innerHeight; " +
+                                    "      var triggerThreshold = viewportHeight - 240; " +
+                                    "      if (rect.bottom > triggerThreshold) { " +
+                                    "        var scrollNeeded = rect.bottom - triggerThreshold; " +
+                                    "        window.scrollBy(0, scrollNeeded); " +
+                                    "      } " +
                                     "    } " +
                                     "  } " +
                                     "}); " +
@@ -754,7 +761,7 @@ fun HtmlContentViewer(
                         font-size: ${fontSize}px;
                         max-width: ${contentWidth}px;
                         margin: 0 auto;
-                        padding: 20px;
+                        padding: 20px 20px 240px 20px;
                     }
                     a { color: #6366F1; text-decoration: none; }
                     img { max-width: 100%; height: auto; border-radius: 4px; margin: 16px 0; }

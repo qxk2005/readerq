@@ -22,6 +22,9 @@ import com.readerq.app.R
 import androidx.compose.ui.res.painterResource
 import kotlinx.serialization.encodeToString
 import coil.compose.AsyncImage
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -376,26 +379,22 @@ fun NotebookHighlightCard(
                 }
 
                 if (cleanText.isNotEmpty()) {
-                    Row(
+                    Text(
+                        text = cleanText,
+                        color = mainTextColor,
+                        fontSize = 13.sp,
+                        lineHeight = 18.sp,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(IntrinsicSize.Max)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .width(4.dp)
-                                .fillMaxHeight()
-                                .background(hlColor)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = cleanText,
-                            color = mainTextColor,
-                            fontSize = 13.sp,
-                            lineHeight = 18.sp,
-                            modifier = Modifier.weight(1f)
-                        )
-                    }
+                            .padding(start = 12.dp)
+                            .drawBehind {
+                                drawRect(
+                                    color = hlColor,
+                                    topLeft = Offset.Zero,
+                                    size = Size(width = 4.dp.toPx(), height = size.height)
+                                )
+                            }
+                    )
                 }
             }
 
