@@ -4,9 +4,9 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import { useApp } from '@/context/AppContext';
 import { LOCATION_LABELS, formatDate, truncateText, extractDomain } from '@/lib/utils';
 import { CATEGORY_ICONS_SVG, getCategoryIcon } from '@/components/ui/icons';
-import { Search, Inbox, Clock, Archive, RefreshCw, FileText, Tag } from 'lucide-react';
+import { Search, Inbox, Clock, Archive, RefreshCw, FileText, Tag, Trash2, RotateCcw } from 'lucide-react';
 
-function DocumentCard({ doc, isActive, onClick, isSelectionMode, isSelected, onToggleSelect, onMoveDoc }) {
+function DocumentCard({ doc, isActive, onClick, isSelectionMode, isSelected, onToggleSelect, onMoveDoc, onDeleteDoc, currentView }) {
   const handleClick = (e) => {
     if (isSelectionMode) {
       e.preventDefault();
@@ -65,9 +65,19 @@ function DocumentCard({ doc, isActive, onClick, isSelectionMode, isSelected, onT
       )}
       {!isSelectionMode && (
         <div className="doc-card-actions">
-          <button className="doc-card-action-btn" title="Inbox" onClick={(e) => { e.stopPropagation(); onMoveDoc(doc.id, 'new'); }}><Inbox size={14} /></button>
-          <button className="doc-card-action-btn" title="Later" onClick={(e) => { e.stopPropagation(); onMoveDoc(doc.id, 'later'); }}><Clock size={14} /></button>
-          <button className="doc-card-action-btn" title="Archive" onClick={(e) => { e.stopPropagation(); onMoveDoc(doc.id, 'archive'); }}><Archive size={14} /></button>
+          {currentView === 'trash' ? (
+            <>
+              <button className="doc-card-action-btn" title="恢复文章" onClick={(e) => { e.stopPropagation(); onMoveDoc(doc.id, 'new'); }}><RotateCcw size={14} /></button>
+              <button className="doc-card-action-btn" style={{ color: 'var(--color-danger)' }} title="彻底删除" onClick={(e) => { e.stopPropagation(); onDeleteDoc(doc.id); }}><Trash2 size={14} /></button>
+            </>
+          ) : (
+            <>
+              <button className="doc-card-action-btn" title="Inbox" onClick={(e) => { e.stopPropagation(); onMoveDoc(doc.id, 'new'); }}><Inbox size={14} /></button>
+              <button className="doc-card-action-btn" title="Later" onClick={(e) => { e.stopPropagation(); onMoveDoc(doc.id, 'later'); }}><Clock size={14} /></button>
+              <button className="doc-card-action-btn" title="Archive" onClick={(e) => { e.stopPropagation(); onMoveDoc(doc.id, 'archive'); }}><Archive size={14} /></button>
+              <button className="doc-card-action-btn" style={{ color: 'var(--color-danger)' }} title="Delete" onClick={(e) => { e.stopPropagation(); onMoveDoc(doc.id, 'trash'); }}><Trash2 size={14} /></button>
+            </>
+          )}
         </div>
       )}
     </div>
@@ -82,6 +92,7 @@ export default function DocumentList() {
     isLoading, fetchDocuments,
     page, hasMore, isFetchingMore,
     batchMoveDocuments,
+    batchDeleteDocuments,
     syncData, isSyncing
   } = useApp();
 
@@ -230,6 +241,8 @@ export default function DocumentList() {
                   setSelectedIds(newSet);
                 }}
                 onMoveDoc={handleMoveDoc}
+                onDeleteDoc={batchDeleteDocuments}
+                currentView={currentView}
               />
             ))}
             {/* Observer Target for Infinite Scroll */}
@@ -258,10 +271,20 @@ export default function DocumentList() {
           boxShadow: '0 8px 24px rgba(0,0,0,0.2)', display: 'flex', gap: '8px', zIndex: 100,
           border: '1px solid var(--color-border)', alignItems: 'center'
         }}>
-          <span style={{ fontSize: '12px', color: 'var(--color-text-secondary)', marginRight: '8px', whiteSpace: 'nowrap' }}>移动到</span>
-          <button className="btn btn-ghost btn-sm" onClick={async () => { await batchMoveDocuments(Array.from(selectedIds), 'new'); setIsSelectionMode(false); setSelectedIds(new Set()); }}><Inbox size={14} style={{ marginRight: '4px', verticalAlign: 'middle' }} /> 收件箱</button>
-          <button className="btn btn-ghost btn-sm" onClick={async () => { await batchMoveDocuments(Array.from(selectedIds), 'later'); setIsSelectionMode(false); setSelectedIds(new Set()); }}><Clock size={14} style={{ marginRight: '4px', verticalAlign: 'middle' }} /> 稍后阅读</button>
-          <button className="btn btn-ghost btn-sm" onClick={async () => { await batchMoveDocuments(Array.from(selectedIds), 'archive'); setIsSelectionMode(false); setSelectedIds(new Set()); }}><Archive size={14} style={{ marginRight: '4px', verticalAlign: 'middle' }} /> 归档</button>
+          {currentView === 'trash' ? (
+            <>
+              <button className="btn btn-ghost btn-sm" onClick={async () => { await batchMoveDocuments(Array.from(selectedIds), 'new'); setIsSelectionMode(false); setSelectedIds(new Set()); }}><RotateCcw size={14} style={{ marginRight: '4px', verticalAlign: 'middle' }} /> 恢复文档</button>
+              <button className="btn btn-ghost btn-sm" style={{ color: 'var(--color-danger)' }} onClick={async () => { if (confirm('确定要彻底删除选中的文档吗？此操作无法撤销。')) { await batchDeleteDocuments(Array.from(selectedIds)); setIsSelectionMode(false); setSelectedIds(new Set()); } }}><Trash2 size={14} style={{ marginRight: '4px', verticalAlign: 'middle' }} /> 彻底删除</button>
+            </>
+          ) : (
+            <>
+              <span style={{ fontSize: '12px', color: 'var(--color-text-secondary)', marginRight: '8px', whiteSpace: 'nowrap' }}>移动到</span>
+              <button className="btn btn-ghost btn-sm" onClick={async () => { await batchMoveDocuments(Array.from(selectedIds), 'new'); setIsSelectionMode(false); setSelectedIds(new Set()); }}><Inbox size={14} style={{ marginRight: '4px', verticalAlign: 'middle' }} /> 收件箱</button>
+              <button className="btn btn-ghost btn-sm" onClick={async () => { await batchMoveDocuments(Array.from(selectedIds), 'later'); setIsSelectionMode(false); setSelectedIds(new Set()); }}><Clock size={14} style={{ marginRight: '4px', verticalAlign: 'middle' }} /> 稍后阅读</button>
+              <button className="btn btn-ghost btn-sm" onClick={async () => { await batchMoveDocuments(Array.from(selectedIds), 'archive'); setIsSelectionMode(false); setSelectedIds(new Set()); }}><Archive size={14} style={{ marginRight: '4px', verticalAlign: 'middle' }} /> 归档</button>
+              <button className="btn btn-ghost btn-sm" style={{ color: 'var(--color-danger)' }} onClick={async () => { await batchMoveDocuments(Array.from(selectedIds), 'trash'); setIsSelectionMode(false); setSelectedIds(new Set()); }}><Trash2 size={14} style={{ marginRight: '4px', verticalAlign: 'middle' }} /> 删除</button>
+            </>
+          )}
         </div>
       )}
     </div>

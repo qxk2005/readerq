@@ -21,6 +21,7 @@ export default function Sidebar() {
     { key: 'shortlist', icon: LOCATION_ICONS_SVG.shortlist, label: LOCATION_LABELS.shortlist },
     { key: 'archive', icon: LOCATION_ICONS_SVG.archive, label: LOCATION_LABELS.archive },
     { key: 'feed', icon: LOCATION_ICONS_SVG.feed, label: LOCATION_LABELS.feed },
+    { key: 'trash', icon: LOCATION_ICONS_SVG.trash, label: LOCATION_LABELS.trash },
   ];
 
   const categories = [

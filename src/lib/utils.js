@@ -83,6 +83,7 @@ export const LOCATION_LABELS = {
   shortlist: '短列表',
   archive: '归档',
   feed: '订阅源',
+  trash: '垃圾箱',
 };
 
 /**
@@ -109,6 +110,7 @@ export const LOCATION_ICONS = {
   shortlist: '⭐',
   archive: '📦',
   feed: '📡',
+  trash: '🗑️',
 };
 
 /**

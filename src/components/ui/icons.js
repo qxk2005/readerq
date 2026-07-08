@@ -1,7 +1,7 @@
 import React from 'react';
 import { 
   FileText, Mail, Rss, Highlighter, Notebook, File, Book, MessageCircle, Video,
-  Inbox, Clock, Star, Archive
+  Inbox, Clock, Star, Archive, Trash2
 } from 'lucide-react';
 
 export const CATEGORY_ICONS_SVG = {
@@ -22,6 +22,7 @@ export const LOCATION_ICONS_SVG = {
   shortlist: <Star size={16} />,
   archive: <Archive size={16} />,
   feed: <Rss size={16} />,
+  trash: <Trash2 size={16} />,
 };
 
 export const getCategoryIcon = (category, size = 16, className = '') => {
@@ -47,6 +48,7 @@ export const getLocationIcon = (location, size = 16, className = '') => {
     shortlist: Star,
     archive: Archive,
     feed: Rss,
+    trash: Trash2,
   }[location] || Inbox;
 
   return <IconComponent size={size} className={className} />;

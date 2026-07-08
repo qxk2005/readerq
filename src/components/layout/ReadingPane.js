@@ -8,7 +8,7 @@ import { getTextOffset, restoreHighlights } from '@/lib/highlight';
 import GhostReader from '@/components/ai/GhostReader';
 import HighlightEditor from '@/components/HighlightEditor';
 import TagInput from '@/components/TagInput';
-import { BookOpen, Link, Info, Edit3, Bot, Loader2, ClipboardList, AlertTriangle, RefreshCw, CheckCircle2, XCircle, ImageIcon, Upload } from 'lucide-react';
+import { BookOpen, Link, Info, Edit3, Bot, Loader2, ClipboardList, AlertTriangle, RefreshCw, CheckCircle2, XCircle, ImageIcon, Upload, Trash2, RotateCcw, Inbox, Clock, Archive } from 'lucide-react';
 
 const scrollToElement = (container, element) => {
   if (!container || !element) return;
@@ -16,27 +16,44 @@ const scrollToElement = (container, element) => {
   const elementRect = element.getBoundingClientRect();
   
   const relativeTop = elementRect.top - containerRect.top + container.scrollTop;
-  const targetScrollTop = relativeTop - (containerRect.height / 2) + (elementRect.height / 2);
+  const targetScrollTop = relativeTop - containerRect.height / 2 + elementRect.height / 2;
   
-  if (typeof container.scrollTo === 'function') {
-    container.scrollTo({
-      top: targetScrollTop,
-      behavior: 'smooth'
-    });
-  } else {
-    container.scrollTop = targetScrollTop;
-  }
+  const start = container.scrollTop;
+  const change = targetScrollTop - start;
+  const duration = 200;
+  let startTime = null;
+  
+  const animateScroll = (timestamp) => {
+    if (!startTime) startTime = timestamp;
+    const elapsed = timestamp - startTime;
+    const progress = Math.min(elapsed / duration, 1);
+    
+    // Ease out quad
+    const ease = progress * (2 - progress);
+    container.scrollTop = start + change * ease;
+    
+    if (elapsed < duration) {
+      requestAnimationFrame(animateScroll);
+    } else {
+      container.scrollTop = targetScrollTop;
+    }
+  };
+  requestAnimationFrame(animateScroll);
 };
 
 export default function ReadingPane() {
   const { 
     selectedDoc, 
+    setSelectedDoc,
     rightPanelTab, 
     setRightPanelTab, 
     isContentLoading, 
     contentError, 
     fetchDocumentDetails, 
     updateDocumentLocally,
+    batchMoveDocuments,
+    batchDeleteDocuments,
+    currentView,
     tags: allTags 
   } = useApp();
   
@@ -707,6 +724,80 @@ export default function ReadingPane() {
           )}
         </div>
         <div className="reading-header-right">
+          {selectedDoc.location === 'trash' ? (
+            <>
+              <button
+                className="btn-icon"
+                onClick={async () => {
+                  await batchMoveDocuments([selectedDoc.id], 'new');
+                }}
+                data-tooltip="恢复到收件箱"
+              >
+                <RotateCcw size={16} />
+              </button>
+              <button
+                className="btn-icon"
+                style={{ color: 'var(--color-danger)' }}
+                onClick={async () => {
+                  if (confirm('确定要彻底删除该文档吗？此操作无法撤销。')) {
+                    await batchDeleteDocuments([selectedDoc.id]);
+                  }
+                }}
+                data-tooltip="彻底删除"
+              >
+                <Trash2 size={16} />
+              </button>
+            </>
+          ) : (
+            <>
+              {selectedDoc.location !== 'new' && (
+                <button
+                  className="btn-icon"
+                  onClick={async () => {
+                    await batchMoveDocuments([selectedDoc.id], 'new');
+                  }}
+                  data-tooltip="移至收件箱"
+                >
+                  <Inbox size={16} />
+                </button>
+              )}
+              {selectedDoc.location !== 'later' && (
+                <button
+                  className="btn-icon"
+                  onClick={async () => {
+                    await batchMoveDocuments([selectedDoc.id], 'later');
+                  }}
+                  data-tooltip="移至稍后阅读"
+                >
+                  <Clock size={16} />
+                </button>
+              )}
+              {selectedDoc.location !== 'archive' && (
+                <button
+                  className="btn-icon"
+                  onClick={async () => {
+                    await batchMoveDocuments([selectedDoc.id], 'archive');
+                  }}
+                  data-tooltip="移至归档"
+                >
+                  <Archive size={16} />
+                </button>
+              )}
+              <button
+                className="btn-icon"
+                style={{ color: 'var(--color-danger)' }}
+                onClick={async () => {
+                  await batchMoveDocuments([selectedDoc.id], 'trash');
+                }}
+                data-tooltip="移入垃圾箱"
+              >
+                <Trash2 size={16} />
+              </button>
+            </>
+          )}
+
+          <div style={{ width: '1px', height: '16px', backgroundColor: 'var(--color-border)', margin: '0 8px' }} />
+
           <button
             className="btn-icon"
             onClick={() => setRightPanelTab(rightPanelTab === 'info' ? null : 'info')}

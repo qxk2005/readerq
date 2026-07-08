@@ -127,6 +127,18 @@ function initSchema(db) {
  */
 export function upsertDocument(doc) {
   const db = getDatabase();
+
+  // 检查本地已有文档是否是 trash 状态以防覆盖
+  let targetLocation = doc.location || null;
+  try {
+    const existing = db.prepare('SELECT location FROM documents WHERE id = ?').get(doc.id);
+    if (existing && existing.location === 'trash') {
+      targetLocation = 'trash';
+    }
+  } catch (e) {
+    // 忽略异常，继续流程
+  }
+
   const stmt = db.prepare(`
     INSERT INTO documents
     (id, url, source_url, title, author, source, category, location,
@@ -176,7 +188,7 @@ export function upsertDocument(doc) {
     author: doc.author || null,
     source: doc.source || null,
     category: doc.category || null,
-    location: doc.location || null,
+    location: targetLocation,
     site_name: doc.site_name || null,
     word_count: doc.word_count || null,
     reading_time: doc.reading_time || null,
@@ -222,6 +234,9 @@ export function getCachedDocuments({ location, category, tag, search, limit = 10
   if (location) {
     query += ' AND location = @location';
     params.location = location;
+  } else {
+    // 如果没有指定 location（如“全部文档”或分类视图），需排除垃圾箱中的文档
+    query += " AND (location IS NULL OR location != 'trash')";
   }
   if (category) {
     query += ' AND category = @category';
@@ -236,7 +251,12 @@ export function getCachedDocuments({ location, category, tag, search, limit = 10
     params.search = `%${search}%`;
   }
 
-  query += ' ORDER BY updated_at DESC LIMIT @limit OFFSET @offset';
+  // 排序规则：如果为 archive 或 trash 视图，按照 coalesce(updated_at, created_at) 降序排列
+  if (location === 'archive' || location === 'trash') {
+    query += ' ORDER BY COALESCE(updated_at, created_at) DESC LIMIT @limit OFFSET @offset';
+  } else {
+    query += ' ORDER BY updated_at DESC LIMIT @limit OFFSET @offset';
+  }
   params.limit = limit;
   params.offset = offset;
 
@@ -320,7 +340,7 @@ export function getSetting(key, defaultValue = null) {
  */
 export function getDocumentStats() {
   const db = getDatabase();
-  const total = db.prepare('SELECT COUNT(*) as count FROM documents WHERE parent_id IS NULL').get();
+  const total = db.prepare("SELECT COUNT(*) as count FROM documents WHERE parent_id IS NULL AND (location IS NULL OR location != 'trash')").get();
   const byLocation = db.prepare(`
     SELECT location, COUNT(*) as count FROM documents
     WHERE parent_id IS NULL
@@ -328,7 +348,7 @@ export function getDocumentStats() {
   `).all();
   const byCategory = db.prepare(`
     SELECT category, COUNT(*) as count FROM documents
-    WHERE parent_id IS NULL
+    WHERE parent_id IS NULL AND (location IS NULL OR location != 'trash')
     GROUP BY category
   `).all();
 
@@ -640,4 +660,22 @@ export function findDocumentIdByTitle(title) {
   const db = getDatabase();
   const doc = db.prepare('SELECT id FROM documents WHERE title = ? AND parent_id IS NULL LIMIT 1').get(title);
   return doc?.id || null;
+}
+
+/**
+ * 批量物理删除文档及关联高亮
+ */
+export function deleteDocuments(ids) {
+  if (!ids || ids.length === 0) return;
+  const db = getDatabase();
+  const deleteHighlightsStmt = db.prepare('DELETE FROM highlights WHERE document_id = ?');
+  const deleteDocStmt = db.prepare('DELETE FROM documents WHERE id = ?');
+  
+  const runTransaction = db.transaction((docIds) => {
+    for (const id of docIds) {
+      deleteHighlightsStmt.run(id);
+      deleteDocStmt.run(id);
+    }
+  });
+  runTransaction(ids);
 }

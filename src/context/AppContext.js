@@ -219,6 +219,7 @@ export function AppProvider({ children }) {
   }, [fetchDocuments]);
 
   // 批量移动文档
+  // 批量移动文档
   const batchMoveDocuments = useCallback(async (ids, location) => {
     try {
       // 乐观更新
@@ -226,7 +227,7 @@ export function AppProvider({ children }) {
         if (ids.includes(doc.id)) {
           if (currentView === 'all') return true;
           if (currentView === location) return true;
-          if (['new', 'later', 'archive', 'feed'].includes(currentView)) return false;
+          if (['new', 'later', 'archive', 'trash', 'feed'].includes(currentView)) return false;
         }
         return true;
       }).map(doc => ids.includes(doc.id) ? { ...doc, location } : doc));
@@ -248,6 +249,31 @@ export function AppProvider({ children }) {
       throw err;
     }
   }, [currentView, fetchDocuments]);
+
+  // 批量彻底物理删除文档
+  const batchDeleteDocuments = useCallback(async (ids) => {
+    try {
+      // 乐观更新
+      setDocuments(prev => prev.filter(doc => !ids.includes(doc.id)));
+      
+      const res = await fetch('/api/readwise/documents/batch-delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids })
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+
+      // 如果当前选中的文档被物理删除了，重置 selectedDoc 为 null
+      setSelectedDoc(prev => prev && ids.includes(prev.id) ? null : prev);
+      
+      return true;
+    } catch (err) {
+      console.error('批量物理删除文档失败:', err);
+      fetchDocuments({ page: 1 });
+      throw err;
+    }
+  }, [fetchDocuments]);
 
   // 切换视图
   const switchView = useCallback((view) => {
@@ -347,6 +373,7 @@ export function AppProvider({ children }) {
     cancelSync,
     saveDocument,
     batchMoveDocuments,
+    batchDeleteDocuments,
     switchView,
     switchCategory,
     switchTag,
