@@ -228,7 +228,16 @@ export function upsertDocuments(docs) {
  */
 export function getCachedDocuments({ location, category, tag, search, limit = 100, offset = 0 } = {}) {
   const db = getDatabase();
-  let query = 'SELECT * FROM documents WHERE parent_id IS NULL';
+  let query = `
+    SELECT *, 
+    COALESCE(
+      (SELECT MAX(created_at) FROM highlights WHERE document_id = documents.id),
+      updated_at,
+      created_at
+    ) AS last_highlighted_at 
+    FROM documents 
+    WHERE parent_id IS NULL
+  `;
   const params = {};
 
   if (location) {
@@ -251,12 +260,8 @@ export function getCachedDocuments({ location, category, tag, search, limit = 10
     params.search = `%${search}%`;
   }
 
-  // 排序规则：如果为 archive 或 trash 视图，按照 coalesce(updated_at, created_at) 降序排列
-  if (location === 'archive' || location === 'trash') {
-    query += ' ORDER BY COALESCE(updated_at, created_at) DESC LIMIT @limit OFFSET @offset';
-  } else {
-    query += ' ORDER BY updated_at DESC LIMIT @limit OFFSET @offset';
-  }
+  // 排序规则：全部默认以最后标记/更新时间（last_highlighted_at）降序排列
+  query += ' ORDER BY last_highlighted_at DESC LIMIT @limit OFFSET @offset';
   params.limit = limit;
   params.offset = offset;
 

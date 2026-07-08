@@ -137,7 +137,8 @@ export default function DocumentList() {
 
   const sortedDocs = [...documents].sort((a, b) => {
     if (sortBy === 'updated') {
-      return new Date(b.updated_at || 0) - new Date(a.updated_at || 0);
+      return new Date(b.last_highlighted_at || b.updated_at || b.created_at || 0) - 
+             new Date(a.last_highlighted_at || a.updated_at || a.created_at || 0);
     }
     if (sortBy === 'title') {
       return (a.title || '').localeCompare(b.title || '');

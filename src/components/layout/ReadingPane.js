@@ -467,6 +467,8 @@ export default function ReadingPane() {
       if (data.success) {
         const createdHighlight = data.highlight;
         setHighlights(prev => [...prev, createdHighlight]);
+        // Update document's last_highlighted_at locally to sync visual ordering instantly
+        updateDocumentLocally(selectedDoc.id, { last_highlighted_at: new Date().toISOString() });
         // Show edit UI immediately after creation
         setEditingHighlight({ ...createdHighlight, rect: selectionRect });
 
@@ -579,6 +581,12 @@ export default function ReadingPane() {
     // 立即关闭当前编辑器并从高亮列表中移除，提供即时视觉反馈
     setEditingHighlight(prev => (prev?.id === id ? null : prev));
     setHighlights(prev => prev.filter(h => h.id !== id));
+    
+    // Update document's last_highlighted_at locally to sync visual ordering instantly
+    if (selectedDoc) {
+      updateDocumentLocally(selectedDoc.id, { last_highlighted_at: new Date().toISOString() });
+    }
+    
     try {
       await fetch(`/api/highlights/${id}`, { method: 'DELETE' });
     } catch (e) {
