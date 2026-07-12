@@ -24,7 +24,7 @@ data class TtsState(
 
 /**
  * TTS 管理器 - 封装 Android 系统 TextToSpeech API
- * 支持分段朗读文章、暂停/继续、进度追踪
+ * 支持分段朗读文章、暂停/继续、进度追踪、上一段/下一段跳转
  */
 class TtsManager(context: Context) {
 
@@ -40,21 +40,34 @@ class TtsManager(context: Context) {
     private var chunks: List<String> = emptyList()
     private var currentChunkIndex = 0
     private var isPausedState = false
+    // 防止 stop() 触发的 onDone 回调造成竞态
+    private var isStopping = false
 
     private val _ttsState = MutableStateFlow(TtsState())
     val ttsState: StateFlow<TtsState> = _ttsState.asStateFlow()
 
     init {
-        tts = TextToSpeech(context) { status ->
+        tts = TextToSpeech(context.applicationContext) { status ->
             if (status == TextToSpeech.SUCCESS) {
                 isInitialized = true
-                // 设置默认语言为中文，如果不支持则退回英文
-                val result = tts?.setLanguage(Locale.CHINESE)
+                // 设置默认语言为简体中文（使用 Locale.CHINA = zh_CN）
+                // 注意: Locale.CHINESE = "zh" 在许多 TTS 引擎上不被正确支持
+                val result = tts?.setLanguage(Locale.CHINA)
                 if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
-                    tts?.setLanguage(Locale.US)
+                    // 尝试繁体中文
+                    val result2 = tts?.setLanguage(Locale.TAIWAN)
+                    if (result2 == TextToSpeech.LANG_MISSING_DATA || result2 == TextToSpeech.LANG_NOT_SUPPORTED) {
+                        // 回退到英文
+                        tts?.setLanguage(Locale.US)
+                        Log.w(TAG, "Chinese TTS not available, falling back to English")
+                    }
                 }
+                // 设置语速为正常速度
+                tts?.setSpeechRate(1.0f)
+                // 设置音调
+                tts?.setPitch(1.0f)
                 setupListener()
-                Log.d(TAG, "TTS initialized successfully")
+                Log.d(TAG, "TTS initialized successfully, engine: ${tts?.defaultEngine}")
             } else {
                 Log.e(TAG, "TTS initialization failed with status: $status")
                 _ttsState.value = _ttsState.value.copy(error = "TTS 引擎初始化失败，请检查系统 TTS 设置")
@@ -66,11 +79,16 @@ class TtsManager(context: Context) {
         tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
             override fun onStart(utteranceId: String?) {
                 Log.d(TAG, "Started utterance: $utteranceId")
+                // 确保状态反映为正在播放
+                if (!isStopping) {
+                    _ttsState.value = _ttsState.value.copy(isPlaying = true, error = null)
+                }
             }
 
             override fun onDone(utteranceId: String?) {
-                Log.d(TAG, "Finished utterance: $utteranceId, isPaused=$isPausedState")
-                if (isPausedState) return
+                Log.d(TAG, "Finished utterance: $utteranceId, isPaused=$isPausedState, isStopping=$isStopping")
+                // 如果是 stop()/暂停触发的 onDone，不要自动播放下一段
+                if (isPausedState || isStopping) return
 
                 val nextIndex = currentChunkIndex + 1
                 if (nextIndex < chunks.size) {
@@ -97,12 +115,24 @@ class TtsManager(context: Context) {
             @Deprecated("Deprecated")
             override fun onError(utteranceId: String?) {
                 Log.e(TAG, "Error on utterance: $utteranceId")
-                _ttsState.value = _ttsState.value.copy(error = "播放出错")
+                _ttsState.value = _ttsState.value.copy(
+                    error = "播放出错，请检查系统 TTS 引擎设置",
+                    isPlaying = false
+                )
             }
 
             override fun onError(utteranceId: String?, errorCode: Int) {
                 Log.e(TAG, "Error on utterance: $utteranceId, code: $errorCode")
-                _ttsState.value = _ttsState.value.copy(error = "播放出错 (code: $errorCode)")
+                val errorMsg = when (errorCode) {
+                    TextToSpeech.ERROR_SYNTHESIS -> "语音合成失败，TTS 引擎可能不支持当前语言"
+                    TextToSpeech.ERROR_SERVICE -> "TTS 服务错误"
+                    TextToSpeech.ERROR_OUTPUT -> "音频输出错误"
+                    TextToSpeech.ERROR_NETWORK -> "网络错误（在线 TTS 引擎）"
+                    TextToSpeech.ERROR_NETWORK_TIMEOUT -> "网络超时（在线 TTS 引擎）"
+                    TextToSpeech.ERROR_NOT_INSTALLED_YET -> "TTS 引擎未安装"
+                    else -> "播放出错 (code: $errorCode)"
+                }
+                _ttsState.value = _ttsState.value.copy(error = errorMsg, isPlaying = false)
             }
 
             override fun onRangeStart(utteranceId: String?, start: Int, end: Int, frame: Int) {
@@ -179,27 +209,35 @@ class TtsManager(context: Context) {
     fun speak(htmlContent: String) {
         if (!isInitialized) {
             _ttsState.value = _ttsState.value.copy(
-                error = "TTS 引擎尚未初始化，请稍后再试"
+                error = "TTS 引擎尚未初始化，请稍后再试",
+                isActive = true
             )
+            Log.e(TAG, "speak() called but TTS not initialized yet")
             return
         }
 
         // 停止当前播放
+        isStopping = true
         tts?.stop()
+        isStopping = false
         isPausedState = false
 
         // 提取文本并分段
         val plainText = extractTextFromHtml(htmlContent)
         if (plainText.isBlank()) {
-            _ttsState.value = _ttsState.value.copy(error = "无法提取文章内容")
+            _ttsState.value = _ttsState.value.copy(error = "无法提取文章内容", isActive = true)
             return
         }
 
+        Log.d(TAG, "Extracted text length: ${plainText.length}, first 100 chars: ${plainText.take(100)}")
+
         chunks = splitIntoChunks(plainText)
         if (chunks.isEmpty()) {
-            _ttsState.value = _ttsState.value.copy(error = "文章内容为空")
+            _ttsState.value = _ttsState.value.copy(error = "文章内容为空", isActive = true)
             return
         }
+
+        Log.d(TAG, "Split into ${chunks.size} chunks, first chunk length: ${chunks[0].length}")
 
         currentChunkIndex = 0
         _ttsState.value = TtsState(
@@ -210,9 +248,10 @@ class TtsManager(context: Context) {
             totalChunks = chunks.size
         )
 
-        // 自动检测语言
+        // 自动检测语言并设置
         detectAndSetLanguage(plainText)
 
+        // 开始朗读第一段
         speakChunk(0)
     }
 
@@ -220,22 +259,55 @@ class TtsManager(context: Context) {
      * 根据文本内容自动检测并设置语言
      */
     private fun detectAndSetLanguage(text: String) {
-        val sample = text.take(200)
+        val sample = text.take(500)
         val chineseCount = sample.count { it.code in 0x4E00..0x9FFF }
-        val locale = if (chineseCount > sample.length * 0.1) Locale.CHINESE else Locale.US
-        tts?.setLanguage(locale)
+        val locale = if (chineseCount > sample.length * 0.1) Locale.CHINA else Locale.US
+        val result = tts?.setLanguage(locale)
+        Log.d(TAG, "Language set to ${locale.toLanguageTag()}, result=$result")
+
+        if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
+            Log.w(TAG, "Language ${locale.toLanguageTag()} not supported, trying alternatives...")
+            if (locale == Locale.CHINA) {
+                // 尝试繁体中文
+                val result2 = tts?.setLanguage(Locale.TAIWAN)
+                if (result2 == TextToSpeech.LANG_MISSING_DATA || result2 == TextToSpeech.LANG_NOT_SUPPORTED) {
+                    // 尝试通用中文
+                    val result3 = tts?.setLanguage(Locale("zh"))
+                    if (result3 == TextToSpeech.LANG_MISSING_DATA || result3 == TextToSpeech.LANG_NOT_SUPPORTED) {
+                        tts?.setLanguage(Locale.US)
+                        Log.w(TAG, "No Chinese TTS available, falling back to English")
+                    }
+                }
+            }
+        }
     }
 
     private fun speakChunk(index: Int) {
         if (index < 0 || index >= chunks.size) return
 
-        val params = Bundle()
-        tts?.speak(
-            chunks[index],
+        val chunkText = chunks[index]
+        Log.d(TAG, "Speaking chunk $index/${chunks.size}, length=${chunkText.length}, text=${chunkText.take(50)}")
+
+        val params = Bundle().apply {
+            // 使用音乐流播放，确保音量正常
+            putInt(TextToSpeech.Engine.KEY_PARAM_STREAM, android.media.AudioManager.STREAM_MUSIC)
+        }
+
+        val result = tts?.speak(
+            chunkText,
             TextToSpeech.QUEUE_FLUSH,
             params,
             "${UTTERANCE_PREFIX}$index"
         )
+
+        Log.d(TAG, "tts.speak() returned: $result (SUCCESS=${TextToSpeech.SUCCESS}, ERROR=${TextToSpeech.ERROR})")
+
+        if (result == TextToSpeech.ERROR) {
+            _ttsState.value = _ttsState.value.copy(
+                error = "TTS 播放失败，请检查系统是否安装了 TTS 引擎（如 Google TTS）",
+                isPlaying = false
+            )
+        }
     }
 
     /**
@@ -244,7 +316,9 @@ class TtsManager(context: Context) {
     fun pause() {
         if (_ttsState.value.isPlaying) {
             isPausedState = true
+            isStopping = true
             tts?.stop()
+            isStopping = false
             _ttsState.value = _ttsState.value.copy(isPlaying = false)
         }
     }
@@ -255,7 +329,8 @@ class TtsManager(context: Context) {
     fun resume() {
         if (_ttsState.value.isActive && !_ttsState.value.isPlaying) {
             isPausedState = false
-            _ttsState.value = _ttsState.value.copy(isPlaying = true)
+            isStopping = false
+            _ttsState.value = _ttsState.value.copy(isPlaying = true, error = null)
             speakChunk(currentChunkIndex)
         }
     }
@@ -272,10 +347,62 @@ class TtsManager(context: Context) {
     }
 
     /**
+     * 跳转到下一段
+     */
+    fun nextChunk() {
+        if (chunks.isEmpty()) return
+        val nextIndex = currentChunkIndex + 1
+        if (nextIndex >= chunks.size) return
+
+        // 停止当前播放
+        isStopping = true
+        tts?.stop()
+        isStopping = false
+        isPausedState = false
+
+        currentChunkIndex = nextIndex
+        val progress = nextIndex.toFloat() / chunks.size
+        _ttsState.value = _ttsState.value.copy(
+            currentChunk = nextIndex,
+            progress = progress,
+            isPlaying = true,
+            error = null
+        )
+        speakChunk(nextIndex)
+    }
+
+    /**
+     * 跳转到上一段
+     */
+    fun previousChunk() {
+        if (chunks.isEmpty()) return
+        val prevIndex = currentChunkIndex - 1
+        if (prevIndex < 0) return
+
+        // 停止当前播放
+        isStopping = true
+        tts?.stop()
+        isStopping = false
+        isPausedState = false
+
+        currentChunkIndex = prevIndex
+        val progress = prevIndex.toFloat() / chunks.size
+        _ttsState.value = _ttsState.value.copy(
+            currentChunk = prevIndex,
+            progress = progress,
+            isPlaying = true,
+            error = null
+        )
+        speakChunk(prevIndex)
+    }
+
+    /**
      * 停止并关闭播放器
      */
     fun stop() {
+        isStopping = true
         tts?.stop()
+        isStopping = false
         isPausedState = false
         currentChunkIndex = 0
         chunks = emptyList()
@@ -286,9 +413,11 @@ class TtsManager(context: Context) {
      * 释放资源
      */
     fun shutdown() {
+        isStopping = true
         tts?.stop()
         tts?.shutdown()
         tts = null
         isInitialized = false
+        isStopping = false
     }
 }

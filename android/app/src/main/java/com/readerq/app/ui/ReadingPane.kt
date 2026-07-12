@@ -457,10 +457,24 @@ fun ReadingPane(
                             trackColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f),
                         )
 
+                        // 错误信息提示
+                        if (ttsState.error != null) {
+                            Text(
+                                text = ttsState.error!!,
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.error,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 12.dp, vertical = 4.dp),
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                                .padding(horizontal = 8.dp, vertical = 4.dp),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
@@ -470,19 +484,19 @@ fun ReadingPane(
                                 modifier = Modifier.weight(1f)
                             ) {
                                 Icon(
-                                    painter = painterResource(id = R.drawable.ic_play),
+                                    painter = painterResource(id = R.drawable.ic_tts),
                                     contentDescription = null,
                                     modifier = Modifier.size(16.dp),
                                     tint = MaterialTheme.colorScheme.primary
                                 )
-                                Spacer(modifier = Modifier.width(8.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
                                 Text(
                                     text = if (ttsState.isPlaying) "正在朗读..." else "已暂停",
                                     fontSize = 13.sp,
                                     color = textColor.copy(alpha = 0.7f)
                                 )
                                 if (ttsState.totalChunks > 0) {
-                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
                                     Text(
                                         text = "${ttsState.currentChunk + 1}/${ttsState.totalChunks}",
                                         fontSize = 11.sp,
@@ -491,32 +505,72 @@ fun ReadingPane(
                                 }
                             }
 
-                            // 播放/暂停按钮
-                            IconButton(
-                                onClick = { viewModel.toggleTts() },
-                                modifier = Modifier.size(40.dp)
+                            // 控制按钮组
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(0.dp)
                             ) {
-                                Icon(
-                                    painter = painterResource(
-                                        id = if (ttsState.isPlaying) R.drawable.ic_pause else R.drawable.ic_play
-                                    ),
-                                    contentDescription = if (ttsState.isPlaying) "暂停" else "播放",
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(22.dp)
-                                )
-                            }
+                                // 上一段按钮
+                                IconButton(
+                                    onClick = { viewModel.previousTtsChunk() },
+                                    modifier = Modifier.size(36.dp),
+                                    enabled = ttsState.currentChunk > 0
+                                ) {
+                                    Icon(
+                                        painter = painterResource(id = R.drawable.ic_skip_previous),
+                                        contentDescription = "上一段",
+                                        tint = if (ttsState.currentChunk > 0)
+                                            MaterialTheme.colorScheme.primary
+                                        else
+                                            textColor.copy(alpha = 0.2f),
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
 
-                            // 关闭按钮
-                            IconButton(
-                                onClick = { viewModel.stopTts() },
-                                modifier = Modifier.size(36.dp)
-                            ) {
-                                Icon(
-                                    painter = painterResource(id = R.drawable.ic_close),
-                                    contentDescription = "关闭朗读",
-                                    tint = textColor.copy(alpha = 0.5f),
-                                    modifier = Modifier.size(18.dp)
-                                )
+                                // 播放/暂停按钮
+                                IconButton(
+                                    onClick = { viewModel.toggleTts() },
+                                    modifier = Modifier.size(40.dp)
+                                ) {
+                                    Icon(
+                                        painter = painterResource(
+                                            id = if (ttsState.isPlaying) R.drawable.ic_pause else R.drawable.ic_play
+                                        ),
+                                        contentDescription = if (ttsState.isPlaying) "暂停" else "播放",
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(22.dp)
+                                    )
+                                }
+
+                                // 下一段按钮
+                                IconButton(
+                                    onClick = { viewModel.nextTtsChunk() },
+                                    modifier = Modifier.size(36.dp),
+                                    enabled = ttsState.currentChunk < ttsState.totalChunks - 1
+                                ) {
+                                    Icon(
+                                        painter = painterResource(id = R.drawable.ic_skip_next),
+                                        contentDescription = "下一段",
+                                        tint = if (ttsState.currentChunk < ttsState.totalChunks - 1)
+                                            MaterialTheme.colorScheme.primary
+                                        else
+                                            textColor.copy(alpha = 0.2f),
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+
+                                // 关闭按钮
+                                IconButton(
+                                    onClick = { viewModel.stopTts() },
+                                    modifier = Modifier.size(36.dp)
+                                ) {
+                                    Icon(
+                                        painter = painterResource(id = R.drawable.ic_close),
+                                        contentDescription = "关闭朗读",
+                                        tint = textColor.copy(alpha = 0.5f),
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
                             }
                         }
                     }

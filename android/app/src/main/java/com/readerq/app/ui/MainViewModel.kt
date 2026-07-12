@@ -1318,6 +1318,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         ttsManager.stop()
     }
 
+    fun nextTtsChunk() {
+        ttsManager.nextChunk()
+    }
+
+    fun previousTtsChunk() {
+        ttsManager.previousChunk()
+    }
+
     override fun onCleared() {
         super.onCleared()
         ttsManager.shutdown()
