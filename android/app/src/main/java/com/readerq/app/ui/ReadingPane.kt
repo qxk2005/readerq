@@ -316,116 +316,213 @@ fun ReadingPane(
 
                 // Highlight Floating dialog
                 if (showHighlightCreator && !selectedTextForHighlight.isNullOrBlank()) {
+                    var isCollapsed by remember { mutableStateOf(false) }
+                    
                     Card(
                         shape = RoundedCornerShape(12.dp),
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                         modifier = Modifier
                             .align(Alignment.BottomCenter)
-                            .padding(16.dp)
+                            .padding(horizontal = 12.dp, vertical = 8.dp)
                             .fillMaxWidth()
                             .border(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
                     ) {
-                        Column(modifier = Modifier.padding(16.dp)) {
-                            Text("新建高亮", fontWeight = FontWeight.Bold, color = textColor, fontSize = 14.sp)
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Text(
-                                "\"${selectedTextForHighlight}\"",
-                                color = textColor.copy(alpha = 0.8f),
-                                maxLines = 3,
-                                overflow = TextOverflow.Ellipsis,
-                                fontSize = 13.sp
-                            )
-                            Spacer(modifier = Modifier.height(12.dp))
+                        Column(modifier = Modifier.padding(
+                            horizontal = if (isCollapsed) 12.dp else 16.dp,
+                            vertical = if (isCollapsed) 8.dp else 16.dp
+                        )) {
+                            if (!isCollapsed) {
+                                // === 展开模式 ===
+                                // 标题行：含折叠按钮
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text("新建高亮", fontWeight = FontWeight.Bold, color = textColor, fontSize = 14.sp)
+                                    IconButton(
+                                        onClick = { isCollapsed = true },
+                                        modifier = Modifier.size(28.dp)
+                                    ) {
+                                        Icon(
+                                            painter = painterResource(id = R.drawable.ic_collapse),
+                                            contentDescription = "折叠",
+                                            tint = textColor.copy(alpha = 0.5f),
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
+                                }
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(
+                                    "\"${selectedTextForHighlight}\"",
+                                    color = textColor.copy(alpha = 0.8f),
+                                    maxLines = 3,
+                                    overflow = TextOverflow.Ellipsis,
+                                    fontSize = 13.sp
+                                )
+                                Spacer(modifier = Modifier.height(12.dp))
 
-                            // AI actions
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                Button(
-                                    onClick = {
-                                        aiCommandText = selectedTextForHighlight!!
-                                        aiCommandType = "translate"
-                                        showAiDialog = true
+                                // AI actions
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Button(
+                                        onClick = {
+                                            aiCommandText = selectedTextForHighlight!!
+                                            aiCommandType = "translate"
+                                            showAiDialog = true
+                                            showHighlightCreator = false
+                                            selectedTextForHighlight = null
+                                        },
+                                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                                        modifier = Modifier.height(28.dp)
+                                    ) {
+                                        Text("翻译", fontSize = 12.sp, color = MaterialTheme.colorScheme.onPrimary)
+                                    }
+                                    Button(
+                                        onClick = {
+                                            aiCommandText = selectedTextForHighlight!!
+                                            aiCommandType = "define"
+                                            showAiDialog = true
+                                            showHighlightCreator = false
+                                            selectedTextForHighlight = null
+                                        },
+                                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                                        modifier = Modifier.height(28.dp)
+                                    ) {
+                                        Text("解释", fontSize = 12.sp, color = MaterialTheme.colorScheme.onPrimary)
+                                    }
+                                    Button(
+                                        onClick = {
+                                            aiCommandText = selectedTextForHighlight!!
+                                            aiCommandType = "simplify"
+                                            showAiDialog = true
+                                            showHighlightCreator = false
+                                            selectedTextForHighlight = null
+                                        },
+                                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                                        modifier = Modifier.height(28.dp)
+                                    ) {
+                                        Text("简化", fontSize = 12.sp, color = MaterialTheme.colorScheme.onPrimary)
+                                    }
+                                }
+                                Spacer(modifier = Modifier.height(12.dp))
+                                
+                                // Colors and Cancel
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        listOf(
+                                            "yellow" to Color(0xFFFDE047),
+                                            "green" to Color(0xFF86EFAC),
+                                            "blue" to Color(0xFF93C5FD),
+                                            "purple" to Color(0xFFC084FC),
+                                            "red" to Color(0xFFFCA5A5)
+                                        ).forEach { (colorName, colorVal) ->
+                                            IconButton(
+                                                onClick = {
+                                                    viewModel.addHighlight(
+                                                        text = selectedTextForHighlight!!,
+                                                        color = colorName,
+                                                        images = selectedImagesForHighlight
+                                                    )
+                                                    showHighlightCreator = false
+                                                    selectedTextForHighlight = null
+                                                    selectedImagesForHighlight = emptyList()
+                                                },
+                                                modifier = Modifier
+                                                    .size(24.dp)
+                                                    .clip(RoundedCornerShape(12.dp))
+                                                    .background(colorVal)
+                                            ) {}
+                                        }
+                                    }
+
+                                    TextButton(onClick = {
                                         showHighlightCreator = false
                                         selectedTextForHighlight = null
-                                    },
-                                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
-                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
-                                    modifier = Modifier.height(28.dp)
-                                ) {
-                                    Text("翻译", fontSize = 12.sp, color = MaterialTheme.colorScheme.onPrimary)
+                                        selectedImagesForHighlight = emptyList()
+                                    }) {
+                                        Text("取消", color = Color.Gray)
+                                    }
                                 }
-                                Button(
-                                    onClick = {
-                                        aiCommandText = selectedTextForHighlight!!
-                                        aiCommandType = "define"
-                                        showAiDialog = true
-                                        showHighlightCreator = false
-                                        selectedTextForHighlight = null
-                                    },
-                                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
-                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
-                                    modifier = Modifier.height(28.dp)
+                            } else {
+                                // === 折叠模式：紧凑的一行式布局 ===
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text("解释", fontSize = 12.sp, color = MaterialTheme.colorScheme.onPrimary)
-                                }
-                                Button(
-                                    onClick = {
-                                        aiCommandText = selectedTextForHighlight!!
-                                        aiCommandType = "simplify"
-                                        showAiDialog = true
-                                        showHighlightCreator = false
-                                        selectedTextForHighlight = null
-                                    },
-                                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
-                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
-                                    modifier = Modifier.height(28.dp)
-                                ) {
-                                    Text("简化", fontSize = 12.sp, color = MaterialTheme.colorScheme.onPrimary)
-                                }
-                            }
-                            Spacer(modifier = Modifier.height(12.dp))
-                            
-                            // Colors and Cancel
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    listOf(
-                                        "yellow" to Color(0xFFFDE047),
-                                        "green" to Color(0xFF86EFAC),
-                                        "blue" to Color(0xFF93C5FD),
-                                        "purple" to Color(0xFFC084FC),
-                                        "red" to Color(0xFFFCA5A5)
-                                    ).forEach { (colorName, colorVal) ->
+                                    // 颜色选择按钮
+                                    Row(
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        listOf(
+                                            "yellow" to Color(0xFFFDE047),
+                                            "green" to Color(0xFF86EFAC),
+                                            "blue" to Color(0xFF93C5FD),
+                                            "purple" to Color(0xFFC084FC),
+                                            "red" to Color(0xFFFCA5A5)
+                                        ).forEach { (colorName, colorVal) ->
+                                            IconButton(
+                                                onClick = {
+                                                    viewModel.addHighlight(
+                                                        text = selectedTextForHighlight!!,
+                                                        color = colorName,
+                                                        images = selectedImagesForHighlight
+                                                    )
+                                                    showHighlightCreator = false
+                                                    selectedTextForHighlight = null
+                                                    selectedImagesForHighlight = emptyList()
+                                                },
+                                                modifier = Modifier
+                                                    .size(24.dp)
+                                                    .clip(RoundedCornerShape(12.dp))
+                                                    .background(colorVal)
+                                            ) {}
+                                        }
+                                    }
+
+                                    // 展开和取消按钮
+                                    Row(
+                                        horizontalArrangement = Arrangement.spacedBy(0.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        IconButton(
+                                            onClick = { isCollapsed = false },
+                                            modifier = Modifier.size(32.dp)
+                                        ) {
+                                            Icon(
+                                                painter = painterResource(id = R.drawable.ic_expand),
+                                                contentDescription = "展开",
+                                                tint = MaterialTheme.colorScheme.primary,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                        }
                                         IconButton(
                                             onClick = {
-                                                viewModel.addHighlight(
-                                                    text = selectedTextForHighlight!!,
-                                                    color = colorName,
-                                                    images = selectedImagesForHighlight
-                                                )
                                                 showHighlightCreator = false
                                                 selectedTextForHighlight = null
                                                 selectedImagesForHighlight = emptyList()
                                             },
-                                            modifier = Modifier
-                                                .size(24.dp)
-                                                .clip(RoundedCornerShape(12.dp))
-                                                .background(colorVal)
-                                        ) {}
+                                            modifier = Modifier.size(32.dp)
+                                        ) {
+                                            Icon(
+                                                painter = painterResource(id = R.drawable.ic_close),
+                                                contentDescription = "取消",
+                                                tint = Color.Gray,
+                                                modifier = Modifier.size(14.dp)
+                                            )
+                                        }
                                     }
-                                }
-
-                                TextButton(onClick = {
-                                    showHighlightCreator = false
-                                    selectedTextForHighlight = null
-                                    selectedImagesForHighlight = emptyList()
-                                }) {
-                                    Text("取消", color = Color.Gray)
                                 }
                             }
                         }
