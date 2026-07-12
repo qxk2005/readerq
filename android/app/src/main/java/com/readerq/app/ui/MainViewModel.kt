@@ -1232,6 +1232,47 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val updated = local.copy(note = note, tags_json = Json.encodeToString(tags))
             hlDao.insertHighlight(updated)
 
+            // 自动将高亮的 tags 合并到文档的 tags 中（去重）
+            // 与 Web/macOS 客户端行为一致
+            if (tags.isNotEmpty()) {
+                val doc = _selectedDoc.value ?: docDao.getDocumentById(local.document_id)
+                if (doc != null) {
+                    val currentDocTags = try {
+                        doc.tags_json?.let {
+                            Json.decodeFromString<Map<String, Int>>(it).keys.toMutableSet()
+                        } ?: mutableSetOf()
+                    } catch (e: Exception) {
+                        mutableSetOf()
+                    }
+                    var hasNewTag = false
+                    for (tag in tags) {
+                        if (tag !in currentDocTags) {
+                            currentDocTags.add(tag)
+                            hasNewTag = true
+                        }
+                    }
+                    if (hasNewTag) {
+                        val mergedTagsJson = Json.encodeToString(currentDocTags.associateWith { 1 })
+                        val updatedDoc = doc.copy(tags_json = mergedTagsJson)
+                        docDao.insertDocument(updatedDoc)
+                        _selectedDoc.value = updatedDoc
+
+                        // 同步文档 tags 到远端
+                        if (currentToken != "offline") {
+                            try {
+                                val client = ReadwiseClient(currentToken)
+                                val mergedTagList = currentDocTags.toList()
+                                client.updateDocument(doc.id, tags = mergedTagList)
+                                val url = doc.source_url ?: doc.url
+                                client.syncDocumentTagsV2(url, mergedTagList)
+                            } catch (e: Exception) {
+                                e.printStackTrace()
+                            }
+                        }
+                    }
+                }
+            }
+
             if (currentToken == "offline") return@launch
 
             try {
