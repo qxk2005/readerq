@@ -19,7 +19,8 @@ data class TtsState(
     val progress: Float = 0f,           // 播放进度 0f~1f
     val currentChunk: Int = 0,          // 当前播放的段落索引
     val totalChunks: Int = 0,           // 总段落数
-    val error: String? = null           // 错误信息
+    val error: String? = null,          // 错误信息
+    val currentChunkText: String? = null // 当前正在朗读的段落文本（用于 WebView 高亮）
 )
 
 /**
@@ -96,7 +97,8 @@ class TtsManager(context: Context) {
                     val progress = nextIndex.toFloat() / chunks.size
                     _ttsState.value = _ttsState.value.copy(
                         currentChunk = nextIndex,
-                        progress = progress
+                        progress = progress,
+                        currentChunkText = chunks[nextIndex]
                     )
                     speakChunk(nextIndex)
                 } else {
@@ -106,7 +108,8 @@ class TtsManager(context: Context) {
                         isPlaying = false,
                         progress = 1f,
                         currentChunk = chunks.size,
-                        totalChunks = chunks.size
+                        totalChunks = chunks.size,
+                        currentChunkText = null
                     )
                     currentChunkIndex = 0
                 }
@@ -245,7 +248,8 @@ class TtsManager(context: Context) {
             isPlaying = true,
             progress = 0f,
             currentChunk = 0,
-            totalChunks = chunks.size
+            totalChunks = chunks.size,
+            currentChunkText = chunks[0]
         )
 
         // 自动检测语言并设置
@@ -366,7 +370,8 @@ class TtsManager(context: Context) {
             currentChunk = nextIndex,
             progress = progress,
             isPlaying = true,
-            error = null
+            error = null,
+            currentChunkText = chunks[nextIndex]
         )
         speakChunk(nextIndex)
     }
@@ -391,7 +396,8 @@ class TtsManager(context: Context) {
             currentChunk = prevIndex,
             progress = progress,
             isPlaying = true,
-            error = null
+            error = null,
+            currentChunkText = chunks[prevIndex]
         )
         speakChunk(prevIndex)
     }

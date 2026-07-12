@@ -730,6 +730,33 @@ fun HtmlContentViewer(
         }
     }
 
+    // TTS 朗读段落高亮：监听 ttsState 变化，在 WebView 中高亮当前朗读段落
+    val ttsState by viewModel.ttsState.collectAsState()
+    LaunchedEffect(ttsState.currentChunkText, ttsState.isActive) {
+        val webView = webViewRef.value ?: return@LaunchedEffect
+        if (!ttsState.isActive || ttsState.currentChunkText == null) {
+            // TTS 未激活或没有当前段落文本 → 清除高亮
+            webView.evaluateJavascript(
+                "if (typeof window.clearTtsHighlight === 'function') { window.clearTtsHighlight(); }",
+                null
+            )
+        } else {
+            // 高亮当前朗读段落
+            val chunkText = ttsState.currentChunkText!!
+            // 取前80个字符作为搜索关键词（避免特殊字符过多）
+            val searchKey = chunkText.take(80)
+                .replace("\\", "\\\\")
+                .replace("\"", "\\\"")
+                .replace("'", "\\'")
+                .replace("\n", "\\n")
+                .replace("\r", "")
+            webView.evaluateJavascript(
+                "if (typeof window.highlightTtsChunk === 'function') { window.highlightTtsChunk(\"$searchKey\"); }",
+                null
+            )
+        }
+    }
+
 
     val cleanHtml = if (
         html.trim().equals("undefined", ignoreCase = true) ||
@@ -863,6 +890,15 @@ fun HtmlContentViewer(
                     .highlight-color.blue { background-color: #bfdbfe !important; color: #1a1a1a !important; }
                     .highlight-color.purple { background-color: #ddd6fe !important; color: #1a1a1a !important; }
                     .highlight-color.red { background-color: #fecaca !important; color: #1a1a1a !important; }
+
+                    /* TTS 朗读高亮样式 */
+                    .tts-active-chunk {
+                        background-color: ${if (theme == "dark") "rgba(99, 102, 241, 0.2)" else if (theme == "sepia") "rgba(139, 94, 60, 0.12)" else "rgba(99, 102, 241, 0.1)"} !important;
+                        border-left: 3px solid ${if (theme == "dark") "#818CF8" else if (theme == "sepia") "#8B5E3C" else "#6366F1"} !important;
+                        padding-left: 12px !important;
+                        border-radius: 4px;
+                        transition: background-color 0.3s ease, border-left 0.3s ease;
+                    }
                 </style>
                 </head>
                 <body>
@@ -1116,6 +1152,95 @@ fun HtmlContentViewer(
                             }
                           } catch(e) {
                             console.error("Failed to scrollToHighlight:", e);
+                          }
+                        };
+
+                        /* TTS 朗读段落高亮 */
+                        window.clearTtsHighlight = function() {
+                          try {
+                            var actives = document.querySelectorAll('.tts-active-chunk');
+                            for (var i = 0; i < actives.length; i++) {
+                              actives[i].classList.remove('tts-active-chunk');
+                            }
+                          } catch(e) {
+                            console.error("Failed to clearTtsHighlight:", e);
+                          }
+                        };
+
+                        window.highlightTtsChunk = function(searchText) {
+                          try {
+                            // 先清除之前的高亮
+                            window.clearTtsHighlight();
+
+                            if (!searchText || searchText.trim().length === 0) return;
+
+                            // 规范化搜索文本：去除多余空白
+                            var normalizedSearch = searchText.replace(/\s+/g, ' ').trim();
+                            // 取前40个字符作为匹配关键字（避免特殊字符干扰）
+                            var searchKey = normalizedSearch.substring(0, 40);
+
+                            // 搜索所有块级元素
+                            var blockTags = ['P', 'DIV', 'LI', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6',
+                                             'BLOCKQUOTE', 'PRE', 'DT', 'DD', 'SECTION', 'ARTICLE',
+                                             'FIGCAPTION', 'TD', 'TH'];
+                            var allBlocks = [];
+                            for (var t = 0; t < blockTags.length; t++) {
+                              var els = document.body.getElementsByTagName(blockTags[t]);
+                              for (var i = 0; i < els.length; i++) {
+                                allBlocks.push(els[i]);
+                              }
+                            }
+
+                            // 查找文本内容匹配的块级元素
+                            var bestMatch = null;
+                            var bestScore = 0;
+
+                            for (var i = 0; i < allBlocks.length; i++) {
+                              var el = allBlocks[i];
+                              // 跳过包含其他块级元素的父容器（避免高亮整个 section/article）
+                              var hasBlockChild = false;
+                              for (var c = 0; c < el.children.length; c++) {
+                                if (blockTags.indexOf(el.children[c].tagName) >= 0) {
+                                  hasBlockChild = true;
+                                  break;
+                                }
+                              }
+                              if (hasBlockChild) continue;
+
+                              var elText = el.textContent || '';
+                              var normalizedElText = elText.replace(/\s+/g, ' ').trim();
+
+                              if (normalizedElText.length === 0) continue;
+
+                              // 完整匹配检查
+                              if (normalizedElText.indexOf(searchKey) >= 0) {
+                                // 计算匹配分数：文本长度越接近搜索文本越优
+                                var lenDiff = Math.abs(normalizedElText.length - normalizedSearch.length);
+                                var score = 1000 - lenDiff;
+                                if (normalizedElText.indexOf(searchKey) === 0) {
+                                  score += 500; // 起始位置匹配的加分
+                                }
+                                if (score > bestScore) {
+                                  bestScore = score;
+                                  bestMatch = el;
+                                }
+                              }
+                            }
+
+                            if (bestMatch) {
+                              bestMatch.classList.add('tts-active-chunk');
+                              // 平滑滚动到高亮元素
+                              var containerRect = document.body.getBoundingClientRect();
+                              var elementRect = bestMatch.getBoundingClientRect();
+                              var relativeTop = elementRect.top - containerRect.top;
+                              var targetScrollTop = relativeTop - (window.innerHeight * 0.3);
+                              window.scrollTo({
+                                top: targetScrollTop,
+                                behavior: 'smooth'
+                              });
+                            }
+                          } catch(e) {
+                            console.error("Failed to highlightTtsChunk:", e);
                           }
                         };
 
