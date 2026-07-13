@@ -14,7 +14,7 @@
     "start": "next start",
     "lint": "eslint",
     "electron:dev": "concurrently -k \"next dev\" \"wait-on http://localhost:3000 && electron .\"",
-    "electron:build": "npm run build && node scripts/build-electron.js && electron-builder",
+    "electron:build": "npm run build && node scripts/build-electron.js && electron-builder && node scripts/post-build.js",
     "postinstall": "electron-builder install-app-deps"
   },
   "build": {
@@ -44,6 +44,27 @@
           "arch": [
             "arm64"
           ]
+        }
+      ]
+    },
+    "dmg": {
+      "contents": [
+        {
+          "x": 130,
+          "y": 220,
+          "path": "ReaderQ.app"
+        },
+        {
+          "x": 410,
+          "y": 220,
+          "type": "link",
+          "path": "/Applications"
+        },
+        {
+          "x": 270,
+          "y": 350,
+          "type": "file",
+          "path": "改变权限.command"
         }
       ]
     },
