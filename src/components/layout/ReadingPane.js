@@ -1,14 +1,15 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useApp } from '@/context/AppContext';
 import { useTheme } from '@/context/ThemeContext';
 import { formatDate, extractDomain, CATEGORY_LABELS } from '@/lib/utils';
 import { getTextOffset, restoreHighlights } from '@/lib/highlight';
+import { useTts } from '@/lib/useTts';
 import GhostReader from '@/components/ai/GhostReader';
 import HighlightEditor from '@/components/HighlightEditor';
 import TagInput from '@/components/TagInput';
-import { BookOpen, Link, Info, Edit3, Bot, Loader2, ClipboardList, AlertTriangle, RefreshCw, CheckCircle2, XCircle, ImageIcon, Upload, Trash2, RotateCcw, Inbox, Clock, Archive } from 'lucide-react';
+import { BookOpen, Link, Info, Edit3, Bot, Loader2, ClipboardList, AlertTriangle, RefreshCw, CheckCircle2, XCircle, ImageIcon, Upload, Trash2, RotateCcw, Inbox, Clock, Archive, Volume2, Share2, Play, Pause, SkipBack, SkipForward, X, Copy, Check } from 'lucide-react';
 
 const scrollToElement = (container, element) => {
   if (!container || !element) return;
@@ -73,6 +74,10 @@ export default function ReadingPane() {
   const [sidebarEditingId, setSidebarEditingId] = useState(null);
   const [sidebarEditNote, setSidebarEditNote] = useState('');
   const [sidebarEditTags, setSidebarEditTags] = useState([]);
+  const [shareCopied, setShareCopied] = useState(false);
+
+  // TTS 语音朗读
+  const { ttsState, startTts, toggleTts, nextChunk, previousChunk, stopTts } = useTts();
   
   // 在渲染阶段同步检测文档切换，瞬间进入 Loading 状态并重置高亮，防止闪烁
   const [prevDocId, setPrevDocId] = useState(null);
@@ -806,6 +811,53 @@ export default function ReadingPane() {
 
           <div style={{ width: '1px', height: '16px', backgroundColor: 'var(--color-border)', margin: '0 8px' }} />
 
+          {/* 朗读文章按钮 */}
+          <button
+            className="btn-icon"
+            onClick={() => {
+              if (ttsState.isActive) {
+                stopTts();
+              } else if (selectedDoc?.html_content) {
+                startTts(selectedDoc.html_content);
+              }
+            }}
+            data-tooltip={ttsState.isActive ? '停止朗读' : '朗读文章'}
+            style={ttsState.isActive ? { color: 'var(--color-accent)' } : {}}
+          >
+            <Volume2 size={16} />
+          </button>
+          {/* 分享文章链接按钮 */}
+          <button
+            className="btn-icon"
+            onClick={() => {
+              const shareUrl = selectedDoc?.source_url || selectedDoc?.url;
+              if (shareUrl) {
+                navigator.clipboard.writeText(shareUrl).then(() => {
+                  setShareCopied(true);
+                  setTimeout(() => setShareCopied(false), 2000);
+                }).catch(() => {
+                  // fallback: 创建临时 textarea 来复制
+                  const textarea = document.createElement('textarea');
+                  textarea.value = shareUrl;
+                  textarea.style.position = 'fixed';
+                  textarea.style.opacity = '0';
+                  document.body.appendChild(textarea);
+                  textarea.select();
+                  document.execCommand('copy');
+                  document.body.removeChild(textarea);
+                  setShareCopied(true);
+                  setTimeout(() => setShareCopied(false), 2000);
+                });
+              }
+            }}
+            data-tooltip={shareCopied ? '已复制！' : '复制文章链接'}
+            style={shareCopied ? { color: 'var(--color-success, #22c55e)' } : {}}
+          >
+            {shareCopied ? <Check size={16} /> : <Share2 size={16} />}
+          </button>
+
+          <div style={{ width: '1px', height: '16px', backgroundColor: 'var(--color-border)', margin: '0 8px' }} />
+
           <button
             className="btn-icon"
             onClick={() => setRightPanelTab(rightPanelTab === 'info' ? null : 'info')}
@@ -1453,6 +1505,114 @@ export default function ReadingPane() {
       </div>
       )}
       </div>
+
+      {/* --- TTS 播放控制条 --- */}
+      {ttsState.isActive && (
+        <div className="tts-control-bar" style={{
+          borderTop: '1px solid var(--color-border)',
+          backgroundColor: 'var(--color-bg-secondary)',
+          animation: 'tts-slide-up 0.2s ease-out',
+        }}>
+          {/* 进度条 */}
+          <div style={{
+            width: '100%',
+            height: '3px',
+            backgroundColor: 'var(--color-border)',
+            position: 'relative',
+            overflow: 'hidden',
+          }}>
+            <div style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              height: '100%',
+              width: `${(ttsState.progress * 100).toFixed(1)}%`,
+              backgroundColor: 'var(--color-accent)',
+              transition: 'width 0.3s ease',
+            }} />
+          </div>
+
+          {/* 错误信息 */}
+          {ttsState.error && (
+            <div style={{
+              fontSize: '11px',
+              color: 'var(--color-danger)',
+              padding: '4px 12px',
+              lineHeight: 1.4,
+            }}>
+              {ttsState.error}
+            </div>
+          )}
+
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '4px 12px',
+          }}>
+            {/* 朗读信息 */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flex: 1, minWidth: 0 }}>
+              <Volume2 size={14} style={{ color: 'var(--color-accent)', flexShrink: 0 }} />
+              <span style={{ fontSize: '13px', color: 'var(--color-text-secondary)' }}>
+                {ttsState.isPlaying ? '正在朗读...' : '已暂停'}
+              </span>
+              {ttsState.totalChunks > 0 && (
+                <span style={{ fontSize: '11px', color: 'var(--color-text-tertiary)' }}>
+                  {ttsState.currentChunk + 1}/{ttsState.totalChunks}
+                </span>
+              )}
+            </div>
+
+            {/* 控制按钮组 */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0' }}>
+              {/* 上一段 */}
+              <button
+                className="btn-icon"
+                onClick={previousChunk}
+                disabled={ttsState.currentChunk <= 0}
+                data-tooltip="上一段"
+                style={{
+                  opacity: ttsState.currentChunk > 0 ? 1 : 0.3,
+                  cursor: ttsState.currentChunk > 0 ? 'pointer' : 'default',
+                }}
+              >
+                <SkipBack size={16} />
+              </button>
+              {/* 播放/暂停 */}
+              <button
+                className="btn-icon"
+                onClick={toggleTts}
+                data-tooltip={ttsState.isPlaying ? '暂停' : '播放'}
+                style={{ color: 'var(--color-accent)' }}
+              >
+                {ttsState.isPlaying ? <Pause size={18} /> : <Play size={18} />}
+              </button>
+              {/* 下一段 */}
+              <button
+                className="btn-icon"
+                onClick={nextChunk}
+                disabled={ttsState.currentChunk >= ttsState.totalChunks - 1}
+                data-tooltip="下一段"
+                style={{
+                  opacity: ttsState.currentChunk < ttsState.totalChunks - 1 ? 1 : 0.3,
+                  cursor: ttsState.currentChunk < ttsState.totalChunks - 1 ? 'pointer' : 'default',
+                }}
+              >
+                <SkipForward size={16} />
+              </button>
+              {/* 关闭 */}
+              <button
+                className="btn-icon"
+                onClick={stopTts}
+                data-tooltip="关闭朗读"
+                style={{ marginLeft: '4px' }}
+              >
+                <X size={14} style={{ opacity: 0.5 }} />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

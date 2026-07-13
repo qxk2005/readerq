@@ -80,3 +80,7 @@ Thumbs.db
 #打包的密钥
 /打包
 /android/keystore.properties
+
+# Antigravity IDE rules
+/AGENTS.md
+/CLAUDE.md

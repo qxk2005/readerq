@@ -1375,3 +1375,27 @@ textarea:focus {
 .add-url-form input {
   flex: 1;
 }
+
+/* ---- TTS 播放控制条 ---- */
+@keyframes tts-slide-up {
+  from { transform: translateY(100%); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+.tts-control-bar {
+  flex-shrink: 0;
+  width: 100%;
+}
+
+.tts-control-bar .btn-icon {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tts-control-bar .btn-icon:hover:not(:disabled) {
+  background-color: var(--color-bg-hover);
+  border-radius: var(--radius-sm);
+}
