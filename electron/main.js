@@ -174,6 +174,23 @@ async function createWindow() {
 }
 
 app.whenReady().then(() => {
+  // 自动授权 local-fonts 权限以获取系统字体列表
+  const { session } = require('electron');
+  session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => {
+    if (permission === 'local-fonts') {
+      callback(true);
+    } else {
+      callback(false);
+    }
+  });
+
+  session.defaultSession.setPermissionCheckHandler((webContents, permission, requestingOrigin, details) => {
+    if (permission === 'local-fonts') {
+      return true;
+    }
+    return false;
+  });
+
   createWindow();
 
   app.on('activate', () => {

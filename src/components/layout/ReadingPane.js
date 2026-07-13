@@ -58,7 +58,16 @@ export default function ReadingPane() {
     tags: allTags 
   } = useApp();
   
-  const { fontSize, lineHeight, contentWidth, fontFamily } = useTheme();
+  const { 
+    fontSize, 
+    lineHeight, 
+    contentWidth, 
+    fontFamily,
+    chineseFont,
+    englishFont,
+    paddingX,
+    paragraphSpacing
+  } = useTheme();
 
   const [highlights, setHighlights] = useState([]);
   const [isLoadingHighlights, setIsLoadingHighlights] = useState(true);
@@ -679,7 +688,12 @@ export default function ReadingPane() {
     );
   }
 
-  const articleFont = fontFamily === 'serif' ? 'var(--font-reading)' : 'var(--font-ui)';
+  const articleFont = (() => {
+    const cFont = (chineseFont && chineseFont !== 'default') ? `"${chineseFont}"` : '';
+    const eFont = (englishFont && englishFont !== 'default') ? `"${englishFont}"` : '';
+    const baseDefault = fontFamily === 'serif' ? 'var(--font-reading)' : 'var(--font-ui)';
+    return [eFont, cFont, baseDefault, 'sans-serif'].filter(Boolean).join(', ');
+  })();
 
   return (
     <div className="reading-panel" onMouseUp={handleMouseUp}>
@@ -942,6 +956,9 @@ export default function ReadingPane() {
             fontSize: `${fontSize}px`,
             lineHeight: lineHeight,
             fontFamily: articleFont,
+            '--reading-font-family': articleFont,
+            '--reading-padding-x': paddingX !== undefined ? `${paddingX}px` : undefined,
+            '--reading-paragraph-spacing': paragraphSpacing !== undefined ? `${paragraphSpacing}em` : undefined,
           }}
         >
           {(isContentLoading || isLoadingHighlights) ? (

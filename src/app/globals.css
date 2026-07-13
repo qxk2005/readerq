@@ -620,11 +620,12 @@ textarea:focus {
 .reading-article {
   max-width: var(--reading-max-width);
   width: 100%;
-  padding: var(--space-8) var(--space-6) var(--space-12);
+  padding: var(--space-8) var(--reading-padding-x, var(--space-6)) var(--space-12);
+  font-family: var(--reading-font-family, var(--font-reading));
 }
 
 .reading-article-title {
-  font-family: var(--font-reading);
+  font-family: var(--reading-font-family, var(--font-reading));
   font-size: var(--text-3xl);
   font-weight: 700;
   line-height: 1.3;
@@ -649,7 +650,7 @@ textarea:focus {
 }
 
 .reading-article-body {
-  font-family: var(--font-reading);
+  font-family: var(--reading-font-family, var(--font-reading));
   font-size: var(--text-lg);
   line-height: 1.8;
   color: var(--color-text-primary);
@@ -665,7 +666,7 @@ textarea:focus {
 }
 
 .reading-article-body p {
-  margin-bottom: 1.5em;
+  margin-bottom: var(--reading-paragraph-spacing, 1.5em);
 }
 
 .reading-article-body h1,
@@ -1363,6 +1364,12 @@ textarea:focus {
 
 [data-tooltip]:hover::after {
   opacity: 1;
+}
+
+/* 顶部阅读导航栏的工具提示向下弹出，防止被 Electron 顶部隐藏式标题栏裁切 */
+.reading-header [data-tooltip]::after {
+  bottom: auto;
+  top: calc(100% + 8px);
 }
 
 /* ---- 添加 URL 弹窗 ---- */

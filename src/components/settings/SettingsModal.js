@@ -17,7 +17,16 @@ const TABS = [
 
 export default function SettingsModal() {
   const { showSettings, setShowSettings, syncData, isSyncing, syncStatus: globalSyncStatus, syncProgress, syncCounts, syncError, cancelSync } = useApp();
-  const { theme, setTheme, fontSize, setFontSize, lineHeight, setLineHeight, contentWidth, setContentWidth, fontFamily, setFontFamily } = useTheme();
+  const { 
+    theme, setTheme, fontSize, setFontSize, 
+    lineHeight, setLineHeight, contentWidth, setContentWidth, 
+    fontFamily, setFontFamily,
+    chineseFont, setChineseFont,
+    englishFont, setEnglishFont,
+    paddingX, setPaddingX,
+    paragraphSpacing, setParagraphSpacing,
+    resetAppearance
+  } = useTheme();
   
   const [activeTab, setActiveTab] = useState('api');
   const [localSyncStatus, setLocalSyncStatus] = useState(null);
@@ -256,6 +265,11 @@ export default function SettingsModal() {
           theme, setTheme, fontSize, setFontSize,
           lineHeight, setLineHeight, contentWidth, setContentWidth,
           fontFamily, setFontFamily,
+          chineseFont, setChineseFont,
+          englishFont, setEnglishFont,
+          paddingX, setPaddingX,
+          paragraphSpacing, setParagraphSpacing,
+          resetAppearance
         }} />;
       case 'sync':
         return <TabSync {...{
@@ -682,8 +696,120 @@ function TabOSS({
 }
 
 
+// ===== 常见中英文系统字体候选 =====
+const PRESET_CHINESE_FONTS = [
+  { name: '苹方-简 (macOS)', value: 'PingFang SC' },
+  { name: '冬青黑体 (macOS)', value: 'Hiragino Sans GB' },
+  { name: '华文楷体 (macOS)', value: 'STKaiti' },
+  { name: '华文宋体 (macOS)', value: 'STSong' },
+  { name: '微软雅黑 (Windows)', value: 'Microsoft YaHei' },
+  { name: '微软雅妮 (Windows)', value: 'Microsoft YaHei UI' },
+  { name: '楷体 (Windows)', value: 'KaiTi' },
+  { name: '宋体 (Windows)', value: 'SimSun' },
+  { name: '黑体 (Windows)', value: 'SimHei' },
+  { name: '思源黑体 (开源)', value: 'Source Han Sans CN' },
+  { name: '思源宋体 (开源)', value: 'Source Han Serif CN' },
+  { name: '霞鹜文楷 (开源)', value: 'LXGW WenKai' }
+];
+
+const PRESET_ENGLISH_FONTS = [
+  { name: 'Arial', value: 'Arial' },
+  { name: 'Helvetica', value: 'Helvetica' },
+  { name: 'Georgia', value: 'Georgia' },
+  { name: 'Times New Roman', value: 'Times New Roman' },
+  { name: 'Courier New', value: 'Courier New' },
+  { name: 'Consolas', value: 'Consolas' },
+  { name: 'Verdana', value: 'Verdana' },
+  { name: 'Garamond', value: 'Garamond' },
+  { name: 'Calibri', value: 'Calibri' }
+];
+
 // ===== Tab: 外观设置 =====
-function TabAppearance({ theme, setTheme, fontSize, setFontSize, lineHeight, setLineHeight, contentWidth, setContentWidth, fontFamily, setFontFamily }) {
+function TabAppearance({ 
+  theme, setTheme, fontSize, setFontSize, 
+  lineHeight, setLineHeight, contentWidth, setContentWidth, 
+  fontFamily, setFontFamily,
+  chineseFont, setChineseFont,
+  englishFont, setEnglishFont,
+  paddingX, setPaddingX,
+  paragraphSpacing, setParagraphSpacing,
+  resetAppearance
+}) {
+  const [systemFonts, setSystemFonts] = useState([]);
+  const [loadingFonts, setLoadingFonts] = useState(false);
+  const [isCustomChinese, setIsCustomChinese] = useState(false);
+  const [isCustomEnglish, setIsCustomEnglish] = useState(false);
+  const [customChineseInput, setCustomChineseInput] = useState('');
+  const [customEnglishInput, setCustomEnglishInput] = useState('');
+
+  // 加载系统字体列表
+  useEffect(() => {
+    async function loadSystemFonts() {
+      if (typeof window !== 'undefined' && 'queryLocalFonts' in window) {
+        setLoadingFonts(true);
+        try {
+          const availableFonts = await window.queryLocalFonts();
+          const families = Array.from(new Set(availableFonts.map(f => f.family))).sort();
+          setSystemFonts(families);
+        } catch (err) {
+          console.warn("Failed to load local system fonts:", err);
+        } finally {
+          setLoadingFonts(false);
+        }
+      }
+    }
+    loadSystemFonts();
+  }, []);
+
+  // 监听初始状态，判断是否属于自定义输入
+  useEffect(() => {
+    if (chineseFont && chineseFont !== 'default') {
+      const isPreset = PRESET_CHINESE_FONTS.some(f => f.value === chineseFont) || systemFonts.includes(chineseFont);
+      if (!isPreset && chineseFont !== 'default') {
+        setIsCustomChinese(true);
+        setCustomChineseInput(chineseFont);
+      } else {
+        setIsCustomChinese(false);
+      }
+    } else {
+      setIsCustomChinese(false);
+    }
+  }, [chineseFont, systemFonts]);
+
+  useEffect(() => {
+    if (englishFont && englishFont !== 'default') {
+      const isPreset = PRESET_ENGLISH_FONTS.some(f => f.value === englishFont) || systemFonts.includes(englishFont);
+      if (!isPreset && englishFont !== 'default') {
+        setIsCustomEnglish(true);
+        setCustomEnglishInput(englishFont);
+      } else {
+        setIsCustomEnglish(false);
+      }
+    } else {
+      setIsCustomEnglish(false);
+    }
+  }, [englishFont, systemFonts]);
+
+  const handleChineseFontChange = (val) => {
+    if (val === 'custom') {
+      setIsCustomChinese(true);
+      setChineseFont(customChineseInput || 'PingFang SC');
+    } else {
+      setIsCustomChinese(false);
+      setChineseFont(val);
+    }
+  };
+
+  const handleEnglishFontChange = (val) => {
+    if (val === 'custom') {
+      setIsCustomEnglish(true);
+      setEnglishFont(customEnglishInput || 'Arial');
+    } else {
+      setIsCustomEnglish(false);
+      setEnglishFont(val);
+    }
+  };
+
   return (
     <>
       <div className="form-group">
@@ -698,27 +824,129 @@ function TabAppearance({ theme, setTheme, fontSize, setFontSize, lineHeight, set
         </div>
       </div>
 
-      <div className="form-group">
-        <label className="form-label">阅读字体</label>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-4)', borderTop: '1px solid var(--color-border-light)', paddingTop: 'var(--space-4)' }}>
+        <div className="form-group">
+          <label className="form-label">中文字体</label>
+          <select 
+            className="form-control"
+            value={isCustomChinese ? 'custom' : chineseFont} 
+            onChange={(e) => handleChineseFontChange(e.target.value)}
+            style={{ width: '100%', padding: 'var(--space-2)', borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)', backgroundColor: 'var(--color-bg-secondary)', color: 'var(--color-text-primary)' }}
+          >
+            <option value="default">系统默认 (Noto Serif SC 等)</option>
+            <option value="custom">自定义输入...</option>
+            <optgroup label="常用中文字体">
+              {PRESET_CHINESE_FONTS.map(f => (
+                <option key={f.value} value={f.value}>{f.name}</option>
+              ))}
+            </optgroup>
+            {systemFonts.length > 0 && (
+              <optgroup label={`检测到系统字体 (${systemFonts.length})`}>
+                {systemFonts.map(font => (
+                  <option key={font} value={font}>{font}</option>
+                ))}
+              </optgroup>
+            )}
+          </select>
+          {isCustomChinese && (
+            <input 
+              type="text"
+              placeholder="打字输入中文字体家族名，例如：华文楷体"
+              className="form-control"
+              value={customChineseInput}
+              onChange={(e) => {
+                setCustomChineseInput(e.target.value);
+                setChineseFont(e.target.value);
+              }}
+              style={{ marginTop: '8px', width: '100%', padding: 'var(--space-2)', borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)', backgroundColor: 'var(--color-bg-secondary)', color: 'var(--color-text-primary)' }}
+            />
+          )}
+        </div>
+
+        <div className="form-group">
+          <label className="form-label">英文字体</label>
+          <select 
+            className="form-control"
+            value={isCustomEnglish ? 'custom' : englishFont} 
+            onChange={(e) => handleEnglishFontChange(e.target.value)}
+            style={{ width: '100%', padding: 'var(--space-2)', borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)', backgroundColor: 'var(--color-bg-secondary)', color: 'var(--color-text-primary)' }}
+          >
+            <option value="default">系统默认 (Georgia / UI)</option>
+            <option value="custom">自定义输入...</option>
+            <optgroup label="常用英文字体">
+              {PRESET_ENGLISH_FONTS.map(f => (
+                <option key={f.value} value={f.value}>{f.name}</option>
+              ))}
+            </optgroup>
+            {systemFonts.length > 0 && (
+              <optgroup label={`检测到系统字体 (${systemFonts.length})`}>
+                {systemFonts.map(font => (
+                  <option key={font} value={font}>{font}</option>
+                ))}
+              </optgroup>
+            )}
+          </select>
+          {isCustomEnglish && (
+            <input 
+              type="text"
+              placeholder="打字输入英文字体家族名，例如：Georgia"
+              className="form-control"
+              value={customEnglishInput}
+              onChange={(e) => {
+                setCustomEnglishInput(e.target.value);
+                setEnglishFont(e.target.value);
+              }}
+              style={{ marginTop: '8px', width: '100%', padding: 'var(--space-2)', borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)', backgroundColor: 'var(--color-bg-secondary)', color: 'var(--color-text-primary)' }}
+            />
+          )}
+        </div>
+      </div>
+
+      <div className="form-group" style={{ borderTop: '1px solid var(--color-border-light)', paddingTop: 'var(--space-4)' }}>
+        <label className="form-label">阅读字体风格</label>
         <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
           <button className={`btn ${fontFamily === 'serif' ? 'btn-primary' : 'btn-secondary'} btn-sm`} onClick={() => setFontFamily('serif')}>衬线体</button>
           <button className={`btn ${fontFamily === 'sans' ? 'btn-primary' : 'btn-secondary'} btn-sm`} onClick={() => setFontFamily('sans')}>无衬线</button>
         </div>
       </div>
 
-      <div className="form-group">
-        <label className="form-label">字号: {fontSize}px</label>
-        <input type="range" min="14" max="24" value={fontSize} onChange={(e) => setFontSize(Number(e.target.value))} style={{ width: '100%', cursor: 'pointer' }} />
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-4)' }}>
+        <div className="form-group">
+          <label className="form-label">字号: {fontSize}px</label>
+          <input type="range" min="14" max="32" value={fontSize} onChange={(e) => setFontSize(Number(e.target.value))} style={{ width: '100%', cursor: 'pointer' }} />
+        </div>
+
+        <div className="form-group">
+          <label className="form-label">行高: {lineHeight}</label>
+          <input type="range" min="1.2" max="2.8" step="0.1" value={lineHeight} onChange={(e) => setLineHeight(Number(e.target.value))} style={{ width: '100%', cursor: 'pointer' }} />
+        </div>
       </div>
 
-      <div className="form-group">
-        <label className="form-label">行高: {lineHeight}</label>
-        <input type="range" min="1.4" max="2.4" step="0.1" value={lineHeight} onChange={(e) => setLineHeight(Number(e.target.value))} style={{ width: '100%', cursor: 'pointer' }} />
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-4)' }}>
+        <div className="form-group">
+          <label className="form-label">左右边距: {paddingX}px</label>
+          <input type="range" min="16" max="120" step="4" value={paddingX} onChange={(e) => setPaddingX(Number(e.target.value))} style={{ width: '100%', cursor: 'pointer' }} />
+        </div>
+
+        <div className="form-group">
+          <label className="form-label">段落间距: {paragraphSpacing}em</label>
+          <input type="range" min="0.5" max="3.0" step="0.1" value={paragraphSpacing} onChange={(e) => setParagraphSpacing(Number(e.target.value))} style={{ width: '100%', cursor: 'pointer' }} />
+        </div>
       </div>
 
       <div className="form-group">
         <label className="form-label">内容宽度: {contentWidth}px</label>
-        <input type="range" min="500" max="1000" step="20" value={contentWidth} onChange={(e) => setContentWidth(Number(e.target.value))} style={{ width: '100%', cursor: 'pointer' }} />
+        <input type="range" min="500" max="1200" step="20" value={contentWidth} onChange={(e) => setContentWidth(Number(e.target.value))} style={{ width: '100%', cursor: 'pointer' }} />
+      </div>
+
+      <div style={{ borderTop: '1px solid var(--color-border-light)', paddingTop: 'var(--space-4)', display: 'flex', justifyContent: 'flex-end' }}>
+        <button 
+          className="btn btn-secondary btn-sm" 
+          onClick={resetAppearance}
+          style={{ display: 'flex', alignItems: 'center', gap: '4px' }}
+        >
+          <History size={14} /> 恢复默认设置
+        </button>
       </div>
     </>
   );
