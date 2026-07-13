@@ -104,8 +104,9 @@ function extractChunksFromDom(articleElement) {
 
   /**
    * 递归收集块级元素。
-   * 如果一个元素本身是块级标签且包含有效文本，直接取它；
-   * 否则往下递归寻找子块级元素。
+   * - 如果一个块级元素包含子块级元素（即它是容器/wrapper），递归进入子元素
+   * - 如果一个块级元素不包含子块级元素（即它是叶子级别），取其文本作为一个 chunk
+   * - 非块级元素（如 span, a, strong 等）直接递归
    */
   function collectBlocks(node) {
     if (node.nodeType !== Node.ELEMENT_NODE) return;
@@ -115,11 +116,46 @@ function extractChunksFromDom(articleElement) {
     if (tag === 'SCRIPT' || tag === 'STYLE' || tag === 'IMG' || tag === 'BR' || tag === 'HR') return;
 
     if (BLOCK_TAGS.has(tag)) {
-      const text = node.textContent.replace(/\s+/g, ' ').trim();
-      if (text.length > 0) {
-        result.push({ text, element: node });
+      // 检查是否包含子级块级元素
+      const hasChildBlocks = Array.from(node.children).some(
+        child => child.nodeType === Node.ELEMENT_NODE && BLOCK_TAGS.has(child.tagName)
+      );
+
+      if (hasChildBlocks) {
+        // 容器型块级元素：递归进入子元素以获取更细粒度的分段
+        // 同时收集不属于任何子块级元素的直接文本/行内元素（"孤儿文本"）
+        let orphanText = '';
+        for (const child of node.childNodes) {
+          if (child.nodeType === Node.TEXT_NODE) {
+            orphanText += child.textContent;
+          } else if (child.nodeType === Node.ELEMENT_NODE) {
+            if (BLOCK_TAGS.has(child.tagName)) {
+              // 在进入子块级元素之前，先把前面积攒的孤儿文本保存为一个 chunk
+              const trimmed = orphanText.replace(/\s+/g, ' ').trim();
+              if (trimmed.length > 0) {
+                result.push({ text: trimmed, element: node });
+              }
+              orphanText = '';
+              collectBlocks(child);
+            } else {
+              // 非块级子元素（span, a, strong 等）：其文本归入孤儿文本
+              orphanText += child.textContent;
+            }
+          }
+        }
+        // 处理末尾残留的孤儿文本
+        const trimmed = orphanText.replace(/\s+/g, ' ').trim();
+        if (trimmed.length > 0) {
+          result.push({ text: trimmed, element: node });
+        }
+      } else {
+        // 叶子型块级元素（如独立的 <p>、<li>、<h1> 等）：作为一个 chunk
+        const text = node.textContent.replace(/\s+/g, ' ').trim();
+        if (text.length > 0) {
+          result.push({ text, element: node });
+        }
       }
-      return; // 不再往下递归——此块级元素作为一个整体 chunk
+      return;
     }
 
     // 非块级容器（如 <span>, <a>, <strong> 等）——向下递归
