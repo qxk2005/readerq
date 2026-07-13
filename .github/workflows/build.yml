@@ -42,7 +42,7 @@ jobs:
           GITHUB_REF: ${{ github.ref }}
 
       - name: Build Electron App
-        run: npm run build && node scripts/build-electron.js && npx electron-builder --publish never
+        run: npm run build && node scripts/build-electron.js && npx electron-builder --publish never && node scripts/post-build.js
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
