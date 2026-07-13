@@ -1,6 +1,7 @@
 /**
  * TTS (Text-to-Speech) 管理器 - 使用 Web Speech API
  * 支持分段朗读文章、暂停/继续、进度追踪、上一段/下一段跳转
+ * 支持段落级 DOM 高亮与自动滚动定位
  * 用于 Electron (macOS/Windows) 桌面端
  */
 
@@ -88,6 +89,84 @@ function splitIntoChunks(text) {
 }
 
 /**
+ * 从真实 DOM 文章元素中提取带元素引用的 TTS 分段
+ * 每个 chunk 同时记录纯文本和对应的 DOM 元素，用于朗读时高亮定位
+ * @param {HTMLElement} articleElement - 文章正文的 DOM 容器（articleRef.current）
+ * @returns {Array<{text: string, element: HTMLElement}>}
+ */
+function extractChunksFromDom(articleElement) {
+  if (!articleElement) return [];
+
+  const BLOCK_TAGS = new Set(['P', 'DIV', 'LI', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6',
+    'BLOCKQUOTE', 'TR', 'FIGURE', 'FIGCAPTION', 'SECTION', 'ARTICLE', 'PRE', 'DT', 'DD']);
+
+  const result = [];
+
+  /**
+   * 递归收集块级元素。
+   * 如果一个元素本身是块级标签且包含有效文本，直接取它；
+   * 否则往下递归寻找子块级元素。
+   */
+  function collectBlocks(node) {
+    if (node.nodeType !== Node.ELEMENT_NODE) return;
+
+    const tag = node.tagName;
+    // 跳过无文本内容的标签
+    if (tag === 'SCRIPT' || tag === 'STYLE' || tag === 'IMG' || tag === 'BR' || tag === 'HR') return;
+
+    if (BLOCK_TAGS.has(tag)) {
+      const text = node.textContent.replace(/\s+/g, ' ').trim();
+      if (text.length > 0) {
+        result.push({ text, element: node });
+      }
+      return; // 不再往下递归——此块级元素作为一个整体 chunk
+    }
+
+    // 非块级容器（如 <span>, <a>, <strong> 等）——向下递归
+    for (const child of node.children) {
+      collectBlocks(child);
+    }
+  }
+
+  // 对 articleElement 的直接子元素执行收集
+  for (const child of articleElement.children) {
+    collectBlocks(child);
+  }
+
+  // 如果一整篇文章没有任何块级元素（极少数情况），fallback 到整个容器
+  if (result.length === 0) {
+    const text = articleElement.textContent.replace(/\s+/g, ' ').trim();
+    if (text.length > 0) {
+      result.push({ text, element: articleElement });
+    }
+  }
+
+  // 处理超长段落：拆分文本但映射到同一个 DOM 元素
+  const finalResult = [];
+  for (const item of result) {
+    if (item.text.length <= MAX_CHUNK_SIZE) {
+      finalResult.push(item);
+    } else {
+      // 按句子拆分
+      const sentences = item.text.split(/(?<=[。！？.!?；;]\s*)/);
+      let current = '';
+      for (const sentence of sentences) {
+        if (current.length + sentence.length > MAX_CHUNK_SIZE && current) {
+          finalResult.push({ text: current.trim(), element: item.element });
+          current = '';
+        }
+        current += sentence;
+      }
+      if (current.trim()) {
+        finalResult.push({ text: current.trim(), element: item.element });
+      }
+    }
+  }
+
+  return finalResult.filter(item => item.text.trim());
+}
+
+/**
  * 自动检测文本语言
  */
 function detectLanguage(text) {
@@ -104,7 +183,8 @@ function detectLanguage(text) {
  * 创建 TTS 管理器实例
  */
 export function createTtsManager() {
-  let chunks = [];
+  let chunks = [];        // 纯文本 chunks（兼容旧的 speak 方法）
+  let chunkElements = []; // 每个 chunk 对应的 DOM 元素引用
   let currentChunkIndex = 0;
   let isPaused = false;
   let utterance = null;
@@ -117,6 +197,7 @@ export function createTtsManager() {
     totalChunks: 0,
     error: null,
     currentChunkText: null,
+    currentElement: null,  // 当前正在朗读的 DOM 元素
   };
 
   function getState() {
@@ -159,7 +240,11 @@ export function createTtsManager() {
     }
     
     utterance.onstart = () => {
-      setState({ isPlaying: true, error: null });
+      setState({
+        isPlaying: true,
+        error: null,
+        currentElement: chunkElements[index] || null,
+      });
     };
     
     utterance.onend = () => {
@@ -173,6 +258,7 @@ export function createTtsManager() {
           currentChunk: nextIndex,
           progress,
           currentChunkText: chunks[nextIndex],
+          currentElement: chunkElements[nextIndex] || null,
         });
         speakChunk(nextIndex);
       } else {
@@ -184,6 +270,7 @@ export function createTtsManager() {
           currentChunk: chunks.length,
           totalChunks: chunks.length,
           currentChunkText: null,
+          currentElement: null,
         });
         currentChunkIndex = 0;
       }
@@ -237,6 +324,7 @@ export function createTtsManager() {
     }
     
     currentChunkIndex = 0;
+    chunkElements = []; // 纯文本模式不含 DOM 元素
     setState({
       isActive: true,
       isPlaying: true,
@@ -244,6 +332,7 @@ export function createTtsManager() {
       currentChunk: 0,
       totalChunks: chunks.length,
       currentChunkText: chunks[0],
+      currentElement: null,
       error: null,
     });
     
@@ -302,6 +391,7 @@ export function createTtsManager() {
       isPlaying: true,
       error: null,
       currentChunkText: chunks[nextIndex],
+      currentElement: chunkElements[nextIndex] || null,
     });
     speakChunk(nextIndex);
   }
@@ -324,6 +414,7 @@ export function createTtsManager() {
       isPlaying: true,
       error: null,
       currentChunkText: chunks[prevIndex],
+      currentElement: chunkElements[prevIndex] || null,
     });
     speakChunk(prevIndex);
   }
@@ -335,6 +426,7 @@ export function createTtsManager() {
     isPaused = false;
     currentChunkIndex = 0;
     chunks = [];
+    chunkElements = [];
     setState({
       isActive: false,
       isPlaying: false,
@@ -343,6 +435,7 @@ export function createTtsManager() {
       totalChunks: 0,
       error: null,
       currentChunkText: null,
+      currentElement: null,
     });
   }
 
@@ -351,10 +444,52 @@ export function createTtsManager() {
     listeners = [];
   }
 
+  /**
+   * 基于 DOM 元素启动朗读（推荐方式）
+   * 直接从文章 DOM 中提取段落，同时记录 DOM 元素引用用于高亮
+   * @param {HTMLElement} articleElement - 文章正文容器元素
+   */
+  function speakFromDom(articleElement) {
+    const synth = window.speechSynthesis;
+    if (!synth) {
+      setState({ error: '您的浏览器不支持语音朗读功能', isActive: true });
+      return;
+    }
+
+    // 停止当前播放
+    isPaused = false;
+    synth.cancel();
+
+    // 从 DOM 中提取带元素映射的 chunks
+    const domChunks = extractChunksFromDom(articleElement);
+    if (domChunks.length === 0) {
+      setState({ error: '无法提取文章内容', isActive: true });
+      return;
+    }
+
+    chunks = domChunks.map(c => c.text);
+    chunkElements = domChunks.map(c => c.element);
+
+    currentChunkIndex = 0;
+    setState({
+      isActive: true,
+      isPlaying: true,
+      progress: 0,
+      currentChunk: 0,
+      totalChunks: chunks.length,
+      currentChunkText: chunks[0],
+      currentElement: chunkElements[0] || null,
+      error: null,
+    });
+
+    speakChunk(0);
+  }
+
   return {
     getState,
     subscribe,
     speak,
+    speakFromDom,
     pause,
     resume,
     togglePlayPause,

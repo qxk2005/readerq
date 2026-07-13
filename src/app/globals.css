@@ -1399,3 +1399,31 @@ textarea:focus {
   background-color: var(--color-bg-hover);
   border-radius: var(--radius-sm);
 }
+
+/* ---- TTS 朗读段落高亮 ---- */
+.tts-active-paragraph {
+  background-color: var(--color-accent-light) !important;
+  border-left: 3px solid var(--color-accent) !important;
+  padding-left: 12px !important;
+  margin-left: -15px !important;
+  border-radius: 4px;
+  transition: background-color 0.3s ease, border-left-color 0.3s ease;
+  position: relative;
+}
+
+/* 朗读段落的柔光发光效果 */
+.tts-active-paragraph::before {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: 6px;
+  background: transparent;
+  box-shadow: 0 0 12px rgba(99, 102, 241, 0.12);
+  pointer-events: none;
+  transition: box-shadow 0.3s ease;
+}
+
+/* 暗色模式下增强发光效果 */
+[data-theme='dark'] .tts-active-paragraph::before {
+  box-shadow: 0 0 16px rgba(129, 140, 248, 0.15);
+}

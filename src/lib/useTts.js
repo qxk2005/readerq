@@ -17,6 +17,7 @@ export function useTts() {
     totalChunks: 0,
     error: null,
     currentChunkText: null,
+    currentElement: null,
   });
 
   useEffect(() => {
@@ -35,6 +36,10 @@ export function useTts() {
 
   const startTts = useCallback((htmlContent) => {
     managerRef.current?.speak(htmlContent);
+  }, []);
+
+  const startTtsFromDom = useCallback((articleElement) => {
+    managerRef.current?.speakFromDom(articleElement);
   }, []);
 
   const toggleTts = useCallback(() => {
@@ -56,6 +61,7 @@ export function useTts() {
   return {
     ttsState,
     startTts,
+    startTtsFromDom,
     toggleTts,
     nextChunk,
     previousChunk,

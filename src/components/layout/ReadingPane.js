@@ -77,7 +77,8 @@ export default function ReadingPane() {
   const [shareCopied, setShareCopied] = useState(false);
 
   // TTS 语音朗读
-  const { ttsState, startTts, toggleTts, nextChunk, previousChunk, stopTts } = useTts();
+  const { ttsState, startTts, startTtsFromDom, toggleTts, nextChunk, previousChunk, stopTts } = useTts();
+  const prevTtsElementRef = useRef(null);  // 追踪上一个 TTS 高亮的 DOM 元素
   
   // 在渲染阶段同步检测文档切换，瞬间进入 Loading 状态并重置高亮，防止闪烁
   const [prevDocId, setPrevDocId] = useState(null);
@@ -93,6 +94,53 @@ export default function ReadingPane() {
   const lastRenderedDocIdRef = useRef(null);
   const lastSyncedHlIdRef = useRef(null);
   const articleRef = useRef(null);
+
+  // 文档切换时停止 TTS 朗读（useEffect 避免在渲染阶段触发外部副作用）
+  const docIdForTtsRef = useRef(selectedDoc?.id);
+  useEffect(() => {
+    if (docIdForTtsRef.current !== selectedDoc?.id) {
+      docIdForTtsRef.current = selectedDoc?.id;
+      stopTts();
+    }
+  }, [selectedDoc?.id, stopTts]);
+
+  // --- TTS 段落高亮与自动滚动 ---
+  useEffect(() => {
+    const prevEl = prevTtsElementRef.current;
+    const curEl = ttsState.currentElement;
+
+    // 移除上一个段落的高亮
+    if (prevEl && prevEl !== curEl) {
+      prevEl.classList.remove('tts-active-paragraph');
+    }
+
+    // 添加当前段落的高亮
+    if (curEl) {
+      curEl.classList.add('tts-active-paragraph');
+
+      // 自动滚动到当前段落
+      const scrollContainer = document.getElementById('article-scroll-container');
+      if (scrollContainer) {
+        scrollToElement(scrollContainer, curEl);
+      }
+    }
+
+    prevTtsElementRef.current = curEl;
+
+    // TTS 停止时清理所有高亮
+    if (!ttsState.isActive) {
+      if (prevEl) {
+        prevEl.classList.remove('tts-active-paragraph');
+      }
+      prevTtsElementRef.current = null;
+      // 全局清理：确保没有遗留的高亮类名
+      if (articleRef.current) {
+        articleRef.current.querySelectorAll('.tts-active-paragraph').forEach(el => {
+          el.classList.remove('tts-active-paragraph');
+        });
+      }
+    }
+  }, [ttsState.currentElement, ttsState.isActive]);
 
   // 加载文档的标签和备注
   useEffect(() => {
@@ -817,8 +865,8 @@ export default function ReadingPane() {
             onClick={() => {
               if (ttsState.isActive) {
                 stopTts();
-              } else if (selectedDoc?.html_content) {
-                startTts(selectedDoc.html_content);
+              } else if (articleRef.current) {
+                startTtsFromDom(articleRef.current);
               }
             }}
             data-tooltip={ttsState.isActive ? '停止朗读' : '朗读文章'}
