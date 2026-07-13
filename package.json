@@ -1,6 +1,6 @@
 {
   "name": "readerq",
-  "version": "1.0.49",
+  "version": "1.0.50",
   "description": "ReaderQ - 智能阅读助手",
   "author": "ReaderQ Team",
   "private": true,
@@ -64,7 +64,7 @@
           "x": 270,
           "y": 350,
           "type": "file",
-          "path": "改变权限.command"
+          "path": "安装说明.txt"
         }
       ]
     },
