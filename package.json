@@ -1,6 +1,6 @@
 {
   "name": "readerq",
-  "version": "1.0.48",
+  "version": "1.0.49",
   "description": "ReaderQ - 智能阅读助手",
   "author": "ReaderQ Team",
   "private": true,
@@ -52,7 +52,7 @@
         {
           "x": 130,
           "y": 220,
-          "path": "ReaderQ.app"
+          "type": "file"
         },
         {
           "x": 410,
