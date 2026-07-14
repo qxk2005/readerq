@@ -59,7 +59,8 @@ data class ReadwiseTagItem(
 data class ReadwiseDocUpdate(
     val notes: String? = null,
     val tags: List<String>? = null,
-    val location: String? = null
+    val location: String? = null,
+    val reading_progress: Float? = null
 )
 
 @Serializable

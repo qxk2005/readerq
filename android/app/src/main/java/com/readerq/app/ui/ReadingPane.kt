@@ -40,6 +40,8 @@ import kotlinx.serialization.json.Json
 import com.readerq.app.api.HighlightImage
 import com.readerq.app.R
 import androidx.compose.ui.res.painterResource
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -291,6 +293,14 @@ fun ReadingPane(
             )
 
             // WebView container
+            var readingProgress by remember { mutableStateOf(currentDoc.reading_progress) }
+            val maxProgressRef = remember { mutableStateOf(currentDoc.reading_progress) }
+            // 文档切换时重置进度
+            LaunchedEffect(currentDoc.id) {
+                readingProgress = currentDoc.reading_progress
+                maxProgressRef.value = currentDoc.reading_progress
+            }
+
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -311,8 +321,68 @@ fun ReadingPane(
                         selectedTextForHighlight = text
                         selectedImagesForHighlight = images
                         showHighlightCreator = true
+                    },
+                    onProgressChanged = { progress ->
+                        val max = maxOf(progress, maxProgressRef.value)
+                        maxProgressRef.value = max
+                        readingProgress = max
                     }
                 )
+
+                // 阅读进度条 - 覆盖在 WebView 顶部
+                if (currentDoc.html_content != null && currentDoc.html_content != "加载中...") {
+                    val progressPercent = (readingProgress * 100).toInt().coerceIn(0, 100)
+                    val accentColor = MaterialTheme.colorScheme.primary
+                    val completedColor = Color(0xFF22C55E)
+                    val isCompleted = progressPercent >= 100
+
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .align(Alignment.TopCenter)
+                            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.95f))
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            // 进度条
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(3.dp)
+                                    .clip(RoundedCornerShape(2.dp))
+                                    .background(MaterialTheme.colorScheme.surfaceVariant)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxHeight()
+                                        .fillMaxWidth(fraction = readingProgress.coerceIn(0f, 1f))
+                                        .clip(RoundedCornerShape(2.dp))
+                                        .background(
+                                            if (isCompleted) completedColor
+                                            else accentColor
+                                        )
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(12.dp))
+                            // 百分比文字
+                            Text(
+                                text = if (isCompleted) "✓ 已读完" else "$progressPercent%",
+                                fontSize = 11.sp,
+                                color = if (isCompleted) completedColor
+                                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        // 底部细线分隔
+                        Divider(
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                            thickness = 0.5.dp
+                        )
+                    }
+                }
 
                 // Highlight Floating dialog
                 if (showHighlightCreator && !selectedTextForHighlight.isNullOrBlank()) {
@@ -807,8 +877,12 @@ fun HtmlContentViewer(
     contentWidth: Int,
     docId: String,
     viewModel: MainViewModel,
-    onTextSelected: (String, List<HighlightImage>) -> Unit
+    onTextSelected: (String, List<HighlightImage>) -> Unit,
+    onProgressChanged: (Float) -> Unit = {}
 ) {
+    // 防抖定时器用于延迟持久化进度
+    val progressSaveJob = remember { mutableStateOf<Job?>(null) }
+    val coroutineScope = rememberCoroutineScope()
     val highlightsJson = highlights.joinToString(separator = ",", prefix = "[", postfix = "]") { hl ->
         val escapedText = hl.text.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n").replace("\r", "")
         val escapedNote = hl.note?.replace("\\", "\\\\")?.replace("\"", "\\\"")?.replace("\n", "\\n")?.replace("\r", "") ?: ""
@@ -955,6 +1029,19 @@ fun HtmlContentViewer(
                             pageReady.value = true
                         }
                     }
+
+                    @JavascriptInterface
+                    fun onScrollProgress(progress: Float) {
+                        post {
+                            onProgressChanged(progress)
+                            // 防抖 2 秒后持久化进度
+                            progressSaveJob.value?.cancel()
+                            progressSaveJob.value = coroutineScope.launch {
+                                kotlinx.coroutines.delay(2000)
+                                viewModel.updateReadingProgress(docId, progress)
+                            }
+                        }
+                    }
                 }, "AndroidBridge")
             }
         },
@@ -999,6 +1086,8 @@ fun HtmlContentViewer(
                 </style>
                 </head>
                 <body>
+                    <!-- 顶部留出进度条空间 -->
+                    <div style="height: 32px;"></div>
                     $cleanHtml
                     
                     <script>
@@ -1348,6 +1437,30 @@ fun HtmlContentViewer(
                         } catch(e) {
                           console.error("Failed to restore highlights:", e);
                         }
+
+                        // 阅读进度滚动监听
+                        (function() {
+                          var ticking = false;
+                          window.addEventListener('scroll', function() {
+                            if (!ticking) {
+                              ticking = true;
+                              requestAnimationFrame(function() {
+                                var scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+                                var scrollHeight = document.documentElement.scrollHeight;
+                                var clientHeight = window.innerHeight;
+                                var scrollable = scrollHeight - clientHeight;
+                                if (scrollable > 0) {
+                                  var progress = Math.min(scrollTop / scrollable, 1.0);
+                                  if (window.AndroidBridge && typeof window.AndroidBridge.onScrollProgress === 'function') {
+                                    window.AndroidBridge.onScrollProgress(progress);
+                                  }
+                                }
+                                ticking = false;
+                              });
+                            }
+                          }, { passive: true });
+                        })();
+
                         if (window.AndroidBridge && typeof window.AndroidBridge.onPageReady === 'function') {
                           window.AndroidBridge.onPageReady();
                         }

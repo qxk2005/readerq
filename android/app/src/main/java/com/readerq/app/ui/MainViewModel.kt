@@ -1343,6 +1343,34 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    // Update reading progress (local DB + best-effort Readwise sync)
+    fun updateReadingProgress(docId: String, progress: Float) {
+        val currentToken = _token.value ?: return
+        viewModelScope.launch(Dispatchers.IO) {
+            // 只取最大值（不因回滚降低进度）
+            val existingDoc = docDao.getDocumentById(docId)
+            val maxProgress = maxOf(progress, existingDoc?.reading_progress ?: 0f)
+            docDao.updateReadingProgress(docId, maxProgress)
+
+            // 更新内存中的 selectedDoc
+            _selectedDoc.value?.let { doc ->
+                if (doc.id == docId) {
+                    _selectedDoc.value = doc.copy(reading_progress = maxProgress)
+                }
+            }
+
+            // 尝试同步到 Readwise（最佳努力，不阻塞）
+            if (currentToken != "offline") {
+                try {
+                    val client = ReadwiseClient(currentToken)
+                    client.updateDocument(docId, reading_progress = maxProgress)
+                } catch (e: Exception) {
+                    // 静默失败 - Readwise API 可能不支持此字段
+                }
+            }
+        }
+    }
+
     // --- TTS 文章朗读 ---
     private val ttsManager = TtsManager(application)
     val ttsState: StateFlow<TtsState> = ttsManager.ttsState

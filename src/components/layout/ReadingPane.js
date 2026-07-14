@@ -85,6 +85,11 @@ export default function ReadingPane() {
   const [sidebarEditTags, setSidebarEditTags] = useState([]);
   const [shareCopied, setShareCopied] = useState(false);
 
+  // 阅读进度
+  const [readingProgress, setReadingProgress] = useState(0);
+  const maxProgressRef = useRef(0);
+  const progressSaveTimerRef = useRef(null);
+
   // TTS 语音朗读
   const { ttsState, startTts, startTtsFromDom, toggleTts, nextChunk, previousChunk, stopTts } = useTts();
   const prevTtsElementRef = useRef(null);  // 追踪上一个 TTS 高亮的 DOM 元素
@@ -98,6 +103,10 @@ export default function ReadingPane() {
     setHighlightsError(null);
     setEditingHighlight(null);
     setSelection(null);
+    // 切换文档时重置进度到该文档的已有进度
+    const initialProgress = selectedDoc?.reading_progress || 0;
+    setReadingProgress(initialProgress);
+    maxProgressRef.current = initialProgress;
   }
 
   const lastRenderedDocIdRef = useRef(null);
@@ -150,6 +159,48 @@ export default function ReadingPane() {
       }
     }
   }, [ttsState.currentElement, ttsState.isActive]);
+
+  // --- 阅读进度跟踪 ---
+  useEffect(() => {
+    const scrollContainer = document.getElementById('article-scroll-container');
+    if (!scrollContainer || !selectedDoc) return;
+
+    const handleScroll = () => {
+      const { scrollTop, scrollHeight, clientHeight } = scrollContainer;
+      const scrollable = scrollHeight - clientHeight;
+      if (scrollable <= 0) return;
+
+      const rawProgress = Math.min(scrollTop / scrollable, 1);
+      const newProgress = Math.max(rawProgress, maxProgressRef.current);
+      maxProgressRef.current = newProgress;
+      setReadingProgress(newProgress);
+
+      // 防抖：停止滚动 2 秒后持久化进度
+      if (progressSaveTimerRef.current) {
+        clearTimeout(progressSaveTimerRef.current);
+      }
+      progressSaveTimerRef.current = setTimeout(() => {
+        if (!selectedDoc?.id || newProgress <= 0) return;
+        // 乐观更新本地状态
+        updateDocumentLocally(selectedDoc.id, { reading_progress: newProgress });
+        // 持久化到后端
+        fetch(`/api/documents/${selectedDoc.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ reading_progress: newProgress })
+        }).catch(e => console.error('保存阅读进度失败:', e));
+      }, 2000);
+    };
+
+    scrollContainer.addEventListener('scroll', handleScroll, { passive: true });
+    return () => {
+      scrollContainer.removeEventListener('scroll', handleScroll);
+      if (progressSaveTimerRef.current) {
+        clearTimeout(progressSaveTimerRef.current);
+      }
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedDoc?.id, updateDocumentLocally]);
 
   // 加载文档的标签和备注
   useEffect(() => {
@@ -773,6 +824,21 @@ export default function ReadingPane() {
 
       <div style={{ display: 'flex', flexDirection: 'row', flex: 1, overflow: 'hidden', minWidth: 0 }}>
         <div style={{ flex: 1, overflowY: 'auto', position: 'relative', minWidth: 0 }} className="article-scroll-container" id="article-scroll-container">
+      {/* 阅读进度条 */}
+      {!isContentLoading && !isLoadingHighlights && selectedDoc?.html_content && (
+        <div className="reading-progress-container">
+          <div className="reading-progress-bar">
+            <div
+              className={`reading-progress-fill${Math.round(readingProgress * 100) >= 100 ? ' completed' : ''}`}
+              style={{ width: `${Math.round(readingProgress * 100)}%` }}
+              data-progress={Math.round(readingProgress * 100)}
+            />
+          </div>
+          <span className={`reading-progress-text${Math.round(readingProgress * 100) >= 100 ? ' completed' : ''}`}>
+            {Math.round(readingProgress * 100) >= 100 ? '✓ 已读完' : `${Math.round(readingProgress * 100)}%`}
+          </span>
+        </div>
+      )}
       {/* 阅读头部 */}
       <div className="reading-header">
         <div className="reading-header-left">

@@ -99,13 +99,14 @@ class ReadwiseClient(private val token: String) {
         documentId: String,
         notes: String? = null,
         tags: List<String>? = null,
-        location: String? = null
+        location: String? = null,
+        reading_progress: Float? = null
     ): HttpResponse {
         val url = "https://readwise.io/api/v3/update/$documentId/"
         return executeWithRetry(url) {
             patch(url) {
                 authHeaders()
-                setBody(ReadwiseDocUpdate(notes, tags, location))
+                setBody(ReadwiseDocUpdate(notes, tags, location, reading_progress))
             }
         }
     }

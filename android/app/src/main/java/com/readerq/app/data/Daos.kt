@@ -49,6 +49,9 @@ interface DocumentDao {
 
     @Query("SELECT * FROM documents WHERE id IN (SELECT DISTINCT document_id FROM highlights) ORDER BY updated_at DESC")
     fun getDocumentsWithHighlights(): Flow<List<DocumentEntity>>
+
+    @Query("UPDATE documents SET reading_progress = :progress WHERE id = :docId")
+    suspend fun updateReadingProgress(docId: String, progress: Float)
 }
 
 @Dao
