@@ -170,7 +170,10 @@ export default function ReadingPane() {
       const scrollable = scrollHeight - clientHeight;
       if (scrollable <= 0) return;
 
-      const rawProgress = Math.min(scrollTop / scrollable, 1);
+      // 阈值检测：当距离底部不超过 5px 时视为 100%
+      const rawProgress = (scrollTop + clientHeight >= scrollHeight - 5)
+        ? 1
+        : Math.min(scrollTop / scrollable, 1);
       const newProgress = Math.max(rawProgress, maxProgressRef.current);
       maxProgressRef.current = newProgress;
       setReadingProgress(newProgress);
@@ -280,6 +283,14 @@ export default function ReadingPane() {
         });
         if (shouldPreserveScroll && scrollContainer) {
           scrollContainer.scrollTop = prevScrollTop;
+        } else if (!shouldPreserveScroll && scrollContainer && selectedDoc?.reading_progress > 0) {
+          // 首次打开文档：恢复到保存的阅读进度位置
+          requestAnimationFrame(() => {
+            const scrollable = scrollContainer.scrollHeight - scrollContainer.clientHeight;
+            if (scrollable > 0) {
+              scrollContainer.scrollTop = scrollable * selectedDoc.reading_progress;
+            }
+          });
         }
       }, 50);
     }

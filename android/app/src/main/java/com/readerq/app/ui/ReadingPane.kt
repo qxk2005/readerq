@@ -326,7 +326,8 @@ fun ReadingPane(
                         val max = maxOf(progress, maxProgressRef.value)
                         maxProgressRef.value = max
                         readingProgress = max
-                    }
+                    },
+                    initialProgress = currentDoc.reading_progress
                 )
 
                 // 阅读进度条 - 覆盖在 WebView 顶部
@@ -878,7 +879,8 @@ fun HtmlContentViewer(
     docId: String,
     viewModel: MainViewModel,
     onTextSelected: (String, List<HighlightImage>) -> Unit,
-    onProgressChanged: (Float) -> Unit = {}
+    onProgressChanged: (Float) -> Unit = {},
+    initialProgress: Float = 0f
 ) {
     // 防抖定时器用于延迟持久化进度
     val progressSaveJob = remember { mutableStateOf<Job?>(null) }
@@ -1450,7 +1452,10 @@ fun HtmlContentViewer(
                                 var clientHeight = window.innerHeight;
                                 var scrollable = scrollHeight - clientHeight;
                                 if (scrollable > 0) {
-                                  var progress = Math.min(scrollTop / scrollable, 1.0);
+                                  // 阈值检测：距底部 5px 以内视为 100%
+                                  var progress = (scrollTop + clientHeight >= scrollHeight - 5)
+                                    ? 1.0
+                                    : Math.min(scrollTop / scrollable, 1.0);
                                   if (window.AndroidBridge && typeof window.AndroidBridge.onScrollProgress === 'function') {
                                     window.AndroidBridge.onScrollProgress(progress);
                                   }
@@ -1464,6 +1469,20 @@ fun HtmlContentViewer(
                         if (window.AndroidBridge && typeof window.AndroidBridge.onPageReady === 'function') {
                           window.AndroidBridge.onPageReady();
                         }
+                        // 恢复阅读进度位置
+                        (function() {
+                          var savedProgress = ${initialProgress};
+                          if (savedProgress > 0) {
+                            setTimeout(function() {
+                              var scrollHeight = document.documentElement.scrollHeight;
+                              var clientHeight = window.innerHeight;
+                              var scrollable = scrollHeight - clientHeight;
+                              if (scrollable > 0) {
+                                window.scrollTo(0, scrollable * savedProgress);
+                              }
+                            }, 100);
+                          }
+                        })();
                     </script>
                 </body>
                 </html>
