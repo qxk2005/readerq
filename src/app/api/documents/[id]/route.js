@@ -21,7 +21,8 @@ export async function PATCH(request, { params }) {
       updates.notes = notes;
     }
 
-    // reading_progress 仅本地持久化（Readwise API 不支持此字段更新）
+    // reading_progress 仅本地持久化：Readwise V3 API 的 update 端点不支持此字段写入
+    // 同步拉取时 db.js 的 upsertDocument 会取本地与远端的 MAX 值，避免进度被覆盖
     const hasReadingProgress = reading_progress !== undefined && typeof reading_progress === 'number';
 
     if (Object.keys(updates).length === 0 && !hasReadingProgress) {

@@ -1359,15 +1359,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
             }
 
-            // 尝试同步到 Readwise（最佳努力，不阻塞）
-            if (currentToken != "offline") {
-                try {
-                    val client = ReadwiseClient(currentToken)
-                    client.updateDocument(docId, reading_progress = maxProgress)
-                } catch (e: Exception) {
-                    // 静默失败 - Readwise API 可能不支持此字段
-                }
-            }
+            // Readwise V3 API 不支持通过公开端点写入 reading_progress 字段
+            // 阅读进度仅本地持久化，同步拉取时取远端与本地的最大值
         }
     }
 

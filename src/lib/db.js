@@ -170,7 +170,7 @@ export function upsertDocument(doc) {
       notes = excluded.notes,
       image_url = excluded.image_url,
       parent_id = excluded.parent_id,
-      reading_progress = excluded.reading_progress,
+      reading_progress = MAX(documents.reading_progress, excluded.reading_progress),
       first_opened_at = excluded.first_opened_at,
       last_opened_at = excluded.last_opened_at,
       saved_at = excluded.saved_at,

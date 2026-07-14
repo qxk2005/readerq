@@ -21,6 +21,7 @@
   "build": {
     "appId": "com.readerq.app",
     "productName": "ReaderQ",
+    "icon": "build/icon",
     "directories": {
       "output": "dist"
     },
