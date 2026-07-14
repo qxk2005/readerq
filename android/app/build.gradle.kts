@@ -15,8 +15,8 @@ android {
         applicationId = "readerq.qiuyang.ai"
         minSdk = 26
         targetSdk = 35
-        versionCode = 45
-        versionName = "1.0.45"
+        versionCode = 52
+        versionName = "1.0.52"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
