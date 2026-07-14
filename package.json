@@ -1,6 +1,6 @@
 {
   "name": "readerq",
-  "version": "1.0.52",
+  "version": "1.0.53",
   "description": "ReaderQ - 智能阅读助手",
   "author": "ReaderQ Team",
   "private": true,
@@ -15,7 +15,8 @@
     "lint": "eslint",
     "electron:dev": "concurrently -k \"next dev\" \"wait-on http://localhost:3000 && electron .\"",
     "electron:build": "npm run build && node scripts/build-electron.js && electron-builder && node scripts/post-build.js",
-    "postinstall": "electron-builder install-app-deps"
+    "postinstall": "electron-builder install-app-deps",
+    "android:bundle": "cd android && ./gradlew bundleRelease"
   },
   "build": {
     "appId": "com.readerq.app",
