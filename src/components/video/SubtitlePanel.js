@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { formatTimestamp, formatSubtitlesForAI } from '@/lib/subtitleParser';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { Loader2, FileText, BookOpen, RefreshCw, Sparkles } from 'lucide-react';
 
 /**
@@ -125,38 +127,6 @@ export default function SubtitlePanel({ subtitles, currentTime, onSeek, autoScro
     }
   }, [subtitles, title, blogPrompt]);
 
-  // 简单的 Markdown 渲染（将 ## 标题和段落转为 HTML）
-  const renderMarkdown = useCallback((md) => {
-    if (!md) return '';
-    return md
-      // 标题
-      .replace(/^#### (.+)$/gm, '<h4>$1</h4>')
-      .replace(/^### (.+)$/gm, '<h3>$1</h3>')
-      .replace(/^## (.+)$/gm, '<h2>$1</h2>')
-      .replace(/^# (.+)$/gm, '<h1>$1</h1>')
-      // 加粗
-      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-      // 斜体
-      .replace(/\*(.+?)\*/g, '<em>$1</em>')
-      // 无序列表
-      .replace(/^- (.+)$/gm, '<li>$1</li>')
-      // 有序列表
-      .replace(/^\d+\. (.+)$/gm, '<li>$1</li>')
-      // 代码块
-      .replace(/`(.+?)`/g, '<code>$1</code>')
-      // 分割线
-      .replace(/^---$/gm, '<hr />')
-      // 段落
-      .replace(/\n\n/g, '</p><p>')
-      .replace(/\n/g, '<br />')
-      .replace(/^/, '<p>')
-      .replace(/$/, '</p>')
-      // 清理连续的空段落
-      .replace(/<p>\s*<\/p>/g, '')
-      // 将连续的 <li> 包装在 <ul> 中
-      .replace(/(<li>.*?<\/li>)(?:\s*<br \/>)*/g, '$1')
-      ;
-  }, []);
 
   return (
     <div className="subtitle-panel">
@@ -234,10 +204,11 @@ export default function SubtitlePanel({ subtitles, currentTime, onSeek, autoScro
               </div>
             )}
             {blogContent ? (
-              <div
-                className="blog-article reading-article-body"
-                dangerouslySetInnerHTML={{ __html: renderMarkdown(blogContent) }}
-              />
+              <div className="blog-article reading-article-body">
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                  {blogContent}
+                </ReactMarkdown>
+              </div>
             ) : !isBlogLoading ? (
               <div className="subtitle-empty">
                 <Sparkles size={32} />

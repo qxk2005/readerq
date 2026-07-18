@@ -1143,8 +1143,8 @@ export default function ReadingPane() {
                 )}
               </div>
 
-              {/* 摘要 */}
-              {selectedDoc.summary && (
+              {/* 摘要（视频类型不显示摘要，直接展示播放器） */}
+              {selectedDoc.category !== 'video' && selectedDoc.summary && (
                 <div style={{
                   padding: 'var(--space-4)',
                   background: 'var(--color-bg-secondary)',
