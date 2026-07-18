@@ -255,13 +255,17 @@ textarea:focus {
 
 .sidebar-header {
   padding: var(--space-4) var(--space-4) var(--space-3);
-  padding-left: 80px; /* 为 macOS 红绿灯按钮留出空间 */
   display: flex;
   align-items: center;
   justify-content: space-between;
   border-bottom: 1px solid var(--color-border-light);
   -webkit-app-region: drag; /* 允许拖动窗口 */
   min-height: 52px;
+}
+
+/* 仅在 macOS 下为红绿灯留出左侧空间 */
+.platform-darwin .sidebar-header {
+  padding-left: 80px;
 }
 
 .sidebar-header button,

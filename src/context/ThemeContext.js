@@ -40,6 +40,16 @@ export function ThemeProvider({ children }) {
         if (settings.docListElements !== undefined) setDocListElements(settings.docListElements);
       } catch { /* 忽略解析错误 */ }
     }
+
+    // 写入平台标识，以便在 CSS 中做跨平台 UI 适配
+    if (typeof window !== 'undefined') {
+      const isMac = navigator.userAgent.indexOf('Mac') !== -1;
+      if (isMac) {
+        document.documentElement.classList.add('platform-darwin');
+      } else {
+        document.documentElement.classList.add('platform-windows');
+      }
+    }
   }, []);
 
   useEffect(() => {
