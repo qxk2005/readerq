@@ -90,6 +90,48 @@ export default function ReadingPane() {
   const maxProgressRef = useRef(0);
   const progressSaveTimerRef = useRef(null);
 
+  // 右侧面板自定义宽度状态 (以 px 为单位，使用惰性初始化避免级联渲染)
+  const [rightPanelWidth, setRightPanelWidth] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('readerq_rightpanel_width');
+      return saved ? parseInt(saved, 10) : 320;
+    }
+    return 320;
+  });
+  const [isResizingRightPanel, setIsResizingRightPanel] = useState(false);
+
+  // 拖拽调整右侧面板宽度
+  const handleRightPanelResizeStart = (e) => {
+    e.preventDefault();
+    setIsResizingRightPanel(true);
+    const startX = e.clientX;
+    const startWidth = rightPanelWidth;
+
+    const handleMouseMove = (moveEvent) => {
+      const deltaX = moveEvent.clientX - startX;
+      // 右侧栏在最右边，向左拖拽（deltaX为负）会让它变宽，所以是 startWidth - deltaX
+      // 右侧面板宽度限制在 260px 到 600px 之间
+      const newWidth = Math.max(260, Math.min(600, startWidth - deltaX));
+      setRightPanelWidth(newWidth);
+    };
+
+    const handleMouseUp = () => {
+      setIsResizingRightPanel(false);
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+  };
+
+  // 宽度变化并拖动结束时保存到 localStorage
+  useEffect(() => {
+    if (!isResizingRightPanel && rightPanelWidth !== 320) {
+      localStorage.setItem('readerq_rightpanel_width', rightPanelWidth.toString());
+    }
+  }, [rightPanelWidth, isResizingRightPanel]);
+
   // TTS 语音朗读
   const { ttsState, startTts, startTtsFromDom, toggleTts, nextChunk, previousChunk, stopTts } = useTts();
   const prevTtsElementRef = useRef(null);  // 追踪上一个 TTS 高亮的 DOM 元素
@@ -833,25 +875,23 @@ export default function ReadingPane() {
         />
       )}
 
-      <div style={{ display: 'flex', flexDirection: 'row', flex: 1, overflow: 'hidden', minWidth: 0 }}>
-        <div style={{ flex: 1, overflowY: 'auto', position: 'relative', minWidth: 0 }} className="article-scroll-container" id="article-scroll-container">
-      {/* 阅读进度条 */}
-      {!isContentLoading && !isLoadingHighlights && selectedDoc?.html_content && (
-        <div className="reading-progress-container">
-          <div className="reading-progress-bar">
-            <div
-              className={`reading-progress-fill${Math.round(readingProgress * 100) >= 100 ? ' completed' : ''}`}
-              style={{ width: `${Math.round(readingProgress * 100)}%` }}
-              data-progress={Math.round(readingProgress * 100)}
-            />
-          </div>
-          <span className={`reading-progress-text${Math.round(readingProgress * 100) >= 100 ? ' completed' : ''}`}>
-            {Math.round(readingProgress * 100) >= 100 ? '✓ 已读完' : `${Math.round(readingProgress * 100)}%`}
-          </span>
-        </div>
-      )}
-      {/* 阅读头部 */}
-      <div className="reading-header">
+      <div 
+        style={{ 
+          display: 'flex', 
+          flexDirection: 'row', 
+          flex: 1, 
+          overflow: 'hidden', 
+          minWidth: 0,
+          cursor: isResizingRightPanel ? 'col-resize' : undefined,
+          userSelect: isResizingRightPanel ? 'none' : undefined
+        }}
+      >
+        {/* 左侧主显示区，包含固定头部和滚动正文 */}
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
+          {/* 固定头部容器 */}
+          <div className="article-sticky-header" style={{ display: 'flex', flexDirection: 'column', flexShrink: 0, zIndex: 20 }}>
+            {/* 阅读头部 */}
+            <div className="reading-header">
         <div className="reading-header-left">
           {selectedDoc.source_url && (
             <a
@@ -1023,7 +1063,26 @@ export default function ReadingPane() {
           </button>
         </div>
       </div>
+      
+      {/* 阅读进度条 (已移动至功能区下方) */}
+      {!isContentLoading && !isLoadingHighlights && selectedDoc?.html_content && (
+        <div className="reading-progress-container">
+          <div className="reading-progress-bar">
+            <div
+              className={`reading-progress-fill${Math.round(readingProgress * 100) >= 100 ? ' completed' : ''}`}
+              style={{ width: `${Math.round(readingProgress * 100)}%` }}
+              data-progress={Math.round(readingProgress * 100)}
+            />
+          </div>
+          <span className={`reading-progress-text${Math.round(readingProgress * 100) >= 100 ? ' completed' : ''}`}>
+            {Math.round(readingProgress * 100) >= 100 ? '✓ 已读完' : `${Math.round(readingProgress * 100)}%`}
+          </span>
+        </div>
+      )}
+      </div> {/* Close article-sticky-header */}
 
+      {/* 可滚动的正文区域 */}
+      <div style={{ flex: 1, overflowY: 'auto', position: 'relative', minWidth: 0 }} className="article-scroll-container" id="article-scroll-container">
       {/* 阅读内容 */}
       <div className="reading-content">
         <article
@@ -1156,10 +1215,28 @@ export default function ReadingPane() {
         </article>
       </div> {/* Close reading-content */}
       </div> {/* Close article-scroll-container */}
+      </div> {/* Close left main flex area */}
 
       {/* 右侧边栏 (Tabs: Info, Notebook, Chat) */}
       {rightPanelTab && (
-        <div className="right-sidebar" style={{ width: '320px', minWidth: '320px', borderLeft: '1px solid var(--color-border)', backgroundColor: 'var(--color-bg-secondary)', display: 'flex', flexDirection: 'column', overflowY: 'hidden' }}>
+        <>
+          {/* 右侧面板拖拽条 */}
+          <div 
+            className={`resizer-bar ${isResizingRightPanel ? 'dragging' : ''}`} 
+            onMouseDown={handleRightPanelResizeStart} 
+          />
+          <div 
+            className="right-sidebar" 
+            style={{ 
+              width: `${rightPanelWidth}px`, 
+              minWidth: `${rightPanelWidth}px`, 
+              borderLeft: '1px solid var(--color-border)', 
+              backgroundColor: 'var(--color-bg-secondary)', 
+              display: 'flex', 
+              flexDirection: 'column', 
+              overflowY: 'hidden' 
+            }}
+          >
         
         {/* Tab Header */}
         <div style={{ display: 'flex', borderBottom: '1px solid var(--color-border)', padding: '0 var(--space-4)' }}>
@@ -1645,6 +1722,7 @@ export default function ReadingPane() {
 
         </div>
       </div>
+      </>
       )}
       </div>
 

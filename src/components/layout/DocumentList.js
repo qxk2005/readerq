@@ -2,11 +2,35 @@
 
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { useApp } from '@/context/AppContext';
+import { useTheme } from '@/context/ThemeContext';
 import { LOCATION_LABELS, formatDate, truncateText, extractDomain } from '@/lib/utils';
 import { CATEGORY_ICONS_SVG, getCategoryIcon } from '@/components/ui/icons';
 import { Search, Inbox, Clock, Archive, RefreshCw, FileText, Tag, Trash2, RotateCcw } from 'lucide-react';
 
 function DocumentCard({ doc, isActive, onClick, isSelectionMode, isSelected, onToggleSelect, onMoveDoc, onDeleteDoc, currentView }) {
+  const { docListElements } = useTheme();
+
+  // 聚合 header meta 信息并使用中点安全连接
+  const headerMetaItems = [];
+  if (doc.author && docListElements?.author !== false) {
+    headerMetaItems.push(doc.author);
+  }
+  if (doc.source_url) {
+    headerMetaItems.push(extractDomain(doc.source_url));
+  }
+  if (doc.reading_time && docListElements?.readingTime !== false) {
+    headerMetaItems.push(doc.reading_time);
+  }
+
+  // 聚合 footer meta 信息并使用中点安全连接
+  const footerMetaItems = [];
+  if (docListElements?.createdAt !== false) {
+    footerMetaItems.push(formatDate(doc.updated_at || doc.created_at));
+  }
+  if (doc.reading_progress > 0 && docListElements?.readingProgress !== false) {
+    footerMetaItems.push(`已读 ${Math.round(doc.reading_progress * 100)}%`);
+  }
+
   const handleClick = (e) => {
     if (isSelectionMode) {
       e.preventDefault();
@@ -39,23 +63,32 @@ function DocumentCard({ doc, isActive, onClick, isSelectionMode, isSelected, onT
         )}
         <div className="doc-card-info">
           <div className="doc-card-title">{doc.title || '无标题'}</div>
-          <div className="doc-card-meta">
-            {doc.author && <span>{doc.author}</span>}
-            {doc.source_url && <span>· {extractDomain(doc.source_url)}</span>}
-            {doc.reading_time && <span>· {doc.reading_time}</span>}
-          </div>
+          {headerMetaItems.length > 0 && (
+            <div className="doc-card-meta">
+              {headerMetaItems.map((item, idx) => (
+                <span key={idx}>
+                  {idx > 0 && ' · '}
+                  {item}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
       </div>
-      {doc.summary && (
+      {doc.summary && docListElements?.summary !== false && (
         <div className="doc-card-summary">{truncateText(doc.summary, 120)}</div>
       )}
-      <div className="doc-card-meta" style={{ marginTop: '6px' }}>
-        <span>{formatDate(doc.updated_at || doc.created_at)}</span>
-        {doc.reading_progress > 0 && (
-          <span>· 已读 {Math.round(doc.reading_progress * 100)}%</span>
-        )}
-      </div>
-      {doc.reading_progress > 0 && doc.reading_progress < 1 && (
+      {footerMetaItems.length > 0 && (
+        <div className="doc-card-meta" style={{ marginTop: '6px' }}>
+          {footerMetaItems.map((item, idx) => (
+            <span key={idx}>
+              {idx > 0 && ' · '}
+              {item}
+            </span>
+          ))}
+        </div>
+      )}
+      {doc.reading_progress > 0 && doc.reading_progress < 1 && docListElements?.readingProgress !== false && (
         <div className="doc-card-progress">
           <div
             className="doc-card-progress-bar"
@@ -84,7 +117,7 @@ function DocumentCard({ doc, isActive, onClick, isSelectionMode, isSelected, onT
   );
 }
 
-export default function DocumentList() {
+export default function DocumentList({ width }) {
   const {
     documents, selectedDoc, setSelectedDoc,
     currentView, currentCategory, currentTag,
@@ -150,7 +183,10 @@ export default function DocumentList() {
   });
 
   return (
-    <div className="doclist-panel">
+    <div 
+      className="doclist-panel"
+      style={width ? { width: `${width}px`, minWidth: `${width}px` } : {}}
+    >
       <div className="doclist-header">
         <div className="doclist-title">
           <span>{getViewTitle()}</span>

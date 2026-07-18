@@ -25,7 +25,8 @@ export default function SettingsModal() {
     englishFont, setEnglishFont,
     paddingX, setPaddingX,
     paragraphSpacing, setParagraphSpacing,
-    resetAppearance
+    resetAppearance,
+    docListElements, setDocListElements
   } = useTheme();
   
   const [activeTab, setActiveTab] = useState('api');
@@ -269,7 +270,8 @@ export default function SettingsModal() {
           englishFont, setEnglishFont,
           paddingX, setPaddingX,
           paragraphSpacing, setParagraphSpacing,
-          resetAppearance
+          resetAppearance,
+          docListElements, setDocListElements
         }} />;
       case 'sync':
         return <TabSync {...{
@@ -733,7 +735,8 @@ function TabAppearance({
   englishFont, setEnglishFont,
   paddingX, setPaddingX,
   paragraphSpacing, setParagraphSpacing,
-  resetAppearance
+  resetAppearance,
+  docListElements, setDocListElements
 }) {
   const [systemFonts, setSystemFonts] = useState([]);
   const [loadingFonts, setLoadingFonts] = useState(false);
@@ -937,6 +940,72 @@ function TabAppearance({
       <div className="form-group">
         <label className="form-label">内容宽度: {contentWidth}px</label>
         <input type="range" min="500" max="1200" step="20" value={contentWidth} onChange={(e) => setContentWidth(Number(e.target.value))} style={{ width: '100%', cursor: 'pointer' }} />
+      </div>
+
+      <div className="form-group" style={{ borderTop: '1px solid var(--color-border-light)', paddingTop: 'var(--space-4)' }}>
+        <label className="form-label" style={{ fontWeight: '600', marginBottom: 'var(--space-2)' }}>文档列表元素显示</label>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px var(--space-4)', marginTop: '8px' }}>
+          {/* 标题 - 不可关闭 */}
+          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'not-allowed', opacity: 0.6, fontSize: '13px' }}>
+            <input type="checkbox" checked disabled style={{ width: '15px', height: '15px', accentColor: 'var(--color-primary)' }} />
+            <span>标题 (必选)</span>
+          </label>
+          {/* 封面图片 - 不可关闭 */}
+          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'not-allowed', opacity: 0.6, fontSize: '13px' }}>
+            <input type="checkbox" checked disabled style={{ width: '15px', height: '15px', accentColor: 'var(--color-primary)' }} />
+            <span>封面图片 (必选)</span>
+          </label>
+          {/* 作者 */}
+          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13px' }}>
+            <input 
+              type="checkbox" 
+              checked={docListElements?.author !== false} 
+              onChange={(e) => setDocListElements(prev => ({ ...prev, author: e.target.checked }))} 
+              style={{ width: '15px', height: '15px', accentColor: 'var(--color-primary)' }}
+            />
+            <span>作者</span>
+          </label>
+          {/* 阅读时间 */}
+          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13px' }}>
+            <input 
+              type="checkbox" 
+              checked={docListElements?.readingTime !== false} 
+              onChange={(e) => setDocListElements(prev => ({ ...prev, readingTime: e.target.checked }))} 
+              style={{ width: '15px', height: '15px', accentColor: 'var(--color-primary)' }}
+            />
+            <span>阅读时间</span>
+          </label>
+          {/* 加入时间 */}
+          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13px' }}>
+            <input 
+              type="checkbox" 
+              checked={docListElements?.createdAt !== false} 
+              onChange={(e) => setDocListElements(prev => ({ ...prev, createdAt: e.target.checked }))} 
+              style={{ width: '15px', height: '15px', accentColor: 'var(--color-primary)' }}
+            />
+            <span>加入时间 (日期)</span>
+          </label>
+          {/* 已读进度 */}
+          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13px' }}>
+            <input 
+              type="checkbox" 
+              checked={docListElements?.readingProgress !== false} 
+              onChange={(e) => setDocListElements(prev => ({ ...prev, readingProgress: e.target.checked }))} 
+              style={{ width: '15px', height: '15px', accentColor: 'var(--color-primary)' }}
+            />
+            <span>已读进度</span>
+          </label>
+          {/* 正文摘要 */}
+          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13px' }}>
+            <input 
+              type="checkbox" 
+              checked={docListElements?.summary !== false} 
+              onChange={(e) => setDocListElements(prev => ({ ...prev, summary: e.target.checked }))} 
+              style={{ width: '15px', height: '15px', accentColor: 'var(--color-primary)' }}
+            />
+            <span>正文摘要</span>
+          </label>
+        </div>
       </div>
 
       <div style={{ borderTop: '1px solid var(--color-border-light)', paddingTop: 'var(--space-4)', display: 'flex', justifyContent: 'flex-end' }}>

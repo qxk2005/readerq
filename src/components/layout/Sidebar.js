@@ -6,7 +6,7 @@ import { LOCATION_LABELS, CATEGORY_LABELS } from '@/lib/utils';
 import { CATEGORY_ICONS_SVG, LOCATION_ICONS_SVG } from '@/components/ui/icons';
 import { Home, Tag, Plus, RefreshCw, Sun, Moon, Settings } from 'lucide-react';
 
-export default function Sidebar() {
+export default function Sidebar({ width }) {
   const {
     currentView, currentCategory, currentTag,
     switchView, switchCategory, switchTag,
@@ -35,7 +35,10 @@ export default function Sidebar() {
   ];
 
   return (
-    <aside className={`sidebar ${sidebarCollapsed ? 'collapsed' : ''}`}>
+    <aside 
+      className={`sidebar ${sidebarCollapsed ? 'collapsed' : ''}`}
+      style={(!sidebarCollapsed && width) ? { width: `${width}px`, minWidth: `${width}px` } : {}}
+    >
       <div className="sidebar-header">
         {!sidebarCollapsed && (
           <div className="sidebar-logo">

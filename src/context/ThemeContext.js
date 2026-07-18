@@ -14,6 +14,13 @@ export function ThemeProvider({ children }) {
   const [englishFont, setEnglishFont] = useState('default');
   const [paddingX, setPaddingX] = useState(24);
   const [paragraphSpacing, setParagraphSpacing] = useState(1.5);
+  const [docListElements, setDocListElements] = useState({
+    author: true,
+    readingTime: true,
+    createdAt: true,
+    readingProgress: true,
+    summary: true,
+  });
 
   useEffect(() => {
     // 从 localStorage 读取主题设置
@@ -30,6 +37,7 @@ export function ThemeProvider({ children }) {
         if (settings.englishFont) setEnglishFont(settings.englishFont);
         if (settings.paddingX !== undefined) setPaddingX(settings.paddingX);
         if (settings.paragraphSpacing !== undefined) setParagraphSpacing(settings.paragraphSpacing);
+        if (settings.docListElements !== undefined) setDocListElements(settings.docListElements);
       } catch { /* 忽略解析错误 */ }
     }
   }, []);
@@ -39,8 +47,9 @@ export function ThemeProvider({ children }) {
     localStorage.setItem('readerq-theme', JSON.stringify({
       theme, fontSize, lineHeight, contentWidth, fontFamily,
       chineseFont, englishFont, paddingX, paragraphSpacing,
+      docListElements,
     }));
-  }, [theme, fontSize, lineHeight, contentWidth, fontFamily, chineseFont, englishFont, paddingX, paragraphSpacing]);
+  }, [theme, fontSize, lineHeight, contentWidth, fontFamily, chineseFont, englishFont, paddingX, paragraphSpacing, docListElements]);
 
   const toggleTheme = useCallback(() => {
     setThemeState(prev => prev === 'dark' ? 'light' : 'dark');
@@ -60,6 +69,13 @@ export function ThemeProvider({ children }) {
     setEnglishFont('default');
     setPaddingX(24);
     setParagraphSpacing(1.5);
+    setDocListElements({
+      author: true,
+      readingTime: true,
+      createdAt: true,
+      readingProgress: true,
+      summary: true,
+    });
   }, []);
 
   const value = {
@@ -83,6 +99,8 @@ export function ThemeProvider({ children }) {
     paragraphSpacing,
     setParagraphSpacing,
     resetAppearance,
+    docListElements,
+    setDocListElements,
   };
 
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;

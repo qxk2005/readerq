@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useApp } from '@/context/AppContext';
 import { useTheme } from '@/context/ThemeContext';
 import Sidebar from '@/components/layout/Sidebar';
@@ -24,6 +24,85 @@ export default function HomePage() {
     syncError,
   } = useApp();
   const { toggleTheme } = useTheme();
+
+  // 侧边栏与列表栏的自定义宽度状态 (以 px 为单位，使用惰性初始化避免级联渲染)
+  const [sidebarWidth, setSidebarWidth] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('readerq_sidebar_width');
+      return saved ? parseInt(saved, 10) : 240;
+    }
+    return 240;
+  });
+  const [docListWidth, setDocListWidth] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('readerq_doclist_width');
+      return saved ? parseInt(saved, 10) : 380;
+    }
+    return 380;
+  });
+  const [isResizingSidebar, setIsResizingSidebar] = useState(false);
+  const [isResizingDocList, setIsResizingDocList] = useState(false);
+
+  // 拖拽调整 Sidebar 宽度
+  const handleSidebarResizeStart = (e) => {
+    e.preventDefault();
+    setIsResizingSidebar(true);
+    const startX = e.clientX;
+    const startWidth = sidebarWidth;
+
+    const handleMouseMove = (moveEvent) => {
+      const deltaX = moveEvent.clientX - startX;
+      // 导航栏宽度限制在 160px 到 450px 之间
+      const newWidth = Math.max(160, Math.min(450, startWidth + deltaX));
+      setSidebarWidth(newWidth);
+    };
+
+    const handleMouseUp = () => {
+      setIsResizingSidebar(false);
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+  };
+
+  // 拖拽调整 DocumentList 宽度
+  const handleDocListResizeStart = (e) => {
+    e.preventDefault();
+    setIsResizingDocList(true);
+    const startX = e.clientX;
+    const startWidth = docListWidth;
+
+    const handleMouseMove = (moveEvent) => {
+      const deltaX = moveEvent.clientX - startX;
+      // 列表栏宽度限制在 240px 到 600px 之间
+      const newWidth = Math.max(240, Math.min(600, startWidth + deltaX));
+      setDocListWidth(newWidth);
+    };
+
+    const handleMouseUp = () => {
+      setIsResizingDocList(false);
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+  };
+
+  // 宽度变化并拖动结束时保存到 localStorage
+  useEffect(() => {
+    if (!isResizingSidebar && sidebarWidth !== 240) {
+      localStorage.setItem('readerq_sidebar_width', sidebarWidth.toString());
+    }
+  }, [sidebarWidth, isResizingSidebar]);
+
+  useEffect(() => {
+    if (!isResizingDocList && docListWidth !== 380) {
+      localStorage.setItem('readerq_doclist_width', docListWidth.toString());
+    }
+  }, [docListWidth, isResizingDocList]);
 
   // 全局键盘快捷键
   useEffect(() => {
@@ -82,9 +161,22 @@ export default function HomePage() {
 
   return (
     <>
-      <div className="app-layout">
-        <Sidebar />
-        <DocumentList />
+      <div 
+        className="app-layout"
+        style={isResizingSidebar || isResizingDocList ? { cursor: 'col-resize', userSelect: 'none' } : {}}
+      >
+        <Sidebar width={sidebarWidth} />
+        {!sidebarCollapsed && (
+          <div 
+            className={`resizer-bar ${isResizingSidebar ? 'dragging' : ''}`} 
+            onMouseDown={handleSidebarResizeStart} 
+          />
+        )}
+        <DocumentList width={docListWidth} />
+        <div 
+          className={`resizer-bar ${isResizingDocList ? 'dragging' : ''}`} 
+          onMouseDown={handleDocListResizeStart} 
+        />
         <ReadingPane />
       </div>
 

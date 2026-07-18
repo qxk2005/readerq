@@ -469,19 +469,29 @@ textarea:focus {
 /* ---- 文档卡片 ---- */
 .doc-card {
   padding: var(--space-3) var(--space-3);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-md);
   cursor: pointer;
   transition: all var(--transition-fast);
-  margin-bottom: 2px;
+  margin: 6px 12px;
   position: relative;
+  border: 1px solid transparent;
+  background: var(--color-bg-primary);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
+}
+
+/* 斑马纹交替底色 */
+.doc-card:nth-child(even) {
+  background: var(--color-bg-tertiary);
 }
 
 .doc-card:hover {
   background: var(--color-bg-hover);
+  border-color: var(--color-border-light);
 }
 
 .doc-card.active {
   background: var(--color-accent-light);
+  border-color: var(--color-accent);
   border-left: 3px solid var(--color-accent);
   padding-left: calc(var(--space-3) - 3px);
 }
@@ -1437,9 +1447,7 @@ textarea:focus {
 
 /* ========== 阅读进度条 ========== */
 .reading-progress-container {
-  position: sticky;
-  top: 0;
-  z-index: 20;
+  position: relative;
   display: flex;
   align-items: center;
   gap: var(--space-3);
@@ -1516,4 +1524,21 @@ textarea:focus {
 .reading-progress-fill.completed {
   background: linear-gradient(90deg, var(--color-success, #22c55e), #4ade80);
   animation: progress-complete-pulse 1s ease-out;
+}
+
+/* ========== 拖拽栏样式 (Resizer Bar) ========== */
+.resizer-bar {
+  position: relative;
+  width: 6px;
+  margin: 0 -3px;
+  z-index: 40;
+  cursor: col-resize;
+  flex-shrink: 0;
+  background: transparent;
+  transition: background-color 0.15s ease;
+}
+
+.resizer-bar:hover,
+.resizer-bar.dragging {
+  background: var(--color-accent);
 }
