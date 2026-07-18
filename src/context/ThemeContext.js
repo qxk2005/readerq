@@ -21,6 +21,12 @@ export function ThemeProvider({ children }) {
     readingProgress: true,
     summary: true,
   });
+  const [videoSettings, setVideoSettings] = useState({
+    subtitleLang: 'auto',
+    autoScroll: true,
+    playerSize: 'medium',
+    blogPrompt: '',
+  });
 
   useEffect(() => {
     // 从 localStorage 读取主题设置
@@ -38,6 +44,7 @@ export function ThemeProvider({ children }) {
         if (settings.paddingX !== undefined) setPaddingX(settings.paddingX);
         if (settings.paragraphSpacing !== undefined) setParagraphSpacing(settings.paragraphSpacing);
         if (settings.docListElements !== undefined) setDocListElements(settings.docListElements);
+        if (settings.videoSettings !== undefined) setVideoSettings(settings.videoSettings);
       } catch { /* 忽略解析错误 */ }
     }
 
@@ -57,9 +64,9 @@ export function ThemeProvider({ children }) {
     localStorage.setItem('readerq-theme', JSON.stringify({
       theme, fontSize, lineHeight, contentWidth, fontFamily,
       chineseFont, englishFont, paddingX, paragraphSpacing,
-      docListElements,
+      docListElements, videoSettings,
     }));
-  }, [theme, fontSize, lineHeight, contentWidth, fontFamily, chineseFont, englishFont, paddingX, paragraphSpacing, docListElements]);
+  }, [theme, fontSize, lineHeight, contentWidth, fontFamily, chineseFont, englishFont, paddingX, paragraphSpacing, docListElements, videoSettings]);
 
   const toggleTheme = useCallback(() => {
     setThemeState(prev => prev === 'dark' ? 'light' : 'dark');
@@ -86,6 +93,12 @@ export function ThemeProvider({ children }) {
       readingProgress: true,
       summary: true,
     });
+    setVideoSettings({
+      subtitleLang: 'auto',
+      autoScroll: true,
+      playerSize: 'medium',
+      blogPrompt: '',
+    });
   }, []);
 
   const value = {
@@ -111,6 +124,8 @@ export function ThemeProvider({ children }) {
     resetAppearance,
     docListElements,
     setDocListElements,
+    videoSettings,
+    setVideoSettings,
   };
 
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;

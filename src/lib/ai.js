@@ -217,6 +217,60 @@ export async function chat(messages, documentContext) {
 }
 
 /**
+ * 视频字幕转博客文章 (流式响应)
+ * 将带时间戳的字幕文本转译为 InfoQ 风格的技术博客
+ * @param {string} transcript - 带时间戳的完整字幕文本
+ * @param {string} title - 视频标题
+ * @param {string} [customPrompt] - 用户自定义的系统提示词（可选）
+ */
+export async function* convertToBlogStream(transcript, title, customPrompt) {
+  const client = createAIClient();
+  const model = getModelName();
+
+  // 默认的博客转译系统提示词
+  const defaultPrompt = `你是一位资深的技术博客编辑，专门为 InfoQ 等技术媒体撰写高质量的博客文章。
+
+你的任务是将一段视频字幕（含时间戳）转译为一篇结构清晰、内容丰富的博客文章。
+
+## 要求：
+1. **文章结构**：使用 Markdown 格式，包含标题（使用 ##）、段落、要点列表等
+2. **内容质量**：保留原视频的核心观点和论述逻辑，但重新组织为适合阅读的文章形式
+3. **语言风格**：专业但易读，类似 InfoQ、少数派、36Kr 等技术媒体的行文风格
+4. **去除口语化**：将口语化的表达转换为书面语，去除语气词、重复内容和离题闲聊
+5. **保留关键信息**：确保原视频中的数据、案例、技术细节等关键信息不丢失
+6. **适当补充**：可以适当补充背景知识或上下文，使文章更加完整
+7. **长度控制**：文章长度应与原始字幕内容的信息密度相匹配，不要过度压缩
+
+## 输出格式：
+直接输出 Markdown 格式的博客文章，不需要额外的说明或注释。`;
+
+  // 优先使用用户自定义提示词，否则使用默认提示词
+  const dbPrompt = getDbSetting('video_blog_prompt');
+  const systemPrompt = customPrompt || dbPrompt || defaultPrompt;
+
+  const stream = await client.chat.completions.create({
+    model,
+    messages: [
+      { role: 'system', content: systemPrompt },
+      {
+        role: 'user',
+        content: `请将以下视频字幕转译为一篇博客文章。\n\n视频标题：${title}\n\n字幕内容：\n${transcript}`,
+      }
+    ],
+    temperature: 0.4,
+    max_tokens: getMaxTokens(),
+    stream: true,
+  });
+
+  for await (const chunk of stream) {
+    const content = chunk.choices[0]?.delta?.content;
+    if (content) {
+      yield content;
+    }
+  }
+}
+
+/**
  * 安全提取 AI 响应正文
  * 兼容带有推理思考链（Reasoning）的兼容模型在被截断时的回退处理
  */
@@ -236,3 +290,4 @@ function extractAIResponse(choice) {
   
   return '';
 }
+

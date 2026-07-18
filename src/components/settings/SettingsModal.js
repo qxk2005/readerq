@@ -3,13 +3,14 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useApp } from '@/context/AppContext';
 import { useTheme } from '@/context/ThemeContext';
-import { Settings, Key, Palette, Keyboard, Info, RefreshCw, Lightbulb, Save, Zap, CheckCircle2, XCircle, Wrench, PartyPopper, Sun, Moon, Check, X, Image, CloudUpload, History } from 'lucide-react';
+import { Settings, Key, Palette, Keyboard, Info, RefreshCw, Lightbulb, Save, Zap, CheckCircle2, XCircle, Wrench, PartyPopper, Sun, Moon, Check, X, Image, CloudUpload, History, Video } from 'lucide-react';
 import ChangelogPanel from './ChangelogPanel';
 
 const TABS = [
   { id: 'api', label: 'API 配置', icon: Key },
   { id: 'oss', label: '图床配置', icon: Image },
   { id: 'appearance', label: '外观设置', icon: Palette },
+  { id: 'video', label: '视频设置', icon: Video },
   { id: 'sync', label: '数据同步', icon: RefreshCw },
   { id: 'shortcuts', label: '快捷键', icon: Keyboard },
   { id: 'about', label: '关于', icon: Info },
@@ -26,7 +27,8 @@ export default function SettingsModal() {
     paddingX, setPaddingX,
     paragraphSpacing, setParagraphSpacing,
     resetAppearance,
-    docListElements, setDocListElements
+    docListElements, setDocListElements,
+    videoSettings, setVideoSettings
   } = useTheme();
   
   const [activeTab, setActiveTab] = useState('api');
@@ -279,6 +281,8 @@ export default function SettingsModal() {
           syncCounts, syncError, cancelSync,
           localSyncStatus, setLocalSyncStatus,
         }} />;
+      case 'video':
+        return <TabVideo videoSettings={videoSettings} setVideoSettings={setVideoSettings} />;
       case 'shortcuts':
         return <TabShortcuts />;
       case 'about':
@@ -1175,6 +1179,151 @@ function TabAbout({ showChangelog, setShowChangelog }) {
         >
           GitHub 仓库
         </a>
+      </div>
+    </div>
+  );
+}
+
+/* ========== 视频设置 Tab ========== */
+function TabVideo({ videoSettings, setVideoSettings }) {
+  const updateSetting = (key, value) => {
+    setVideoSettings(prev => ({ ...prev, [key]: value }));
+  };
+
+  const subtitleOptions = [
+    { value: 'auto', label: '自动检测' },
+    { value: 'zh-Hans', label: '中文(简体)' },
+    { value: 'zh-Hant', label: '中文(繁体)' },
+    { value: 'en', label: 'English' },
+    { value: 'ja', label: '日本語' },
+    { value: 'ko', label: '한국어' },
+    { value: 'off', label: '关闭字幕' },
+  ];
+
+  const sizeOptions = [
+    { value: 'small', label: '小 (240p)' },
+    { value: 'medium', label: '中 (360p)' },
+    { value: 'large', label: '大 (480p)' },
+  ];
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
+      {/* 播放器设置 */}
+      <div>
+        <h3 style={{ fontSize: 'var(--text-sm)', fontWeight: '600', marginBottom: 'var(--space-3)', color: 'var(--color-text-secondary)' }}>
+          播放器设置
+        </h3>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+          {/* 默认字幕语言 */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <label style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-primary)' }}>默认字幕语言</label>
+            <select
+              className="settings-select"
+              value={videoSettings.subtitleLang || 'auto'}
+              onChange={(e) => updateSetting('subtitleLang', e.target.value)}
+              style={{
+                padding: '6px 12px',
+                borderRadius: 'var(--radius-md)',
+                border: '1px solid var(--color-border)',
+                background: 'var(--color-bg-secondary)',
+                color: 'var(--color-text-primary)',
+                fontSize: 'var(--text-sm)',
+                cursor: 'pointer',
+              }}
+            >
+              {subtitleOptions.map(opt => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* 播放器尺寸 */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <label style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-primary)' }}>播放器尺寸</label>
+            <select
+              className="settings-select"
+              value={videoSettings.playerSize || 'medium'}
+              onChange={(e) => updateSetting('playerSize', e.target.value)}
+              style={{
+                padding: '6px 12px',
+                borderRadius: 'var(--radius-md)',
+                border: '1px solid var(--color-border)',
+                background: 'var(--color-bg-secondary)',
+                color: 'var(--color-text-primary)',
+                fontSize: 'var(--text-sm)',
+                cursor: 'pointer',
+              }}
+            >
+              {sizeOptions.map(opt => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* 自动滚动同步 */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div>
+              <label style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-primary)' }}>字幕自动滚动</label>
+              <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-tertiary)', margin: '2px 0 0 0' }}>
+                播放视频时自动滚动字幕面板到当前段落
+              </p>
+            </div>
+            <button
+              onClick={() => updateSetting('autoScroll', !videoSettings.autoScroll)}
+              style={{
+                width: '44px', height: '24px', borderRadius: '12px', border: 'none', cursor: 'pointer',
+                background: videoSettings.autoScroll !== false ? 'var(--color-accent)' : 'var(--color-bg-tertiary)',
+                position: 'relative', transition: 'background 0.2s',
+              }}
+            >
+              <span style={{
+                position: 'absolute', top: '2px', width: '20px', height: '20px', borderRadius: '50%',
+                background: 'white', transition: 'left 0.2s',
+                left: videoSettings.autoScroll !== false ? '22px' : '2px',
+              }} />
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* 分隔线 */}
+      <hr style={{ border: 'none', borderTop: '1px solid var(--color-border-light)' }} />
+
+      {/* AI 博客转译 */}
+      <div>
+        <h3 style={{ fontSize: 'var(--text-sm)', fontWeight: '600', marginBottom: 'var(--space-2)', color: 'var(--color-text-secondary)' }}>
+          AI 博客转译
+        </h3>
+        <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-tertiary)', marginBottom: 'var(--space-3)' }}>
+          配置将视频字幕转译为 InfoQ 风格博客文章时使用的系统提示词。留空则使用内置默认提示词。
+        </p>
+        <textarea
+          value={videoSettings.blogPrompt || ''}
+          onChange={(e) => updateSetting('blogPrompt', e.target.value)}
+          placeholder={`你是一位资深的技术博客编辑...\n\n默认提示词已内置，此处留空即可使用。\n如需自定义，请在此输入完整的系统提示词。`}
+          style={{
+            width: '100%',
+            minHeight: '200px',
+            padding: 'var(--space-3)',
+            borderRadius: 'var(--radius-md)',
+            border: '1px solid var(--color-border)',
+            background: 'var(--color-bg-secondary)',
+            color: 'var(--color-text-primary)',
+            fontSize: 'var(--text-xs)',
+            fontFamily: 'var(--font-mono, monospace)',
+            lineHeight: '1.6',
+            resize: 'vertical',
+          }}
+        />
+        {videoSettings.blogPrompt && (
+          <button
+            className="btn btn-ghost btn-sm"
+            onClick={() => updateSetting('blogPrompt', '')}
+            style={{ marginTop: 'var(--space-2)', fontSize: 'var(--text-xs)' }}
+          >
+            恢复默认提示词
+          </button>
+        )}
       </div>
     </div>
   );

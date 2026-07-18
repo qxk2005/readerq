@@ -9,6 +9,7 @@ import { useTts } from '@/lib/useTts';
 import GhostReader from '@/components/ai/GhostReader';
 import HighlightEditor from '@/components/HighlightEditor';
 import TagInput from '@/components/TagInput';
+import VideoReadingPane from '@/components/video/VideoReadingPane';
 import { BookOpen, Link, Info, Edit3, Bot, Loader2, ClipboardList, AlertTriangle, RefreshCw, CheckCircle2, XCircle, ImageIcon, Upload, Trash2, RotateCcw, Inbox, Clock, Archive, Volume2, Share2, Play, Pause, SkipBack, SkipForward, X, Copy, Check } from 'lucide-react';
 
 const scrollToElement = (container, element) => {
@@ -1162,7 +1163,10 @@ export default function ReadingPane() {
               )}
 
               {/* 文章正文 */}
-              {selectedDoc.html_content !== null ? (
+              {selectedDoc.category === 'video' ? (
+                /* 视频类型：使用视频阅读面板 */
+                <VideoReadingPane selectedDoc={selectedDoc} />
+              ) : selectedDoc.html_content !== null ? (
                 selectedDoc.html_content ? (
                   <div
                     ref={articleRef}
