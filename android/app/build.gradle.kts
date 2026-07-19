@@ -1,4 +1,37 @@
 import java.util.Properties
+import java.io.File
+
+// 从根目录的 package.json 动态获取版本号
+val packageJsonFile = project.rootProject.file("../package.json")
+var appVersionName = "1.0.58"
+var appVersionCode = 58
+
+if (packageJsonFile.exists()) {
+    try {
+        val text = packageJsonFile.readText()
+        val matchResult = Regex("\"version\"\\s*:\\s*\"([^\"]+)\"").find(text)
+        if (matchResult != null) {
+            appVersionName = matchResult.groupValues[1]
+            // 将 1.0.58 转换为 10058 (x * 10000 + y * 100 + z) 或直接取最末尾的数字作为 Code
+            // 之前的 versionCode 是 54，这里如果 1.0.58 用末尾 58 也可以。为防止以后 y 位（小版本）变动，我们可以用 x * 10000 + y * 100 + z
+            // 但如果之前是 54，我们用 x*10000 + y*100 + z => 1*10000 + 0*100 + 54 = 10054，这比 54 大。
+            // 这样无论如何 versionCode 都会递增。
+            // 为了安全起见，这里直接用分段解析：比如 1.0.58 解析出来最后一段作为 58，或者使用更先进的组合算法。
+            // 由于之前的 versionCode 都是直接对应的第3段 (如 1.0.54 对应 54)，我们也可以使用分段组合：
+            val parts = appVersionName.split(".")
+            if (parts.size >= 3) {
+                val major = parts[0].toIntOrNull() ?: 1
+                val minor = parts[1].toIntOrNull() ?: 0
+                val patch = parts[2].toIntOrNull() ?: 58
+                // 使用组合方式，保证 versionCode 总是大于 54，且随版本变化递增
+                // 例如 1.0.58 => 10000 + 58 = 10058
+                appVersionCode = major * 10000 + minor * 100 + patch
+            }
+        }
+    } catch (e: Exception) {
+        e.printStackTrace()
+    }
+}
 
 plugins {
     id("com.android.application")
@@ -15,8 +48,8 @@ android {
         applicationId = "readerq.qiuyang.ai"
         minSdk = 26
         targetSdk = 35
-        versionCode = 54
-        versionName = "1.0.54"
+        versionCode = appVersionCode
+        versionName = appVersionName
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
