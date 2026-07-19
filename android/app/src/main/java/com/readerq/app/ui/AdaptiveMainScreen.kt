@@ -1565,8 +1565,14 @@ fun TabAboutContent(
                     fontSize = 24.sp,
                     color = MaterialTheme.colorScheme.primary
                 )
+                val context = androidx.compose.ui.platform.LocalContext.current
+                val versionName = try {
+                    context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "1.0.0"
+                } catch (e: Exception) {
+                    "1.0.0"
+                }
                 Text(
-                    text = "移动客户端版本: v1.0.0",
+                    text = "移动客户端版本: v$versionName",
                     color = labelColor,
                     fontSize = 13.sp
                 )
