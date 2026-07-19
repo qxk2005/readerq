@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useRef, useMemo, useCallback } from 'react';
+import { useState, useRef, useMemo, useCallback, useEffect } from 'react';
 import { useTheme } from '@/context/ThemeContext';
-import { parseSubtitles, extractYouTubeId } from '@/lib/subtitleParser';
+import { parseSubtitles, extractYouTubeId, parseSRT } from '@/lib/subtitleParser';
 import YouTubePlayer from './YouTubePlayer';
 import SubtitlePanel from './SubtitlePanel';
 import { Maximize2, Minimize2, Captions } from 'lucide-react';
@@ -22,15 +22,50 @@ export default function VideoReadingPane({ selectedDoc }) {
   const [isPlayerCollapsed, setIsPlayerCollapsed] = useState(false);
   const [captionLang, setCaptionLang] = useState(videoSettings.subtitleLang || 'auto');
 
+  // 用户上传的 SRT 字幕状态
+  const [uploadedSubtitles, setUploadedSubtitles] = useState(null); // null = 未加载, [] = 无, [...] = 有
+  const [isLoadingSubtitles, setIsLoadingSubtitles] = useState(false);
+
   // 提取 YouTube 视频 ID
   const videoId = useMemo(() => {
     return extractYouTubeId(selectedDoc?.source_url || selectedDoc?.url);
   }, [selectedDoc?.source_url, selectedDoc?.url]);
 
-  // 解析字幕
-  const subtitles = useMemo(() => {
+  // 从 html_content 解析的字幕
+  const htmlSubtitles = useMemo(() => {
     return parseSubtitles(selectedDoc?.html_content);
   }, [selectedDoc?.html_content]);
+
+  // 加载用户上传的字幕
+  useEffect(() => {
+    if (!selectedDoc?.id) return;
+    setIsLoadingSubtitles(true);
+    fetch(`/api/documents/${selectedDoc.id}/subtitles`)
+      .then(res => res.json())
+      .then(data => {
+        if (data.exists && data.subtitles?.length > 0) {
+          setUploadedSubtitles(data.subtitles);
+        } else {
+          setUploadedSubtitles([]);
+        }
+      })
+      .catch(err => {
+        console.error('加载用户字幕失败:', err);
+        setUploadedSubtitles([]);
+      })
+      .finally(() => setIsLoadingSubtitles(false));
+  }, [selectedDoc?.id]);
+
+  // 最终使用的字幕：优先用户上传 > html_content 解析
+  const subtitles = useMemo(() => {
+    if (uploadedSubtitles && uploadedSubtitles.length > 0) {
+      return uploadedSubtitles;
+    }
+    return htmlSubtitles;
+  }, [uploadedSubtitles, htmlSubtitles]);
+
+  // 是否正在使用用户上传的字幕
+  const isUsingUploadedSubtitles = uploadedSubtitles && uploadedSubtitles.length > 0;
 
   // 播放器时间更新回调
   const handleTimeUpdate = useCallback((time) => {
@@ -42,6 +77,16 @@ export default function VideoReadingPane({ selectedDoc }) {
     if (playerRef.current && typeof playerRef.current.seekTo === 'function') {
       playerRef.current.seekTo(seconds);
     }
+  }, []);
+
+  // 字幕上传成功后刷新
+  const handleSubtitleUploaded = useCallback((newSubtitles) => {
+    setUploadedSubtitles(newSubtitles);
+  }, []);
+
+  // 字幕删除后刷新
+  const handleSubtitleDeleted = useCallback(() => {
+    setUploadedSubtitles([]);
   }, []);
 
   // 字幕语言选项
@@ -99,6 +144,10 @@ export default function VideoReadingPane({ selectedDoc }) {
         autoScroll={videoSettings.autoScroll !== false}
         title={selectedDoc?.title}
         blogPrompt={videoSettings.blogPrompt}
+        documentId={selectedDoc?.id}
+        isUsingUploadedSubtitles={isUsingUploadedSubtitles}
+        onSubtitleUploaded={handleSubtitleUploaded}
+        onSubtitleDeleted={handleSubtitleDeleted}
       />
     </div>
   );

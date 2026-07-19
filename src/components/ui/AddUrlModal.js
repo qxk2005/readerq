@@ -14,12 +14,13 @@ import {
   StickyNote, 
   File, 
   Loader2,
-  X
+  X,
+  Video
 } from 'lucide-react';
 
 export default function AddUrlModal() {
   const { showAddUrl, setShowAddUrl, saveDocument, fetchDocuments, setShowSettings } = useApp();
-  const [activeTab, setActiveTab] = useState('url'); // 'url' | 'file' | 'text'
+  const [activeTab, setActiveTab] = useState('url'); // 'url' | 'file' | 'text' | 'video'
   const [isLoading, setIsLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState(null);
@@ -36,7 +37,13 @@ export default function AddUrlModal() {
   const [textTitle, setTextTitle] = useState('');
   const [textContent, setTextContent] = useState('');
 
-  // 4. 公共可选字段
+  // 4. 视频 Tab 字段
+  const [videoUrl, setVideoUrl] = useState('');
+  const [videoSrtFile, setVideoSrtFile] = useState(null);
+  const videoSrtInputRef = useRef(null);
+  const [isVideoDragOver, setIsVideoDragOver] = useState(false);
+
+  // 5. 公共可选字段
   const [author, setAuthor] = useState('');
   const [tagsInput, setTagsInput] = useState('');
   const [notes, setNotes] = useState('');
@@ -50,6 +57,8 @@ export default function AddUrlModal() {
     setFile(null);
     setTextTitle('');
     setTextContent('');
+    setVideoUrl('');
+    setVideoSrtFile(null);
     setAuthor('');
     setTagsInput('');
     setNotes('');
@@ -203,6 +212,39 @@ export default function AddUrlModal() {
         if (!res.ok || data.error) {
           throw new Error(data.error || '保存文本失败');
         }
+
+      } else if (activeTab === 'video') {
+        if (!videoUrl.trim()) {
+          throw new Error('请输入 YouTube 视频链接');
+        }
+
+        // 1. 先保存 URL 到 Readwise
+        const res = await fetch('/api/readwise/save', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            url: videoUrl.trim(),
+            author: author.trim(),
+            notes: notes.trim(),
+            tags: tags
+          }),
+        });
+        const data = await res.json();
+        if (data.error) throw new Error(data.error);
+
+        // 2. 如果用户上传了 SRT 文件，保存到本地
+        if (videoSrtFile && data.id) {
+          const srtFormData = new FormData();
+          srtFormData.append('file', videoSrtFile);
+          const srtRes = await fetch(`/api/documents/${data.id}/subtitles`, {
+            method: 'POST',
+            body: srtFormData,
+          });
+          const srtData = await srtRes.json();
+          if (!srtRes.ok || srtData.error) {
+            console.warn('字幕上传失败（视频已成功保存）:', srtData.error);
+          }
+        }
       }
 
       setSuccess(true);
@@ -247,7 +289,8 @@ export default function AddUrlModal() {
           {[
             { id: 'url', label: '网页链接', icon: <Link size={14} /> },
             { id: 'file', label: '上传文件', icon: <Upload size={14} /> },
-            { id: 'text', label: '手动输入', icon: <FileText size={14} /> }
+            { id: 'text', label: '手动输入', icon: <FileText size={14} /> },
+            { id: 'video', label: '视频', icon: <Video size={14} /> }
           ].map(tab => (
             <button
               key={tab.id}
@@ -465,6 +508,114 @@ export default function AddUrlModal() {
                 </div>
               )}
 
+              {/* Tab 4: Video */}
+              {activeTab === 'video' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+                  <div className="form-group">
+                    <label className="form-label" style={{ fontWeight: '500' }}>YouTube 视频链接</label>
+                    <div style={{ position: 'relative' }}>
+                      <span style={{ position: 'absolute', left: '12px', top: '10px', color: 'var(--color-text-tertiary)' }}>
+                        <Video size={16} />
+                      </span>
+                      <input
+                        type="url"
+                        className="form-input"
+                        placeholder="https://www.youtube.com/watch?v=..."
+                        value={videoUrl}
+                        onChange={(e) => setVideoUrl(e.target.value)}
+                        style={{ paddingLeft: '38px', borderRadius: '8px' }}
+                        autoFocus
+                        required={activeTab === 'video'}
+                      />
+                    </div>
+                    <div className="form-hint" style={{ marginTop: '6px' }}>
+                      输入 YouTube 视频链接，Readwise 会自动解析视频信息。
+                    </div>
+                  </div>
+
+                  <div className="form-group">
+                    <label className="form-label" style={{ fontWeight: '500' }}>SRT 字幕文件 (可选)</label>
+                    <div
+                      onDragOver={(e) => { e.preventDefault(); setIsVideoDragOver(true); }}
+                      onDragLeave={() => setIsVideoDragOver(false)}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        setIsVideoDragOver(false);
+                        const droppedFile = e.dataTransfer.files[0];
+                        if (droppedFile) {
+                          const ext = droppedFile.name.split('.').pop().toLowerCase();
+                          if (ext !== 'srt') {
+                            setError('请选择 .srt 格式的字幕文件');
+                            return;
+                          }
+                          setError(null);
+                          setVideoSrtFile(droppedFile);
+                        }
+                      }}
+                      onClick={() => videoSrtInputRef.current?.click()}
+                      style={{
+                        border: isVideoDragOver ? '2px dashed var(--color-accent)' : '2px dashed var(--color-border)',
+                        borderRadius: '12px',
+                        padding: 'var(--space-4) var(--space-4)',
+                        textAlign: 'center',
+                        background: isVideoDragOver ? 'var(--color-accent-light)' : 'var(--color-bg-secondary)',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s ease',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        gap: '6px'
+                      }}
+                    >
+                      <input
+                        type="file"
+                        ref={videoSrtInputRef}
+                        accept=".srt"
+                        onChange={(e) => {
+                          const f = e.target.files?.[0];
+                          if (f) {
+                            const ext = f.name.split('.').pop().toLowerCase();
+                            if (ext !== 'srt') {
+                              setError('请选择 .srt 格式的字幕文件');
+                              return;
+                            }
+                            setError(null);
+                            setVideoSrtFile(f);
+                          }
+                          e.target.value = '';
+                        }}
+                        style={{ display: 'none' }}
+                      />
+                      {videoSrtFile ? (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <FileText size={16} style={{ color: 'var(--color-accent)' }} />
+                          <span style={{ fontSize: 'var(--text-sm)', fontWeight: '500' }}>
+                            {videoSrtFile.name}
+                          </span>
+                          <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-tertiary)' }}>
+                            ({(videoSrtFile.size / 1024).toFixed(1)} KB)
+                          </span>
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); setVideoSrtFile(null); }}
+                            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-text-tertiary)', padding: '2px' }}
+                          >
+                            <X size={14} />
+                          </button>
+                        </div>
+                      ) : (
+                        <div>
+                          <div style={{ fontSize: 'var(--text-sm)', fontWeight: '500' }}>拖拽 SRT 文件到此处，或点击选择</div>
+                          <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-tertiary)', marginTop: '4px' }}>
+                            如果视频没有内嵌字幕，你可以通过 ASR 工具提取后上传 SRT 文件
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* 可选字段折叠/默认显示（更加专业） */}
               <div style={{
                 borderTop: '1px solid var(--color-border-light)',
@@ -542,7 +693,7 @@ export default function AddUrlModal() {
               <button
                 type="submit"
                 className="btn btn-primary"
-                disabled={isLoading || (activeTab === 'file' && !file) || (activeTab === 'file' && isEbook(file?.name) && !isOssConfigured)}
+                disabled={isLoading || (activeTab === 'file' && !file) || (activeTab === 'file' && isEbook(file?.name) && !isOssConfigured) || (activeTab === 'video' && !videoUrl.trim())}
                 style={{
                   width: '100%',
                   height: '42px',

@@ -103,6 +103,13 @@ function initSchema(db) {
       value TEXT
     );
 
+    CREATE TABLE IF NOT EXISTS subtitles (
+      document_id TEXT PRIMARY KEY,
+      srt_content TEXT NOT NULL,
+      created_at TEXT,
+      FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE CASCADE
+    );
+
     CREATE INDEX IF NOT EXISTS idx_documents_location ON documents(location);
     CREATE INDEX IF NOT EXISTS idx_documents_category ON documents(category);
     CREATE INDEX IF NOT EXISTS idx_documents_updated_at ON documents(updated_at);
@@ -683,4 +690,36 @@ export function deleteDocuments(ids) {
     }
   });
   runTransaction(ids);
+}
+
+/**
+ * 保存用户上传的 SRT 字幕
+ * @param {string} documentId - 文档 ID
+ * @param {string} srtContent - 原始 SRT 文件内容
+ */
+export function saveSubtitle(documentId, srtContent) {
+  const db = getDatabase();
+  db.prepare(`
+    INSERT OR REPLACE INTO subtitles (document_id, srt_content, created_at)
+    VALUES (?, ?, ?)
+  `).run(documentId, srtContent, new Date().toISOString());
+}
+
+/**
+ * 获取文档的用户上传字幕
+ * @param {string} documentId - 文档 ID
+ * @returns {{ srt_content: string, created_at: string } | null}
+ */
+export function getSubtitle(documentId) {
+  const db = getDatabase();
+  return db.prepare('SELECT srt_content, created_at FROM subtitles WHERE document_id = ?').get(documentId) || null;
+}
+
+/**
+ * 删除文档的用户上传字幕
+ * @param {string} documentId - 文档 ID
+ */
+export function deleteSubtitle(documentId) {
+  const db = getDatabase();
+  db.prepare('DELETE FROM subtitles WHERE document_id = ?').run(documentId);
 }

@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { formatTimestamp, formatSubtitlesForAI } from '@/lib/subtitleParser';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Loader2, FileText, BookOpen, RefreshCw, Sparkles } from 'lucide-react';
+import { Loader2, FileText, BookOpen, RefreshCw, Sparkles, Upload, Trash2, CheckCircle } from 'lucide-react';
 
 /**
  * 字幕面板组件
@@ -16,8 +16,15 @@ import { Loader2, FileText, BookOpen, RefreshCw, Sparkles } from 'lucide-react';
  * @param {boolean} autoScroll - 是否自动滚动
  * @param {string} title - 视频标题
  * @param {string} blogPrompt - 用户自定义的博客转译提示词
+ * @param {string} documentId - 文档 ID，用于上传字幕
+ * @param {boolean} isUsingUploadedSubtitles - 是否正在使用用户上传的字幕
+ * @param {function} onSubtitleUploaded - 字幕上传成功回调
+ * @param {function} onSubtitleDeleted - 字幕删除成功回调
  */
-export default function SubtitlePanel({ subtitles, currentTime, onSeek, autoScroll = true, title, blogPrompt }) {
+export default function SubtitlePanel({ 
+  subtitles, currentTime, onSeek, autoScroll = true, title, blogPrompt,
+  documentId, isUsingUploadedSubtitles, onSubtitleUploaded, onSubtitleDeleted
+}) {
   const [mode, setMode] = useState('subtitle'); // 'subtitle' | 'blog'
   const [blogContent, setBlogContent] = useState('');
   const [isBlogLoading, setIsBlogLoading] = useState(false);
@@ -26,6 +33,13 @@ export default function SubtitlePanel({ subtitles, currentTime, onSeek, autoScro
   const activeSegmentRef = useRef(null);
   const userScrollingRef = useRef(false);
   const scrollTimeoutRef = useRef(null);
+
+  // SRT 上传相关状态
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadError, setUploadError] = useState(null);
+  const [uploadSuccess, setUploadSuccess] = useState(false);
+  const srtFileInputRef = useRef(null);
+  const [isDragOver, setIsDragOver] = useState(false);
 
   // 计算当前活跃的字幕段落索引
   const activeIndex = useMemo(() => {
@@ -127,6 +141,97 @@ export default function SubtitlePanel({ subtitles, currentTime, onSeek, autoScro
     }
   }, [subtitles, title, blogPrompt]);
 
+  // 上传 SRT 字幕文件
+  const handleSrtUpload = useCallback(async (file) => {
+    if (!file || !documentId) return;
+
+    // 验证文件扩展名
+    const ext = file.name.split('.').pop().toLowerCase();
+    if (ext !== 'srt') {
+      setUploadError('请选择 .srt 格式的字幕文件');
+      return;
+    }
+
+    setIsUploading(true);
+    setUploadError(null);
+    setUploadSuccess(false);
+
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const res = await fetch(`/api/documents/${documentId}/subtitles`, {
+        method: 'POST',
+        body: formData,
+      });
+
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        throw new Error(data.error || '上传字幕失败');
+      }
+
+      setUploadSuccess(true);
+      if (onSubtitleUploaded && data.subtitles) {
+        onSubtitleUploaded(data.subtitles);
+      }
+
+      // 3 秒后清除成功提示
+      setTimeout(() => setUploadSuccess(false), 3000);
+    } catch (err) {
+      console.error('上传字幕失败:', err);
+      setUploadError(err.message);
+    } finally {
+      setIsUploading(false);
+    }
+  }, [documentId, onSubtitleUploaded]);
+
+  // 删除用户上传的字幕
+  const handleDeleteSubtitle = useCallback(async () => {
+    if (!documentId) return;
+    if (!confirm('确定要删除已上传的字幕吗？将恢复使用原始字幕数据。')) return;
+
+    try {
+      const res = await fetch(`/api/documents/${documentId}/subtitles`, {
+        method: 'DELETE',
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        throw new Error(data.error || '删除字幕失败');
+      }
+      if (onSubtitleDeleted) {
+        onSubtitleDeleted();
+      }
+    } catch (err) {
+      console.error('删除字幕失败:', err);
+      setUploadError(err.message);
+    }
+  }, [documentId, onSubtitleDeleted]);
+
+  // 文件选择处理
+  const handleFileInputChange = (e) => {
+    const file = e.target.files?.[0];
+    if (file) handleSrtUpload(file);
+    // 重置 input 以便重复选择同一文件
+    e.target.value = '';
+  };
+
+  // 拖拽处理
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    setIsDragOver(true);
+  };
+
+  const handleDragLeave = () => {
+    setIsDragOver(false);
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    setIsDragOver(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) handleSrtUpload(file);
+  };
+
 
   return (
     <div className="subtitle-panel">
@@ -148,23 +253,112 @@ export default function SubtitlePanel({ subtitles, currentTime, onSeek, autoScro
             博客文章
           </button>
         </div>
-        {mode === 'blog' && (
-          <button
-            className="btn btn-primary btn-sm"
-            onClick={generateBlog}
-            disabled={isBlogLoading}
-            style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: 'var(--text-xs)' }}
-          >
-            {isBlogLoading ? (
-              <><Loader2 size={14} className="spin" /> 生成中...</>
-            ) : blogContent ? (
-              <><RefreshCw size={14} /> 重新生成</>
-            ) : (
-              <><Sparkles size={14} /> 生成博客</>
-            )}
-          </button>
-        )}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          {/* 字幕来源标识 */}
+          {mode === 'subtitle' && isUsingUploadedSubtitles && (
+            <span style={{
+              fontSize: 'var(--text-xs)',
+              color: 'var(--color-success)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '3px',
+              padding: '2px 8px',
+              background: 'rgba(34, 197, 94, 0.08)',
+              borderRadius: '10px',
+            }}>
+              <CheckCircle size={12} />
+              用户字幕
+            </span>
+          )}
+          {/* 上传/替换字幕按钮 */}
+          {mode === 'subtitle' && documentId && (
+            <>
+              <input
+                type="file"
+                ref={srtFileInputRef}
+                accept=".srt"
+                onChange={handleFileInputChange}
+                style={{ display: 'none' }}
+              />
+              <button
+                className="btn btn-ghost btn-sm"
+                onClick={() => srtFileInputRef.current?.click()}
+                disabled={isUploading}
+                title={isUsingUploadedSubtitles ? '替换字幕文件' : '上传 SRT 字幕'}
+                style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: 'var(--text-xs)' }}
+              >
+                {isUploading ? (
+                  <Loader2 size={14} className="spin" />
+                ) : (
+                  <Upload size={14} />
+                )}
+                {isUsingUploadedSubtitles ? '替换' : '上传字幕'}
+              </button>
+              {isUsingUploadedSubtitles && (
+                <button
+                  className="btn btn-ghost btn-sm"
+                  onClick={handleDeleteSubtitle}
+                  title="删除用户上传的字幕"
+                  style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: 'var(--text-xs)', color: 'var(--color-danger)' }}
+                >
+                  <Trash2 size={14} />
+                </button>
+              )}
+            </>
+          )}
+          {mode === 'blog' && (
+            <button
+              className="btn btn-primary btn-sm"
+              onClick={generateBlog}
+              disabled={isBlogLoading}
+              style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: 'var(--text-xs)' }}
+            >
+              {isBlogLoading ? (
+                <><Loader2 size={14} className="spin" /> 生成中...</>
+              ) : blogContent ? (
+                <><RefreshCw size={14} /> 重新生成</>
+              ) : (
+                <><Sparkles size={14} /> 生成博客</>
+              )}
+            </button>
+          )}
+        </div>
       </div>
+
+      {/* 上传错误提示 */}
+      {uploadError && (
+        <div style={{
+          padding: '8px 16px',
+          background: 'rgba(239, 68, 68, 0.08)',
+          borderBottom: '1px solid rgba(239, 68, 68, 0.15)',
+          color: 'var(--color-danger)',
+          fontSize: 'var(--text-xs)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '6px',
+        }}>
+          <span>{uploadError}</span>
+          <button
+            onClick={() => setUploadError(null)}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-danger)', padding: '0 4px' }}
+          >✕</button>
+        </div>
+      )}
+      {uploadSuccess && (
+        <div style={{
+          padding: '8px 16px',
+          background: 'rgba(34, 197, 94, 0.08)',
+          borderBottom: '1px solid rgba(34, 197, 94, 0.15)',
+          color: 'var(--color-success)',
+          fontSize: 'var(--text-xs)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '6px',
+        }}>
+          <CheckCircle size={12} />
+          <span>字幕上传成功！</span>
+        </div>
+      )}
 
       {/* 内容区域 */}
       <div className="subtitle-content" ref={scrollContainerRef}>
@@ -189,9 +383,33 @@ export default function SubtitlePanel({ subtitles, currentTime, onSeek, autoScro
               ))}
             </div>
           ) : (
-            <div className="subtitle-empty">
-              <FileText size={32} />
-              <p>此视频暂无可解析的字幕内容</p>
+            /* 无字幕时的上传入口 */
+            <div
+              className="subtitle-empty"
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onDrop={handleDrop}
+              style={{
+                border: isDragOver ? '2px dashed var(--color-accent)' : '2px dashed transparent',
+                borderRadius: '12px',
+                transition: 'all 0.2s ease',
+                background: isDragOver ? 'rgba(99, 102, 241, 0.04)' : 'transparent',
+                cursor: documentId ? 'pointer' : 'default',
+              }}
+              onClick={() => documentId && srtFileInputRef.current?.click()}
+            >
+              <Upload size={32} style={{ color: 'var(--color-text-tertiary)', marginBottom: '8px' }} />
+              <p style={{ fontWeight: '500', marginBottom: '4px' }}>此视频暂无可解析的字幕内容</p>
+              {documentId && (
+                <>
+                  <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-tertiary)' }}>
+                    拖拽 SRT 字幕文件到此处，或点击上传
+                  </p>
+                  <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-tertiary)', marginTop: '4px' }}>
+                    支持通过 ASR 工具提取的标准 SRT 格式字幕
+                  </p>
+                </>
+              )}
             </div>
           )
         ) : (

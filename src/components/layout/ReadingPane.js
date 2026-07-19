@@ -1083,9 +1083,15 @@ export default function ReadingPane() {
       </div> {/* Close article-sticky-header */}
 
       {/* 可滚动的正文区域 */}
-      <div style={{ flex: 1, overflowY: 'auto', position: 'relative', minWidth: 0 }} className="article-scroll-container" id="article-scroll-container">
-      {/* 阅读内容 */}
-      <div className="reading-content">
+      <div style={{ flex: 1, overflowY: selectedDoc?.category === 'video' ? 'hidden' : 'auto', position: 'relative', minWidth: 0 }} className="article-scroll-container" id="article-scroll-container">
+
+      {/* 视频类型：直接渲染视频面板，不包裹 reading-content/article 避免滚动问题 */}
+      {selectedDoc?.category === 'video' && !(isContentLoading || isLoadingHighlights) ? (
+        <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+          <VideoReadingPane selectedDoc={selectedDoc} />
+        </div>
+      ) : (
+        <div className="reading-content">
         <article
           className="reading-article"
           style={{
@@ -1163,10 +1169,7 @@ export default function ReadingPane() {
               )}
 
               {/* 文章正文 */}
-              {selectedDoc.category === 'video' ? (
-                /* 视频类型：使用视频阅读面板 */
-                <VideoReadingPane selectedDoc={selectedDoc} />
-              ) : selectedDoc.html_content !== null ? (
+              {selectedDoc.html_content !== null ? (
                 selectedDoc.html_content ? (
                   <div
                     ref={articleRef}
@@ -1217,7 +1220,8 @@ export default function ReadingPane() {
             </>
           )}
         </article>
-      </div> {/* Close reading-content */}
+        </div>
+      )}
       </div> {/* Close article-scroll-container */}
       </div> {/* Close left main flex area */}
 

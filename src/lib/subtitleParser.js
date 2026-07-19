@@ -192,3 +192,94 @@ export function formatSubtitlesForAI(segments) {
     .map(seg => `[${seg.timeStr}] ${seg.text}`)
     .join('\n\n');
 }
+
+/**
+ * 解析标准 SRT 字幕文件内容
+ * SRT 格式示例:
+ * ```
+ * 1
+ * 00:00:01,000 --> 00:00:04,000
+ * Hello World
+ *
+ * 2
+ * 00:00:05,000 --> 00:00:08,000
+ * This is a subtitle
+ * ```
+ * 
+ * @param {string} srtContent - 原始 SRT 文件文本
+ * @returns {Array<{time: number, timeStr: string, text: string}>} 字幕段落数组
+ */
+export function parseSRT(srtContent) {
+  if (!srtContent || typeof srtContent !== 'string') return [];
+
+  const segments = [];
+
+  // 按空行分割各个字幕块
+  const blocks = srtContent
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n')
+    .trim()
+    .split(/\n\n+/);
+
+  for (const block of blocks) {
+    const lines = block.trim().split('\n');
+    if (lines.length < 2) continue;
+
+    // 查找时间轴行 (包含 -->)
+    let timeLineIndex = -1;
+    for (let i = 0; i < lines.length; i++) {
+      if (lines[i].includes('-->')) {
+        timeLineIndex = i;
+        break;
+      }
+    }
+
+    if (timeLineIndex < 0) continue;
+
+    // 解析开始时间 "00:01:23,456 --> 00:01:27,890"
+    const timeParts = lines[timeLineIndex].split('-->');
+    if (timeParts.length < 2) continue;
+
+    const startTimeStr = timeParts[0].trim();
+    const startSeconds = parseSRTTimestamp(startTimeStr);
+
+    // 提取文本内容 (时间轴行之后的所有行)
+    const textLines = lines.slice(timeLineIndex + 1);
+    const text = textLines
+      .map(l => l.trim())
+      .filter(l => l.length > 0)
+      .join(' ');
+
+    if (text) {
+      segments.push({
+        time: startSeconds,
+        timeStr: formatTimestamp(startSeconds),
+        text: text,
+      });
+    }
+  }
+
+  return segments;
+}
+
+/**
+ * 解析 SRT 时间戳为秒数
+ * 支持格式: "00:01:23,456" 或 "00:01:23.456"
+ * @param {string} timeStr - SRT 时间戳
+ * @returns {number} 秒数
+ */
+function parseSRTTimestamp(timeStr) {
+  if (!timeStr) return 0;
+  // 将逗号替换为点号以统一处理毫秒
+  const normalized = timeStr.replace(',', '.');
+  const match = normalized.match(/(\d{1,2}):(\d{2}):(\d{2})(?:\.(\d+))?/);
+  if (!match) return 0;
+
+  const hours = parseInt(match[1], 10);
+  const minutes = parseInt(match[2], 10);
+  const seconds = parseInt(match[3], 10);
+  const ms = match[4] ? parseInt(match[4].padEnd(3, '0').substring(0, 3), 10) : 0;
+
+  return hours * 3600 + minutes * 60 + seconds + ms / 1000;
+}
+
