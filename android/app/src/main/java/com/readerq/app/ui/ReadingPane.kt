@@ -302,19 +302,33 @@ fun ReadingPane(
             LaunchedEffect(currentDoc.id) {
                 readingProgress = currentDoc.reading_progress
                 maxProgressRef.value = currentDoc.reading_progress
-                // 如果是视频文档，加载字幕
+                // 如果是视频文档，加载字幕与博客
                 if (currentDoc.category == "video") {
                     viewModel.loadSubtitles(currentDoc.id)
+                    viewModel.loadBlog(currentDoc.id)
                 }
             }
+
+            val blogContent by viewModel.blogContent.collectAsState()
 
             val articleContent = @Composable { articleModifier: Modifier ->
                 Box(
                     modifier = articleModifier
                 ) {
+                val contentHtml = if (currentDoc.category == "video") {
+                    val markdown = blogContent
+                    if (!markdown.isNullOrBlank()) {
+                        markdownToHtml(markdown)
+                    } else {
+                        "<div style='display:flex;flex-direction:column;align-items:center;justify-content:center;height:80vh;color:#888;font-style:italic;'><p>暂未生成博客文章。请在桌面端生成博客后，开启 OSS 跨设备同步。</p></div>"
+                    }
+                } else {
+                    currentDoc.html_content ?: "加载中..."
+                }
+
                 // Render WebView content
                 HtmlContentViewer(
-                    html = currentDoc.html_content ?: "加载中...",
+                    html = contentHtml,
                     highlights = highlights,
                     theme = theme,
                     fontFamily = fontFamily,
@@ -333,7 +347,8 @@ fun ReadingPane(
                         maxProgressRef.value = max
                         readingProgress = max
                     },
-                    initialProgress = currentDoc.reading_progress
+                    initialProgress = currentDoc.reading_progress,
+                    isVideo = currentDoc.category == "video"
                 )
 
                 // 阅读进度条 - 覆盖在 WebView 顶部
@@ -899,7 +914,8 @@ fun HtmlContentViewer(
     viewModel: MainViewModel,
     onTextSelected: (String, List<HighlightImage>) -> Unit,
     onProgressChanged: (Float) -> Unit = {},
-    initialProgress: Float = 0f
+    initialProgress: Float = 0f,
+    isVideo: Boolean = false
 ) {
     // 防抖定时器用于延迟持久化进度
     val progressSaveJob = remember { mutableStateOf<Job?>(null) }
@@ -915,6 +931,9 @@ fun HtmlContentViewer(
     
     LaunchedEffect(viewModel) {
         viewModel.scrollToHighlightEvent.collect { hlId ->
+            if (isVideo) {
+                kotlinx.coroutines.delay(200)
+            }
             webViewRef.value?.evaluateJavascript(
                 "if (typeof window.scrollToHighlight === 'function') { window.scrollToHighlight('$hlId'); }",
                 null
@@ -1543,6 +1562,39 @@ fun DocumentInfoView(doc: DocumentEntity) {
     }
 }
 
+private fun markdownToHtml(markdown: String): String {
+    var html = markdown
+    val lines = html.split("\n")
+    val sb = StringBuilder()
+    var inList = false
+    for (line in lines) {
+        val trimmed = line.trim()
+        if (trimmed.startsWith("#")) {
+            if (inList) { sb.append("</ul>\n"); inList = false }
+            val level = trimmed.takeWhile { it == '#' }.length
+            val text = trimmed.drop(level).trim()
+            sb.append("<h$level>$text</h$level>\n")
+        } else if (trimmed.startsWith("-") || trimmed.startsWith("*")) {
+            if (!inList) { sb.append("</ul>\n"); inList = true }
+            val text = trimmed.drop(1).trim()
+            sb.append("<li>$text</li>\n")
+        } else if (trimmed.isEmpty()) {
+            if (inList) { sb.append("</ul>\n"); inList = false }
+            sb.append("<br/>\n")
+        } else {
+            if (inList) { sb.append("</ul>\n"); inList = false }
+            sb.append("<p>$trimmed</p>\n")
+        }
+    }
+    if (inList) sb.append("</ul>\n")
+    html = sb.toString()
+    
+    html = html.replace(Regex("\\*\\*(.*?)\\*\\*"), "<strong>$1</strong>")
+    html = html.replace(Regex("\\*(.*?)\\*"), "<em>$1</em>")
+    html = html.replace(Regex("\\[(.*?)\\]\\((.*?)\\)"), "<a href=\"$2\">$1</a>")
+    return html
+}
+
 @Composable
 fun MetadataRow(label: String, value: String) {
     Column(modifier = Modifier.fillMaxWidth()) {
@@ -1567,9 +1619,16 @@ fun VideoReadingContent(
     val subtitles by viewModel.subtitles.collectAsState()
     val subtitleLoading by viewModel.subtitleLoading.collectAsState()
     val context = LocalContext.current
-    var selectedTab by remember { mutableStateOf(if (subtitles.isNotEmpty()) "字幕" else "原文") }
+    var selectedTab by remember { mutableStateOf(if (subtitles.isNotEmpty()) "字幕" else "博客") }
     var webView by remember { mutableStateOf<WebView?>(null) }
     var currentTime by remember { mutableStateOf(0f) }
+
+    // 监听高亮卡片点击跳转事件，如果是视频文档，自动切换到 "博客" Tab
+    LaunchedEffect(viewModel) {
+        viewModel.scrollToHighlightEvent.collect {
+            selectedTab = "博客"
+        }
+    }
 
     // 从 source_url 提取 YouTube 视频 ID
     val videoId = remember(doc.source_url, doc.url) {
@@ -1700,17 +1759,17 @@ fun VideoReadingContent(
                 text = { Text("字幕", fontWeight = if (selectedTab == "字幕") FontWeight.Bold else FontWeight.Normal) }
             )
             androidx.compose.material3.Tab(
-                selected = selectedTab == "原文",
-                onClick = { selectedTab = "原文" },
-                text = { Text("原文", fontWeight = if (selectedTab == "原文") FontWeight.Bold else FontWeight.Normal) }
+                selected = selectedTab == "博客",
+                onClick = { selectedTab = "博客" },
+                text = { Text("博客", fontWeight = if (selectedTab == "博客") FontWeight.Bold else FontWeight.Normal) }
             )
         }
 
         // 面板区域
         Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
-            // 原文
+            // 博客
             articleContent(
-                if (selectedTab == "原文") Modifier.fillMaxSize() else Modifier.height(0.dp)
+                if (selectedTab == "博客") Modifier.fillMaxSize() else Modifier.height(0.dp)
             )
             
             // 字幕

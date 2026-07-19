@@ -85,6 +85,11 @@ export default function ReadingPane() {
   const [sidebarEditNote, setSidebarEditNote] = useState('');
   const [sidebarEditTags, setSidebarEditTags] = useState([]);
   const [shareCopied, setShareCopied] = useState(false);
+  const [videoTabMode, setVideoTabMode] = useState('subtitle'); // 'subtitle' | 'blog'
+
+  useEffect(() => {
+    setVideoTabMode('subtitle');
+  }, [selectedDoc?.id]);
 
   // 阅读进度
   const [readingProgress, setReadingProgress] = useState(0);
@@ -309,39 +314,58 @@ export default function ReadingPane() {
   // 渲染高亮
   useEffect(() => {
     let timerId = null;
-    if (articleRef.current && !isContentLoading && !isLoadingHighlights && selectedDoc?.html_content) {
-      const scrollContainer = document.getElementById('article-scroll-container');
-      const shouldPreserveScroll = lastRenderedDocIdRef.current === selectedDoc?.id;
-      const prevScrollTop = (shouldPreserveScroll && scrollContainer) ? scrollContainer.scrollTop : 0;
-      
-      lastRenderedDocIdRef.current = selectedDoc?.id;
+    const articleContainer = selectedDoc?.category === 'video'
+      ? document.querySelector('.blog-article')
+      : articleRef.current;
 
-      // 必须先重置 DOM 避免多次添加 <mark> 导致文本 offset 计算错误
-      articleRef.current.innerHTML = sanitizeArticleHtml(selectedDoc.html_content);
-      timerId = setTimeout(() => {
-        if (!articleRef.current) return;
-        restoreHighlights(articleRef.current, highlights, (hl, e) => {
-          const rect = e.target.getBoundingClientRect();
-          setEditingHighlight({ ...hl, rect });
-        });
-        if (shouldPreserveScroll && scrollContainer) {
-          scrollContainer.scrollTop = prevScrollTop;
-        } else if (!shouldPreserveScroll && scrollContainer && selectedDoc?.reading_progress > 0) {
-          // 首次打开文档：恢复到保存的阅读进度位置
-          requestAnimationFrame(() => {
-            const scrollable = scrollContainer.scrollHeight - scrollContainer.clientHeight;
-            if (scrollable > 0) {
-              scrollContainer.scrollTop = scrollable * selectedDoc.reading_progress;
-            }
-          });
+    if (articleContainer && !isContentLoading && !isLoadingHighlights) {
+      if (selectedDoc?.category === 'video') {
+        // 视频文章生成的博客：仅在 Tab 激活为 'blog' 且博客内容就绪时渲染高亮
+        if (videoTabMode === 'blog' && selectedDoc?.blog_content) {
+          timerId = setTimeout(() => {
+            const activeContainer = document.querySelector('.blog-article') || articleContainer;
+            if (!activeContainer) return;
+            restoreHighlights(activeContainer, highlights, (hl, e) => {
+              const rect = e.target.getBoundingClientRect();
+              setEditingHighlight({ ...hl, rect });
+            });
+          }, 100);
         }
-      }, 50);
+      } else if (selectedDoc?.html_content) {
+        // 普通文章高亮渲染
+        const scrollContainer = document.getElementById('article-scroll-container');
+        const shouldPreserveScroll = lastRenderedDocIdRef.current === selectedDoc?.id;
+        const prevScrollTop = (shouldPreserveScroll && scrollContainer) ? scrollContainer.scrollTop : 0;
+        
+        lastRenderedDocIdRef.current = selectedDoc?.id;
+
+        // 必须先重置 DOM 避免多次添加 <mark> 导致文本 offset 计算错误
+        articleContainer.innerHTML = sanitizeArticleHtml(selectedDoc.html_content);
+        timerId = setTimeout(() => {
+          if (!articleContainer) return;
+          restoreHighlights(articleContainer, highlights, (hl, e) => {
+            const rect = e.target.getBoundingClientRect();
+            setEditingHighlight({ ...hl, rect });
+          });
+          if (shouldPreserveScroll && scrollContainer) {
+            scrollContainer.scrollTop = prevScrollTop;
+          } else if (!shouldPreserveScroll && scrollContainer && selectedDoc?.reading_progress > 0) {
+            // 首次打开文档：恢复到保存的阅读进度位置
+            requestAnimationFrame(() => {
+              const scrollable = scrollContainer.scrollHeight - scrollContainer.clientHeight;
+              if (scrollable > 0) {
+                scrollContainer.scrollTop = scrollable * selectedDoc.reading_progress;
+              }
+            });
+          }
+        }, 50);
+      }
     }
     return () => {
       if (timerId !== null) clearTimeout(timerId);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedDoc?.id, isContentLoading, isLoadingHighlights, highlights]);
+  }, [selectedDoc?.id, isContentLoading, isLoadingHighlights, highlights, selectedDoc?.category, selectedDoc?.blog_content, videoTabMode]);
 
   // 当正文中选中或点击某个高亮段落时，同步展开并定位右侧边栏的对应项目
   useEffect(() => {
@@ -460,7 +484,12 @@ export default function ReadingPane() {
   };
 
   // 监听选中文本 & 高亮点击（事件委托）
+  // 监听选中文本 & 高亮点击（事件委托）
   const handleMouseUp = (e) => {
+    const articleContainer = selectedDoc?.category === 'video'
+      ? document.querySelector('.blog-article')
+      : articleRef.current;
+
     // 检测是否点击了已有的高亮 <mark> 元素（事件委托模式）
     const clickedMark = e.target.closest('mark[data-highlight-id]');
     
@@ -468,7 +497,7 @@ export default function ReadingPane() {
     let isMarkClick = false;
     const sel = window.getSelection();
     
-    if (clickedMark && articleRef.current?.contains(clickedMark)) {
+    if (clickedMark && articleContainer?.contains(clickedMark)) {
       if (!sel || sel.isCollapsed) {
         isMarkClick = true;
       } else {
@@ -492,12 +521,12 @@ export default function ReadingPane() {
     }
 
     // 非高亮点击：处理文本选区（新建高亮）
-    if (!sel || sel.isCollapsed || !articleRef.current) {
+    if (!sel || sel.isCollapsed || !articleContainer) {
       if (selection) setSelection(null);
       return;
     }
 
-    if (!articleRef.current.contains(sel.anchorNode)) return;
+    if (!articleContainer.contains(sel.anchorNode)) return;
 
     const range = sel.getRangeAt(0);
     const rect = range.getBoundingClientRect();
@@ -505,8 +534,8 @@ export default function ReadingPane() {
     const images = extractImagesFromRange(range);
 
     if (text || images.length > 0) {
-      let location_start = getTextOffset(articleRef.current, range.startContainer, range.startOffset);
-      let location_end = getTextOffset(articleRef.current, range.endContainer, range.endOffset);
+      let location_start = getTextOffset(articleContainer, range.startContainer, range.startOffset);
+      let location_end = getTextOffset(articleContainer, range.endContainer, range.endOffset);
       
       // 当选区起止点落在非文本节点（如 <img> 的父元素）上时，
       // getTextOffset 无法匹配到文本节点会返回 -1。
@@ -523,7 +552,7 @@ export default function ReadingPane() {
               let n;
               while ((n = walker.nextNode())) lastText = n;
               if (lastText) {
-                location_start = getTextOffset(articleRef.current, lastText, lastText.textContent.length);
+                location_start = getTextOffset(articleContainer, lastText, lastText.textContent.length);
                 break;
               }
             }
@@ -535,7 +564,7 @@ export default function ReadingPane() {
                 const walker = document.createTreeWalker(child, NodeFilter.SHOW_TEXT, null, false);
                 const firstText = walker.nextNode();
                 if (firstText) {
-                  location_start = getTextOffset(articleRef.current, firstText, 0);
+                  location_start = getTextOffset(articleContainer, firstText, 0);
                   break;
                 }
               }
@@ -555,7 +584,7 @@ export default function ReadingPane() {
               const walker = document.createTreeWalker(child, NodeFilter.SHOW_TEXT, null, false);
               const firstText = walker.nextNode();
               if (firstText) {
-                location_end = getTextOffset(articleRef.current, firstText, 0);
+                location_end = getTextOffset(articleContainer, firstText, 0);
                 break;
               }
             }
@@ -569,7 +598,7 @@ export default function ReadingPane() {
                 let n;
                 while ((n = walker.nextNode())) lastText = n;
                 if (lastText) {
-                  location_end = getTextOffset(articleRef.current, lastText, lastText.textContent.length);
+                  location_end = getTextOffset(articleContainer, lastText, lastText.textContent.length);
                   break;
                 }
               }
@@ -1088,7 +1117,13 @@ export default function ReadingPane() {
       {/* 视频类型：直接渲染视频面板，不包裹 reading-content/article 避免滚动问题 */}
       {selectedDoc?.category === 'video' && !(isContentLoading || isLoadingHighlights) ? (
         <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
-          <VideoReadingPane selectedDoc={selectedDoc} />
+          <VideoReadingPane 
+            selectedDoc={selectedDoc} 
+            articleRef={articleRef} 
+            updateDocumentLocally={updateDocumentLocally}
+            videoTabMode={videoTabMode}
+            onVideoTabChange={setVideoTabMode}
+          />
         </div>
       ) : (
         <div className="reading-content">
@@ -1386,10 +1421,22 @@ export default function ReadingPane() {
                       }}
                       onClick={() => {
                         // 滚动到正文中的高亮位置
-                        const mark = articleRef.current?.querySelector(`mark[data-highlight-id="${hl.id}"]`);
-                        const scrollContainer = document.getElementById('article-scroll-container');
-                        if (mark && scrollContainer) {
-                          scrollToElement(scrollContainer, mark);
+                        const performScroll = () => {
+                          const mark = articleRef.current?.querySelector(`mark[data-highlight-id="${hl.id}"]`);
+                          const scrollContainer = selectedDoc?.category === 'video'
+                            ? document.querySelector('.subtitle-content')
+                            : document.getElementById('article-scroll-container');
+                          if (mark && scrollContainer) {
+                            scrollToElement(scrollContainer, mark);
+                          }
+                        };
+
+                        if (selectedDoc?.category === 'video' && videoTabMode !== 'blog') {
+                          setVideoTabMode('blog');
+                          // 延迟 200ms 执行以确保 DOM 和高亮渲染完成
+                          setTimeout(performScroll, 200);
+                        } else {
+                          performScroll();
                         }
                         
                         if (isEditing) return;

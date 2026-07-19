@@ -161,4 +161,85 @@ class OssClient(
             // 忽略删除失败（可能文件不存在）
         }
     }
+
+    private fun getBlogObjectKey(documentId: String): String {
+        return "${pathPrefix.trim().removeSuffix("/")}/blogs/$documentId.md"
+    }
+
+    /**
+     * 上传博客 Markdown 到 OSS（跨客户端同步）
+     */
+    suspend fun uploadBlog(documentId: String, blogContent: String): String {
+        val objectKey = getBlogObjectKey(documentId)
+        val contentType = "text/markdown; charset=utf-8"
+        val fileBytes = blogContent.toByteArray(Charsets.UTF_8)
+
+        val sdf = SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss z", Locale.US)
+        sdf.timeZone = TimeZone.getTimeZone("GMT")
+        val dateStr = sdf.format(Date())
+
+        val resource = "/$bucket/$objectKey"
+        val signature = generateSignature("PUT", contentType, dateStr, resource)
+        val authHeader = "OSS $accessKeyId:$signature"
+
+        val endpoint = "https://$bucket.$region.aliyuncs.com/$objectKey"
+        val response = client.put(endpoint) {
+            header("Authorization", authHeader)
+            header("Content-Type", contentType)
+            header("Date", dateStr)
+            setBody(fileBytes)
+        }
+
+        if (response.status.isSuccess()) {
+            return buildPublicUrl(objectKey)
+        } else {
+            val errText = response.bodyAsText()
+            throw Exception("OSS 博客上传失败 (${response.status.value}): $errText")
+        }
+    }
+
+    /**
+     * 从 OSS 下载博客 Markdown 文件
+     */
+    suspend fun downloadBlog(documentId: String): String? {
+        val objectKey = getBlogObjectKey(documentId)
+        val ossUrl = buildPublicUrl(objectKey)
+
+        return try {
+            val response = client.get(ossUrl)
+            if (response.status.isSuccess()) {
+                val text = response.bodyAsText()
+                if (text.isBlank()) null else text
+            } else {
+                null
+            }
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    /**
+     * 从 OSS 删除博客文件
+     */
+    suspend fun deleteBlog(documentId: String) {
+        val objectKey = getBlogObjectKey(documentId)
+
+        val sdf = SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss z", Locale.US)
+        sdf.timeZone = TimeZone.getTimeZone("GMT")
+        val dateStr = sdf.format(Date())
+
+        val resource = "/$bucket/$objectKey"
+        val signature = generateSignature("DELETE", "", dateStr, resource)
+        val authHeader = "OSS $accessKeyId:$signature"
+
+        val endpoint = "https://$bucket.$region.aliyuncs.com/$objectKey"
+        try {
+            client.delete(endpoint) {
+                header("Authorization", authHeader)
+                header("Date", dateStr)
+            }
+        } catch (e: Exception) {
+            // 忽略删除失败
+        }
+    }
 }

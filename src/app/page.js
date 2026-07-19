@@ -25,21 +25,21 @@ export default function HomePage() {
   } = useApp();
   const { toggleTheme } = useTheme();
 
-  // 侧边栏与列表栏的自定义宽度状态 (以 px 为单位，使用惰性初始化避免级联渲染)
-  const [sidebarWidth, setSidebarWidth] = useState(() => {
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('readerq_sidebar_width');
-      return saved ? parseInt(saved, 10) : 240;
+  // 侧边栏与列表栏的自定义宽度状态 (以 px 为单位)
+  const [sidebarWidth, setSidebarWidth] = useState(240);
+  const [docListWidth, setDocListWidth] = useState(380);
+
+  // 在客户端组件挂载后加载已保存的宽度，避免 Hydration 错误
+  useEffect(() => {
+    const savedSidebar = localStorage.getItem('readerq_sidebar_width');
+    if (savedSidebar) {
+      setSidebarWidth(parseInt(savedSidebar, 10));
     }
-    return 240;
-  });
-  const [docListWidth, setDocListWidth] = useState(() => {
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('readerq_doclist_width');
-      return saved ? parseInt(saved, 10) : 380;
+    const savedDocList = localStorage.getItem('readerq_doclist_width');
+    if (savedDocList) {
+      setDocListWidth(parseInt(savedDocList, 10));
     }
-    return 380;
-  });
+  }, []);
   const [isResizingSidebar, setIsResizingSidebar] = useState(false);
   const [isResizingDocList, setIsResizingDocList] = useState(false);
 

@@ -127,6 +127,15 @@ function initSchema(db) {
   } catch (e) {
     console.error('Migration error (highlights columns):', e);
   }
+
+  try {
+    const tableInfo = db.prepare('PRAGMA table_info(documents)').all();
+    if (!tableInfo.find(c => c.name === 'blog_content')) {
+      db.prepare("ALTER TABLE documents ADD COLUMN blog_content TEXT").run();
+    }
+  } catch (e) {
+    console.error('Migration error (documents columns):', e);
+  }
 }
 
 /**
@@ -152,13 +161,13 @@ export function upsertDocument(doc) {
      site_name, word_count, reading_time, created_at, updated_at,
      published_date, summary, notes, image_url, parent_id,
      reading_progress, first_opened_at, last_opened_at, saved_at,
-     last_moved_at, html_content, tags_json, synced_at)
+     last_moved_at, html_content, blog_content, tags_json, synced_at)
     VALUES
     (@id, @url, @source_url, @title, @author, @source, @category, @location,
      @site_name, @word_count, @reading_time, @created_at, @updated_at,
      @published_date, @summary, @notes, @image_url, @parent_id,
      @reading_progress, @first_opened_at, @last_opened_at, @saved_at,
-     @last_moved_at, @html_content, @tags_json, @synced_at)
+     @last_moved_at, @html_content, @blog_content, @tags_json, @synced_at)
     ON CONFLICT(id) DO UPDATE SET
       url = excluded.url,
       source_url = excluded.source_url,
@@ -183,6 +192,7 @@ export function upsertDocument(doc) {
       saved_at = excluded.saved_at,
       last_moved_at = excluded.last_moved_at,
       html_content = COALESCE(excluded.html_content, documents.html_content),
+      blog_content = COALESCE(excluded.blog_content, documents.blog_content),
       tags_json = excluded.tags_json,
       synced_at = excluded.synced_at
   `);
@@ -212,6 +222,7 @@ export function upsertDocument(doc) {
     saved_at: doc.saved_at || null,
     last_moved_at: doc.last_moved_at || null,
     html_content: doc.html_content !== undefined ? doc.html_content : null,
+    blog_content: doc.blog_content !== undefined ? doc.blog_content : null,
     tags_json: JSON.stringify(doc.tags || {}),
     synced_at: new Date().toISOString(),
   });

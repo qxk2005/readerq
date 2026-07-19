@@ -15,7 +15,7 @@ import { Maximize2, Minimize2, Captions, LogIn } from 'lucide-react';
  * 
  * @param {Object} selectedDoc - 当前选中的文档对象
  */
-export default function VideoReadingPane({ selectedDoc }) {
+export default function VideoReadingPane({ selectedDoc, articleRef, updateDocumentLocally, videoTabMode, onVideoTabChange }) {
   const { videoSettings } = useTheme();
   const playerRef = useRef(null);
   const [currentTime, setCurrentTime] = useState(0);
@@ -217,6 +217,13 @@ export default function VideoReadingPane({ selectedDoc }) {
         isUsingUploadedSubtitles={isUsingUploadedSubtitles}
         onSubtitleUploaded={handleSubtitleUploaded}
         onSubtitleDeleted={handleSubtitleDeleted}
+        articleRef={articleRef}
+        selectedDoc={selectedDoc}
+        onBlogUpdated={(content) => {
+          updateDocumentLocally?.(selectedDoc.id, { blog_content: content });
+        }}
+        mode={videoTabMode}
+        onModeChange={onVideoTabChange}
       />
       </div>
     </div>

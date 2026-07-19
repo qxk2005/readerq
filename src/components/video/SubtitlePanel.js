@@ -23,9 +23,10 @@ import { Loader2, FileText, BookOpen, RefreshCw, Sparkles, Upload, Trash2, Check
  */
 export default function SubtitlePanel({ 
   subtitles, currentTime, onSeek, autoScroll = true, title, blogPrompt,
-  documentId, isUsingUploadedSubtitles, onSubtitleUploaded, onSubtitleDeleted
+  documentId, isUsingUploadedSubtitles, onSubtitleUploaded, onSubtitleDeleted,
+  articleRef, selectedDoc, onBlogUpdated,
+  mode, onModeChange
 }) {
-  const [mode, setMode] = useState('subtitle'); // 'subtitle' | 'blog'
   const [blogContent, setBlogContent] = useState('');
   const [isBlogLoading, setIsBlogLoading] = useState(false);
   const [blogError, setBlogError] = useState(null);
@@ -96,6 +97,56 @@ export default function SubtitlePanel({
     }
   }, [activeIndex, mode, autoScroll]);
 
+  // 监听文档切换，自动加载博客内容
+  useEffect(() => {
+    if (!documentId) return;
+    
+    if (selectedDoc?.blog_content) {
+      setBlogContent(selectedDoc.blog_content);
+      return;
+    }
+
+    setIsBlogLoading(true);
+    setBlogError(null);
+    setBlogContent('');
+
+    fetch(`/api/documents/${documentId}/blog`)
+      .then(res => res.json())
+      .then(data => {
+        if (data.exists && data.blogContent) {
+          setBlogContent(data.blogContent);
+          onBlogUpdated?.(data.blogContent);
+        } else {
+          setBlogContent('');
+        }
+      })
+      .catch(err => {
+        console.error('加载博客失败:', err);
+        setBlogError('加载博客失败，请重试');
+      })
+      .finally(() => {
+        setIsBlogLoading(false);
+      });
+  }, [documentId, selectedDoc?.blog_content, onBlogUpdated]);
+
+  // 新增保存博客的辅助函数
+  const saveBlogToServer = async (id, content) => {
+    try {
+      const res = await fetch(`/api/documents/${id}/blog`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ blogContent: content }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || '同步博客失败');
+      }
+      onBlogUpdated?.(content);
+    } catch (err) {
+      console.error('[博客同步] 失败:', err);
+    }
+  };
+
   // 生成博客文章
   const generateBlog = useCallback(async () => {
     if (!subtitles || subtitles.length === 0) return;
@@ -133,13 +184,18 @@ export default function SubtitlePanel({
         accumulated += chunk;
         setBlogContent(accumulated);
       }
+
+      // 保存到本地及云端 OSS 同步
+      if (accumulated && documentId) {
+        await saveBlogToServer(documentId, accumulated);
+      }
     } catch (err) {
       console.error('博客转译失败:', err);
       setBlogError(err.message);
     } finally {
       setIsBlogLoading(false);
     }
-  }, [subtitles, title, blogPrompt]);
+  }, [subtitles, title, blogPrompt, documentId]);
 
   // 上传 SRT 字幕文件
   const handleSrtUpload = useCallback(async (file) => {
@@ -240,14 +296,14 @@ export default function SubtitlePanel({
         <div className="subtitle-toolbar-tabs">
           <button
             className={`subtitle-tab-btn ${mode === 'subtitle' ? 'active' : ''}`}
-            onClick={() => setMode('subtitle')}
+            onClick={() => onModeChange?.('subtitle')}
           >
             <FileText size={14} />
             字幕正文
           </button>
           <button
             className={`subtitle-tab-btn ${mode === 'blog' ? 'active' : ''}`}
-            onClick={() => setMode('blog')}
+            onClick={() => onModeChange?.('blog')}
           >
             <BookOpen size={14} />
             博客文章
@@ -426,7 +482,7 @@ export default function SubtitlePanel({
               </div>
             )}
             {blogContent ? (
-              <div className="blog-article reading-article-body">
+              <div className="blog-article reading-article-body" ref={articleRef}>
                 <ReactMarkdown remarkPlugins={[remarkGfm]}>
                   {blogContent}
                 </ReactMarkdown>

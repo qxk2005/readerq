@@ -652,6 +652,84 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    private val _blogContent = MutableStateFlow<String?>(null)
+    val blogContent: StateFlow<String?> = _blogContent.asStateFlow()
+
+    private val _blogLoading = MutableStateFlow(false)
+    val blogLoading: StateFlow<Boolean> = _blogLoading.asStateFlow()
+
+    fun loadBlog(documentId: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            _blogLoading.value = true
+            try {
+                // 1. 尝试从本地 settings 加载
+                val localBlog = settingDao.getSetting("blog_$documentId")
+                if (!localBlog.isNullOrBlank()) {
+                    _blogContent.value = localBlog
+                    _blogLoading.value = false
+                    return@launch
+                }
+
+                // 2. 尝试从 OSS 下载
+                val region = _ossRegion.value
+                val bucket = _ossBucket.value
+                val akId = _ossAccessKeyId.value
+                val akSecret = _ossAccessKeySecret.value
+                if (region.isNotBlank() && bucket.isNotBlank() && akId.isNotBlank() && akSecret.isNotBlank()) {
+                    val oss = com.readerq.app.api.OssClient(
+                        region, bucket, akId, akSecret,
+                        _ossCustomDomain.value, _ossPathPrefix.value
+                    )
+                    val remoteBlog = oss.downloadBlog(documentId)
+                    if (!remoteBlog.isNullOrBlank()) {
+                        // 缓存到本地
+                        settingDao.setSetting(SettingEntity("blog_$documentId", remoteBlog))
+                        _blogContent.value = remoteBlog
+                        _blogLoading.value = false
+                        return@launch
+                    }
+                }
+
+                _blogContent.value = null
+            } catch (e: Exception) {
+                _blogContent.value = null
+            } finally {
+                _blogLoading.value = false
+            }
+        }
+    }
+
+    fun saveBlog(documentId: String, content: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            _blogLoading.value = true
+            try {
+                settingDao.setSetting(SettingEntity("blog_$documentId", content))
+                _blogContent.value = content
+
+                // 同步到 OSS
+                val region = _ossRegion.value
+                val bucket = _ossBucket.value
+                val akId = _ossAccessKeyId.value
+                val akSecret = _ossAccessKeySecret.value
+                if (region.isNotBlank() && bucket.isNotBlank() && akId.isNotBlank() && akSecret.isNotBlank()) {
+                    try {
+                        val oss = com.readerq.app.api.OssClient(
+                            region, bucket, akId, akSecret,
+                            _ossCustomDomain.value, _ossPathPrefix.value
+                        )
+                        oss.uploadBlog(documentId, content)
+                    } catch (e: Exception) {
+                        // 忽略 OSS 同步失败
+                    }
+                }
+            } catch (e: Exception) {
+                // 忽略异常
+            } finally {
+                _blogLoading.value = false
+            }
+        }
+    }
+
     fun uploadSubtitle(documentId: String, srtContent: String) {
         viewModelScope.launch(Dispatchers.IO) {
             _subtitleLoading.value = true

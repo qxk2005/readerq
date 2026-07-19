@@ -496,3 +496,161 @@ export async function deleteSubtitleFromOss(documentId, ossConfig = null) {
     return { success: false, error: `字幕删除 OSS 异常: ${err.message}` };
   }
 }
+
+/**
+ * 构建博客文件在 OSS 上的确定性路径
+ * @param {string} pathPrefix - OSS 路径前缀
+ * @param {string} documentId - 文档 ID
+ * @returns {string} OSS 对象键
+ */
+function getBlogObjectKey(pathPrefix, documentId) {
+  return `${pathPrefix}/blogs/${documentId}.md`;
+}
+
+/**
+ * 上传博客 Markdown 到 OSS（用于跨客户端同步）
+ * 
+ * @param {string} documentId - 文档 ID
+ * @param {string} blogContent - 博客正文（Markdown 格式）
+ * @param {object} [ossConfig] - 可选 of OSS 配置
+ * @returns {Promise<{success: boolean, ossUrl?: string, error?: string}>}
+ */
+export async function uploadBlogToOss(documentId, blogContent, ossConfig = null) {
+  const config = ossConfig || getOssConfig();
+  const validation = validateOssConfig(config);
+  if (!validation.valid) {
+    return { success: false, error: validation.message };
+  }
+
+  try {
+    const contentType = 'text/markdown; charset=utf-8';
+    const objectKey = getBlogObjectKey(config.pathPrefix, documentId);
+    const fileBuffer = Buffer.from(blogContent, 'utf-8');
+
+    const date = new Date().toUTCString();
+    const resource = `/${config.bucket}/${objectKey}`;
+    const authorization = signOssRequest({
+      method: 'PUT',
+      contentType,
+      date,
+      resource,
+      accessKeyId: config.accessKeyId,
+      accessKeySecret: config.accessKeySecret,
+    });
+
+    const endpoint = `https://${config.bucket}.${config.region}.aliyuncs.com/${objectKey}`;
+
+    const uploadResponse = await fetch(endpoint, {
+      method: 'PUT',
+      headers: {
+        'Authorization': authorization,
+        'Content-Type': contentType,
+        'Date': date,
+        'Content-Length': String(fileBuffer.length),
+      },
+      body: fileBuffer,
+      signal: AbortSignal.timeout(30000),
+    });
+
+    if (!uploadResponse.ok) {
+      const errorText = await uploadResponse.text();
+      return { success: false, error: `OSS 上传博客失败 (HTTP ${uploadResponse.status}): ${errorText}` };
+    }
+
+    const ossUrl = buildPublicUrl(config, objectKey);
+    return { success: true, ossUrl, objectKey };
+  } catch (err) {
+    return { success: false, error: `博客上传 OSS 异常: ${err.message}` };
+  }
+}
+
+/**
+ * 从 OSS 下载博客 Markdown 文件
+ * 
+ * @param {string} documentId - 文档 ID
+ * @param {object} [ossConfig] - 可选 of OSS 配置
+ * @returns {Promise<{success: boolean, blogContent?: string, error?: string, notFound?: boolean}>}
+ */
+export async function downloadBlogFromOss(documentId, ossConfig = null) {
+  const config = ossConfig || getOssConfig();
+  const validation = validateOssConfig(config);
+  if (!validation.valid) {
+    return { success: false, error: validation.message };
+  }
+
+  try {
+    const objectKey = getBlogObjectKey(config.pathPrefix, documentId);
+    const ossUrl = buildPublicUrl(config, objectKey);
+
+    const response = await fetch(ossUrl, {
+      signal: AbortSignal.timeout(15000),
+    });
+
+    if (response.status === 404 || response.status === 403) {
+      return { success: false, notFound: true };
+    }
+
+    if (!response.ok) {
+      return { success: false, error: `OSS 下载博客失败 (HTTP ${response.status})` };
+    }
+
+    const blogContent = await response.text();
+    if (!blogContent || blogContent.trim().length === 0) {
+      return { success: false, notFound: true };
+    }
+
+    return { success: true, blogContent };
+  } catch (err) {
+    return { success: false, error: `博客下载 OSS 异常: ${err.message}` };
+  }
+}
+
+/**
+ * 从 OSS 删除博客文件
+ * 
+ * @param {string} documentId - 文档 ID
+ * @param {object} [ossConfig] - 可选 of OSS 配置
+ * @returns {Promise<{success: boolean, error?: string}>}
+ */
+export async function deleteBlogFromOss(documentId, ossConfig = null) {
+  const config = ossConfig || getOssConfig();
+  const validation = validateOssConfig(config);
+  if (!validation.valid) {
+    return { success: false, error: validation.message };
+  }
+
+  try {
+    const objectKey = getBlogObjectKey(config.pathPrefix, documentId);
+
+    const date = new Date().toUTCString();
+    const resource = `/${config.bucket}/${objectKey}`;
+    const authorization = signOssRequest({
+      method: 'DELETE',
+      contentType: '',
+      date,
+      resource,
+      accessKeyId: config.accessKeyId,
+      accessKeySecret: config.accessKeySecret,
+    });
+
+    const endpoint = `https://${config.bucket}.${config.region}.aliyuncs.com/${objectKey}`;
+
+    const deleteResponse = await fetch(endpoint, {
+      method: 'DELETE',
+      headers: {
+        'Authorization': authorization,
+        'Date': date,
+      },
+      signal: AbortSignal.timeout(15000),
+    });
+
+    if (!deleteResponse.ok && deleteResponse.status !== 204 && deleteResponse.status !== 404) {
+      const errorText = await deleteResponse.text();
+      return { success: false, error: `OSS 删除博客失败 (HTTP ${deleteResponse.status}): ${errorText}` };
+    }
+
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: `博客删除 OSS 异常: ${err.message}` };
+  }
+}
