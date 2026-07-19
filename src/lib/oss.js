@@ -277,3 +277,62 @@ export async function testOssUpload(ossConfig) {
     return { success: false, error: `测试异常: ${err.message}` };
   }
 }
+
+/**
+ * 上传任意 Buffer 形式的文件到阿里云 OSS
+ * 
+ * @param {Buffer} fileBuffer - 文件 Buffer
+ * @param {string} fileName - 原始文件名
+ * @param {string} contentType - Mime Type
+ * @param {object} [ossConfig] - 可选的 OSS 配置
+ * @returns {Promise<{success: boolean, ossUrl?: string, objectKey?: string, error?: string}>}
+ */
+export async function uploadFileToOss(fileBuffer, fileName, contentType, ossConfig = null) {
+  const config = ossConfig || getOssConfig();
+  const validation = validateOssConfig(config);
+  if (!validation.valid) {
+    return { success: false, error: validation.message };
+  }
+
+  try {
+    const ext = path.extname(fileName).toLowerCase();
+    // 放入独立文件夹 uploads 以区分普通高亮图片
+    const objectKey = generateObjectKey(config.pathPrefix, 'uploads', ext);
+
+    const date = new Date().toUTCString();
+    const resource = `/${config.bucket}/${objectKey}`;
+    const authorization = signOssRequest({
+      method: 'PUT',
+      contentType,
+      date,
+      resource,
+      accessKeyId: config.accessKeyId,
+      accessKeySecret: config.accessKeySecret,
+    });
+
+    const endpoint = `https://${config.bucket}.${config.region}.aliyuncs.com/${objectKey}`;
+
+    const uploadResponse = await fetch(endpoint, {
+      method: 'PUT',
+      headers: {
+        'Authorization': authorization,
+        'Content-Type': contentType,
+        'Date': date,
+        'Content-Length': String(fileBuffer.length),
+      },
+      body: fileBuffer,
+      signal: AbortSignal.timeout(120000), // 120秒超时
+    });
+
+    if (!uploadResponse.ok) {
+      const errorText = await uploadResponse.text();
+      return { success: false, error: `OSS 上传失败 (HTTP ${uploadResponse.status}): ${errorText}` };
+    }
+
+    const ossUrl = buildPublicUrl(config, objectKey);
+    return { success: true, ossUrl, objectKey };
+  } catch (err) {
+    return { success: false, error: `文件上传 OSS 异常: ${err.message}` };
+  }
+}
+
