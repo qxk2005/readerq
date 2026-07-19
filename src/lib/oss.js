@@ -336,3 +336,163 @@ export async function uploadFileToOss(fileBuffer, fileName, contentType, ossConf
   }
 }
 
+/**
+ * 构建字幕文件在 OSS 上的确定性路径
+ * 使用固定路径使得所有客户端能共享同一份字幕
+ * @param {string} pathPrefix - OSS 路径前缀
+ * @param {string} documentId - 文档 ID
+ * @returns {string} OSS 对象键
+ */
+function getSubtitleObjectKey(pathPrefix, documentId) {
+  return `${pathPrefix}/subtitles/${documentId}.srt`;
+}
+
+/**
+ * 上传 SRT 字幕到 OSS（用于跨客户端同步）
+ * 
+ * @param {string} documentId - 文档 ID
+ * @param {string} srtContent - SRT 字幕文本内容
+ * @param {object} [ossConfig] - 可选的 OSS 配置
+ * @returns {Promise<{success: boolean, ossUrl?: string, error?: string}>}
+ */
+export async function uploadSubtitleToOss(documentId, srtContent, ossConfig = null) {
+  const config = ossConfig || getOssConfig();
+  const validation = validateOssConfig(config);
+  if (!validation.valid) {
+    return { success: false, error: validation.message };
+  }
+
+  try {
+    const contentType = 'text/plain; charset=utf-8';
+    const objectKey = getSubtitleObjectKey(config.pathPrefix, documentId);
+    const fileBuffer = Buffer.from(srtContent, 'utf-8');
+
+    const date = new Date().toUTCString();
+    const resource = `/${config.bucket}/${objectKey}`;
+    const authorization = signOssRequest({
+      method: 'PUT',
+      contentType,
+      date,
+      resource,
+      accessKeyId: config.accessKeyId,
+      accessKeySecret: config.accessKeySecret,
+    });
+
+    const endpoint = `https://${config.bucket}.${config.region}.aliyuncs.com/${objectKey}`;
+
+    const uploadResponse = await fetch(endpoint, {
+      method: 'PUT',
+      headers: {
+        'Authorization': authorization,
+        'Content-Type': contentType,
+        'Date': date,
+        'Content-Length': String(fileBuffer.length),
+      },
+      body: fileBuffer,
+      signal: AbortSignal.timeout(30000),
+    });
+
+    if (!uploadResponse.ok) {
+      const errorText = await uploadResponse.text();
+      return { success: false, error: `OSS 上传字幕失败 (HTTP ${uploadResponse.status}): ${errorText}` };
+    }
+
+    const ossUrl = buildPublicUrl(config, objectKey);
+    return { success: true, ossUrl, objectKey };
+  } catch (err) {
+    return { success: false, error: `字幕上传 OSS 异常: ${err.message}` };
+  }
+}
+
+/**
+ * 从 OSS 下载字幕文件（用于跨客户端同步回退）
+ * 
+ * @param {string} documentId - 文档 ID
+ * @param {object} [ossConfig] - 可选的 OSS 配置
+ * @returns {Promise<{success: boolean, srtContent?: string, error?: string}>}
+ */
+export async function downloadSubtitleFromOss(documentId, ossConfig = null) {
+  const config = ossConfig || getOssConfig();
+  const validation = validateOssConfig(config);
+  if (!validation.valid) {
+    return { success: false, error: validation.message };
+  }
+
+  try {
+    const objectKey = getSubtitleObjectKey(config.pathPrefix, documentId);
+    const ossUrl = buildPublicUrl(config, objectKey);
+
+    const response = await fetch(ossUrl, {
+      signal: AbortSignal.timeout(15000),
+    });
+
+    if (response.status === 404 || response.status === 403) {
+      // 文件不存在
+      return { success: false, notFound: true };
+    }
+
+    if (!response.ok) {
+      return { success: false, error: `OSS 下载字幕失败 (HTTP ${response.status})` };
+    }
+
+    const srtContent = await response.text();
+    if (!srtContent || srtContent.trim().length === 0) {
+      return { success: false, notFound: true };
+    }
+
+    return { success: true, srtContent };
+  } catch (err) {
+    return { success: false, error: `字幕下载 OSS 异常: ${err.message}` };
+  }
+}
+
+/**
+ * 从 OSS 删除字幕文件
+ * 
+ * @param {string} documentId - 文档 ID
+ * @param {object} [ossConfig] - 可选的 OSS 配置
+ * @returns {Promise<{success: boolean, error?: string}>}
+ */
+export async function deleteSubtitleFromOss(documentId, ossConfig = null) {
+  const config = ossConfig || getOssConfig();
+  const validation = validateOssConfig(config);
+  if (!validation.valid) {
+    return { success: false, error: validation.message };
+  }
+
+  try {
+    const objectKey = getSubtitleObjectKey(config.pathPrefix, documentId);
+
+    const date = new Date().toUTCString();
+    const resource = `/${config.bucket}/${objectKey}`;
+    const authorization = signOssRequest({
+      method: 'DELETE',
+      contentType: '',
+      date,
+      resource,
+      accessKeyId: config.accessKeyId,
+      accessKeySecret: config.accessKeySecret,
+    });
+
+    const endpoint = `https://${config.bucket}.${config.region}.aliyuncs.com/${objectKey}`;
+
+    const deleteResponse = await fetch(endpoint, {
+      method: 'DELETE',
+      headers: {
+        'Authorization': authorization,
+        'Date': date,
+      },
+      signal: AbortSignal.timeout(15000),
+    });
+
+    // OSS DELETE 对不存在的对象也会返回 204，所以只需检查异常
+    if (!deleteResponse.ok && deleteResponse.status !== 204 && deleteResponse.status !== 404) {
+      const errorText = await deleteResponse.text();
+      return { success: false, error: `OSS 删除字幕失败 (HTTP ${deleteResponse.status}): ${errorText}` };
+    }
+
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: `字幕删除 OSS 异常: ${err.message}` };
+  }
+}

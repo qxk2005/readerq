@@ -170,13 +170,13 @@ export default function SubtitlePanel({
         throw new Error(data.error || '上传字幕失败');
       }
 
-      setUploadSuccess(true);
+      setUploadSuccess(data.ossSynced ? 'synced' : 'local');
       if (onSubtitleUploaded && data.subtitles) {
         onSubtitleUploaded(data.subtitles);
       }
 
-      // 3 秒后清除成功提示
-      setTimeout(() => setUploadSuccess(false), 3000);
+      // 5 秒后清除成功提示
+      setTimeout(() => setUploadSuccess(false), 5000);
     } catch (err) {
       console.error('上传字幕失败:', err);
       setUploadError(err.message);
@@ -356,7 +356,11 @@ export default function SubtitlePanel({
           gap: '6px',
         }}>
           <CheckCircle size={12} />
-          <span>字幕上传成功！</span>
+          <span>
+            {uploadSuccess === 'synced'
+              ? '字幕上传成功，已同步到云端（其他设备可共享）'
+              : '字幕上传成功（仅本地保存，配置 OSS 后可跨设备同步）'}
+          </span>
         </div>
       )}
 
