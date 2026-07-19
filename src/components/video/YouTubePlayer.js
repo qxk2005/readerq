@@ -177,7 +177,7 @@ export default function YouTubePlayer({ videoId, onTimeUpdate, onStateChange, su
 
   if (!videoId) {
     return (
-      <div className="youtube-player-container" style={{ height: sizeHeights[size] }}>
+      <div className="youtube-player-container" style={{ width: '100%', height: '100%' }}>
         <div style={{
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           height: '100%', color: 'var(--color-text-tertiary)',
@@ -190,7 +190,7 @@ export default function YouTubePlayer({ videoId, onTimeUpdate, onStateChange, su
   }
 
   return (
-    <div className="youtube-player-container" style={{ maxHeight: sizeHeights[size] }}>
+    <div className="youtube-player-container" style={{ width: '100%', height: '100%' }}>
       <div id="youtube-player-div" ref={containerRef} style={{ width: '100%', height: '100%' }} />
     </div>
   );
