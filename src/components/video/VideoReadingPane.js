@@ -21,6 +21,12 @@ export default function VideoReadingPane({ selectedDoc }) {
   const [currentTime, setCurrentTime] = useState(0);
   const [isPlayerCollapsed, setIsPlayerCollapsed] = useState(false);
   const [captionLang, setCaptionLang] = useState(videoSettings.subtitleLang || 'auto');
+  
+  // 播放器高度可拖拽状态
+  const [playerHeight, setPlayerHeight] = useState(400); // 默认 400px
+  const isDragging = useRef(false);
+  const startY = useRef(0);
+  const startHeight = useRef(0);
 
   // 用户上传的 SRT 字幕状态
   const [uploadedSubtitles, setUploadedSubtitles] = useState(null); // null = 未加载, [] = 无, [...] = 有
@@ -89,7 +95,6 @@ export default function VideoReadingPane({ selectedDoc }) {
     setUploadedSubtitles([]);
   }, []);
 
-  // 字幕语言选项
   const captionOptions = [
     { value: 'auto', label: '自动' },
     { value: 'zh-Hans', label: '中文(简体)' },
@@ -100,11 +105,41 @@ export default function VideoReadingPane({ selectedDoc }) {
     { value: 'off', label: '关闭字幕' },
   ];
 
+  // 拖拽调整高度处理
+  const handleMouseDown = useCallback((e) => {
+    isDragging.current = true;
+    startY.current = e.clientY;
+    startHeight.current = playerHeight;
+    document.body.style.cursor = 'row-resize';
+    document.body.style.userSelect = 'none'; // 拖拽时防止选中文本
+
+    const handleMouseMove = (moveEvent) => {
+      if (!isDragging.current) return;
+      const deltaY = moveEvent.clientY - startY.current;
+      const newHeight = Math.max(200, Math.min(startHeight.current + deltaY, window.innerHeight * 0.8));
+      setPlayerHeight(newHeight);
+    };
+
+    const handleMouseUp = () => {
+      isDragging.current = false;
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+  }, [playerHeight]);
+
   return (
-    <div className="video-reading-pane">
+    <div className="video-reading-pane" style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       {/* 上方：YouTube 播放器区域 */}
-      <div className={`video-player-section ${isPlayerCollapsed ? 'collapsed' : ''}`}>
-        <div className="video-player-controls">
+      <div 
+        className={`video-player-section ${isPlayerCollapsed ? 'collapsed' : ''}`}
+        style={{ height: isPlayerCollapsed ? 'auto' : `${playerHeight}px`, flexShrink: 0, display: 'flex', flexDirection: 'column' }}
+      >
+        <div className="video-player-controls" style={{ flexShrink: 0 }}>
           <div className="video-player-controls-left">
             <Captions size={14} style={{ color: 'var(--color-text-tertiary)' }} />
             <select
@@ -138,18 +173,40 @@ export default function VideoReadingPane({ selectedDoc }) {
           </button>
         </div>
         {!isPlayerCollapsed && (
-          <YouTubePlayer
-            videoId={videoId}
-            onTimeUpdate={handleTimeUpdate}
-            subtitleLang={captionLang}
-            size={videoSettings.playerSize || 'medium'}
-            playerRef={playerRef}
-          />
+          <div style={{ flex: 1, minHeight: 0 }}>
+            <YouTubePlayer
+              videoId={videoId}
+              onTimeUpdate={handleTimeUpdate}
+              subtitleLang={captionLang}
+              playerRef={playerRef}
+            />
+          </div>
         )}
       </div>
 
+      {/* 拖拽调整大小把手 */}
+      {!isPlayerCollapsed && (
+        <div 
+          className="video-resizer"
+          onMouseDown={handleMouseDown}
+          title="上下拖拽调整播放器大小"
+          style={{
+            height: '6px',
+            cursor: 'row-resize',
+            backgroundColor: 'var(--color-border-light)',
+            flexShrink: 0,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center'
+          }}
+        >
+          <div style={{ width: '30px', height: '2px', backgroundColor: 'var(--color-text-tertiary)', borderRadius: '1px' }}></div>
+        </div>
+      )}
+
       {/* 下方：字幕/博客面板 */}
-      <SubtitlePanel
+      <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+        <SubtitlePanel
         subtitles={subtitles}
         currentTime={currentTime}
         onSeek={handleSeek}
@@ -161,6 +218,7 @@ export default function VideoReadingPane({ selectedDoc }) {
         onSubtitleUploaded={handleSubtitleUploaded}
         onSubtitleDeleted={handleSubtitleDeleted}
       />
+      </div>
     </div>
   );
 }
