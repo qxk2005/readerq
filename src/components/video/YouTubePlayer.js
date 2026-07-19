@@ -13,7 +13,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
  * @param {React.Ref} playerRef - 暴露播放器实例的 ref
  */
 export default function YouTubePlayer({ videoId, onTimeUpdate, onStateChange, subtitleLang = 'auto', size = 'medium', playerRef }) {
-  const containerRef = useRef(null);
+  const iframeRef = useRef(null);
   const internalPlayerRef = useRef(null);
   const timerRef = useRef(null);
   const [isReady, setIsReady] = useState(false);
@@ -26,94 +26,47 @@ export default function YouTubePlayer({ videoId, onTimeUpdate, onStateChange, su
     large: '480px',
   };
 
-  // 加载 YouTube IFrame API
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-
-    // 如果 API 已加载，直接初始化
-    if (window.YT && window.YT.Player) {
-      initPlayer();
-      return;
+  // 跳转到指定时间
+  const seekTo = useCallback((seconds) => {
+    if (internalPlayerRef.current && typeof internalPlayerRef.current.seekTo === 'function') {
+      internalPlayerRef.current.seekTo(seconds, true);
     }
-
-    // 设置全局回调
-    const existingCallback = window.onYouTubeIframeAPIReady;
-    window.onYouTubeIframeAPIReady = () => {
-      if (existingCallback) existingCallback();
-      initPlayer();
-    };
-
-    // 检查是否已经有 script 标签
-    if (!document.querySelector('script[src*="youtube.com/iframe_api"]')) {
-      const tag = document.createElement('script');
-      tag.src = 'https://www.youtube.com/iframe_api';
-      const firstScriptTag = document.getElementsByTagName('script')[0];
-      firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
-    }
-
-    return () => {
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-      }
-      if (internalPlayerRef.current) {
-        try { internalPlayerRef.current.destroy(); } catch { /* ignore */ }
-        internalPlayerRef.current = null;
-      }
-    };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // videoId 变化时重新加载
+  // 暴露 seekTo 方法给父组件
   useEffect(() => {
-    if (isReady && internalPlayerRef.current && videoId) {
-      try {
-        internalPlayerRef.current.loadVideoById(videoId);
-      } catch { /* ignore */ }
+    if (playerRef) {
+      playerRef.current = {
+        seekTo,
+        getPlayer: () => internalPlayerRef.current,
+      };
     }
-  }, [videoId, isReady]);
+  }, [playerRef, seekTo]);
 
-  // 字幕语言变化时切换
-  useEffect(() => {
-    if (!isReady || !internalPlayerRef.current) return;
-    try {
-      const player = internalPlayerRef.current;
-      if (subtitleLang === 'off') {
-        player.unloadModule('captions');
-      } else {
-        player.loadModule('captions');
-        if (subtitleLang && subtitleLang !== 'auto') {
-          // 延迟设置字幕，确保 captions 模块已加载
-          setTimeout(() => {
-            try {
-              player.setOption('captions', 'track', { languageCode: subtitleLang });
-            } catch { /* ignore */ }
-          }, 500);
-        }
-      }
-    } catch { /* ignore */ }
-  }, [subtitleLang, isReady]);
-
+  // 初始化播放器
   const initPlayer = useCallback(() => {
-    if (!containerRef.current || !videoId || !window.YT) return;
+    if (!iframeRef.current || !videoId || !window.YT) return;
 
     try {
-      const player = new window.YT.Player(containerRef.current, {
-        videoId: videoId,
-        playerVars: {
-          autoplay: 0,
-          modestbranding: 1,
-          rel: 0,
-          cc_load_policy: subtitleLang !== 'off' ? 1 : 0,
-          cc_lang_pref: subtitleLang !== 'auto' && subtitleLang !== 'off' ? subtitleLang : undefined,
-          hl: 'zh-CN',
-        },
+      // 如果已存在播放器实例，先销毁
+      if (internalPlayerRef.current) {
+        try {
+          internalPlayerRef.current.destroy();
+        } catch (e) {
+          console.warn('销毁旧 YouTube 实例失败:', e);
+        }
+        internalPlayerRef.current = null;
+      }
+
+      setIsReady(false);
+
+      const player = new window.YT.Player(iframeRef.current, {
         events: {
           onReady: (event) => {
             internalPlayerRef.current = event.target;
-            if (playerRef) playerRef.current = event.target;
             setIsReady(true);
 
-            // 尝试获取可用的字幕轨道
+            // 获取可用字幕
             try {
               const tracks = event.target.getOption('captions', 'tracklist');
               if (tracks && Array.isArray(tracks)) {
@@ -122,14 +75,14 @@ export default function YouTubePlayer({ videoId, onTimeUpdate, onStateChange, su
                   name: t.languageName || t.displayName || t.languageCode,
                 })));
               }
-            } catch { /* 某些视频可能没有字幕 */ }
+            } catch { /* ignore */ }
 
-            // 启动时间更新定时器
+            // 定时监听播放进度
+            if (timerRef.current) clearInterval(timerRef.current);
             timerRef.current = setInterval(() => {
               try {
                 if (internalPlayerRef.current && typeof internalPlayerRef.current.getCurrentTime === 'function') {
                   const state = internalPlayerRef.current.getPlayerState();
-                  // 只在播放状态时上报时间
                   if (state === 1) { // YT.PlayerState.PLAYING
                     const time = internalPlayerRef.current.getCurrentTime();
                     if (onTimeUpdate) onTimeUpdate(time);
@@ -146,27 +99,60 @@ export default function YouTubePlayer({ videoId, onTimeUpdate, onStateChange, su
 
       internalPlayerRef.current = player;
     } catch (err) {
-      console.error('YouTube Player 初始化失败:', err);
+      console.error('YouTube Player 初始化异常:', err);
     }
+  }, [videoId, onTimeUpdate, onStateChange]);
+
+  // 加载 YouTube IFrame API
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    if (window.YT && window.YT.Player) {
+      initPlayer();
+    } else {
+      const existingCallback = window.onYouTubeIframeAPIReady;
+      window.onYouTubeIframeAPIReady = () => {
+        if (existingCallback) existingCallback();
+        initPlayer();
+      };
+
+      if (!document.querySelector('script[src*="youtube.com/iframe_api"]')) {
+        const tag = document.createElement('script');
+        tag.src = 'https://www.youtube.com/iframe_api';
+        const firstScriptTag = document.getElementsByTagName('script')[0];
+        firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
+      }
+    }
+
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+      if (internalPlayerRef.current) {
+        try { internalPlayerRef.current.destroy(); } catch { /* ignore */ }
+        internalPlayerRef.current = null;
+      }
+    };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [videoId]);
 
-  // 跳转到指定时间
-  const seekTo = useCallback((seconds) => {
-    if (internalPlayerRef.current && typeof internalPlayerRef.current.seekTo === 'function') {
-      internalPlayerRef.current.seekTo(seconds, true);
-    }
-  }, []);
-
-  // 暴露 seekTo 方法
+  // 字幕语言变化时切换
   useEffect(() => {
-    if (playerRef) {
-      playerRef.current = {
-        seekTo,
-        getPlayer: () => internalPlayerRef.current,
-      };
-    }
-  }, [playerRef, seekTo]);
+    if (!isReady || !internalPlayerRef.current) return;
+    try {
+      const player = internalPlayerRef.current;
+      if (subtitleLang === 'off') {
+        player.unloadModule('captions');
+      } else {
+        player.loadModule('captions');
+        if (subtitleLang && subtitleLang !== 'auto') {
+          setTimeout(() => {
+            try {
+              player.setOption('captions', 'track', { languageCode: subtitleLang });
+            } catch { /* ignore */ }
+          }, 500);
+        }
+      }
+    } catch { /* ignore */ }
+  }, [subtitleLang, isReady]);
 
   if (!videoId) {
     return (
@@ -182,9 +168,20 @@ export default function YouTubePlayer({ videoId, onTimeUpdate, onStateChange, su
     );
   }
 
+  // 使用 youtube-nocookie 避免第三方 cookie 限制以及绕过机器人检测
+  const originUrl = typeof window !== 'undefined' ? window.location.origin : '';
+  const embedUrl = `https://www.youtube-nocookie.com/embed/${videoId}?enablejsapi=1&origin=${encodeURIComponent(originUrl)}&hl=zh-CN&autoplay=0&modestbranding=1&rel=0&cc_load_policy=${subtitleLang !== 'off' ? 1 : 0}`;
+
   return (
     <div className="youtube-player-container" style={{ maxHeight: sizeHeights[size] }}>
-      <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
+      <iframe
+        ref={iframeRef}
+        src={embedUrl}
+        style={{ width: '100%', height: '100%', border: 'none' }}
+        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+        allowFullScreen
+        referrerPolicy="strict-origin-when-cross-origin"
+      />
     </div>
   );
 }
