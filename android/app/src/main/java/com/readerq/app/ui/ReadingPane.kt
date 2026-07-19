@@ -1569,6 +1569,7 @@ fun VideoReadingContent(
     val context = LocalContext.current
     var selectedTab by remember { mutableStateOf(if (subtitles.isNotEmpty()) "字幕" else "原文") }
     var webView by remember { mutableStateOf<WebView?>(null) }
+    var currentTime by remember { mutableStateOf(0f) }
 
     // 从 source_url 提取 YouTube 视频 ID
     val videoId = remember(doc.source_url, doc.url) {
@@ -1623,6 +1624,14 @@ fun VideoReadingContent(
                                             host: 'https://www.youtube.com',
                                             playerVars: { 'playsinline': 1, 'autoplay': 0, 'modestbranding': 1, 'rel': 0, 'enablejsapi': 1, 'origin': 'https://readerq.app' }
                                         });
+                                        setInterval(function() {
+                                            if (player && typeof player.getCurrentTime === 'function') {
+                                                var time = player.getCurrentTime();
+                                                if (window.AndroidApp && window.AndroidApp.updateTime) {
+                                                    window.AndroidApp.updateTime(time);
+                                                }
+                                            }
+                                        }, 250);
                                     }
                                     function seekTo(time) {
                                         if (player && typeof player.seekTo === 'function') {
@@ -1643,6 +1652,13 @@ fun VideoReadingContent(
                                 "UTF-8",
                                 null
                             )
+                            
+                            addJavascriptInterface(object : Any() {
+                                @android.webkit.JavascriptInterface
+                                fun updateTime(time: Float) {
+                                    currentTime = time
+                                }
+                            }, "AndroidApp")
                         }
                     },
                     modifier = Modifier.fillMaxSize()
@@ -1704,6 +1720,7 @@ fun VideoReadingContent(
                     viewModel = viewModel,
                     subtitles = subtitles,
                     isLoading = subtitleLoading,
+                    currentTime = currentTime,
                     onSeekTo = { time ->
                         webView?.evaluateJavascript("seekTo($time)", null)
                     },
@@ -1723,6 +1740,7 @@ fun SubtitlePanelComposable(
     viewModel: MainViewModel,
     subtitles: List<com.readerq.app.api.SubtitleSegment>,
     isLoading: Boolean,
+    currentTime: Float = 0f,
     onSeekTo: ((Float) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
@@ -1847,19 +1865,30 @@ fun SubtitlePanelComposable(
             }
         } else {
             // 字幕列表
-            val scrollState = rememberScrollState()
-            Column(
+            val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+            val activeIndex = subtitles.indexOfLast { currentTime >= it.startTime }
+            
+            androidx.compose.runtime.LaunchedEffect(activeIndex) {
+                if (activeIndex >= 0 && activeIndex < subtitles.size) {
+                    listState.animateScrollToItem(activeIndex)
+                }
+            }
+            
+            androidx.compose.foundation.lazy.LazyColumn(
+                state = listState,
                 modifier = Modifier
                     .fillMaxSize()
-                    .verticalScroll(scrollState)
                     .padding(horizontal = 12.dp, vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                subtitles.forEach { segment ->
+                items(subtitles.size) { index ->
+                    val segment = subtitles[index]
+                    val isActive = index == activeIndex
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(6.dp))
+                            .background(if (isActive) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f) else Color.Transparent)
                             .clickable { onSeekTo?.invoke(segment.startTime.toFloat()) }
                             .padding(horizontal = 8.dp, vertical = 4.dp),
                         verticalAlignment = Alignment.Top,
@@ -1868,15 +1897,16 @@ fun SubtitlePanelComposable(
                         Text(
                             text = com.readerq.app.api.SrtParser.formatTime(segment.startTime),
                             fontSize = 11.sp,
-                            color = accentColor,
-                            fontWeight = FontWeight.Medium,
+                            color = if (isActive) MaterialTheme.colorScheme.primary else accentColor,
+                            fontWeight = if (isActive) FontWeight.Bold else FontWeight.Medium,
                             modifier = Modifier.width(40.dp)
                         )
                         Text(
                             text = segment.text,
                             fontSize = 13.sp,
-                            color = textColor.copy(alpha = 0.85f),
-                            lineHeight = 18.sp
+                            color = if (isActive) MaterialTheme.colorScheme.primary else textColor.copy(alpha = 0.85f),
+                            lineHeight = 18.sp,
+                            fontWeight = if (isActive) FontWeight.Medium else FontWeight.Normal
                         )
                     }
                 }
