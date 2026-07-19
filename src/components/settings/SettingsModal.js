@@ -417,7 +417,7 @@ function TabAPI({
       }}>
         <div className="help-text" style={{ display: 'flex', alignItems: 'flex-start', gap: '4px' }}>
           <Lightbulb size={14} style={{ flexShrink: 0, marginTop: '2px' }} />
-          <span>在此处配置的值会保存到本地数据库并优先使用。如果你在此处留空，系统将自动回退使用 <code style={{ background: 'var(--color-bg-hover)', padding: '1px 4px', borderRadius: '3px' }}>.env.local</code> 或环境变量配置。</span>
+          <span>在此处配置的值会保存到本地数据库并优先使用。配置保存后即刻生效，无需重启应用。</span>
         </div>
       </div>
 

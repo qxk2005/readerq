@@ -28,21 +28,7 @@ function getResourcePath(...segments) {
   return path.join(__dirname, '..', ...segments);
 }
 
-function ensureEnvFile() {
-  // In packaged mode, copy .env.local to the standalone directory if it exists in userData
-  if (!app.isPackaged) return;
 
-  const userDataPath = app.getPath('userData');
-  const userEnvFile = path.join(userDataPath, '.env.local');
-  const standaloneDir = getResourcePath('.next', 'standalone');
-  const targetEnvFile = path.join(standaloneDir, '.env.local');
-
-  // If user has a custom .env.local in userData, use it
-  if (fs.existsSync(userEnvFile)) {
-    fs.copyFileSync(userEnvFile, targetEnvFile);
-    console.log('Copied .env.local from userData to standalone directory');
-  }
-}
 
 async function createWindow() {
   mainWindow = new BrowserWindow({
@@ -87,8 +73,6 @@ async function createWindow() {
   });
 
   if (app.isPackaged) {
-    ensureEnvFile();
-
     const standaloneDir = getResourcePath('.next', 'standalone');
     const serverScript = path.join(standaloneDir, 'server.js');
 

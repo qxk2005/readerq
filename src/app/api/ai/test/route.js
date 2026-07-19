@@ -28,15 +28,15 @@ export async function POST(request) {
         if (openai_api_key && openai_api_key.includes('••••')) {
           openai_api_key = getSetting('openai_api_key') || process.env.OPENAI_API_KEY;
         } else if (!openai_api_key) {
-          openai_api_key = process.env.OPENAI_API_KEY || getSetting('openai_api_key');
+          openai_api_key = getSetting('openai_api_key') || process.env.OPENAI_API_KEY;
         }
 
         if (!openai_base_url) {
-          openai_base_url = process.env.OPENAI_BASE_URL || getSetting('openai_base_url') || 'https://api.openai.com/v1';
+          openai_base_url = getSetting('openai_base_url') || process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1';
         }
 
         if (!openai_model) {
-          openai_model = process.env.OPENAI_MODEL || getSetting('openai_model') || 'gpt-4o-mini';
+          openai_model = getSetting('openai_model') || process.env.OPENAI_MODEL || 'gpt-4o-mini';
         }
 
         if (openai_api_key) openai_api_key = openai_api_key.trim();
@@ -51,7 +51,7 @@ export async function POST(request) {
         }
 
         if (!openai_api_key) {
-          throw new Error('未配置 OpenAI API Key。请在输入框中填入你的 API Key，或在环境变量中配置。');
+          throw new Error('未配置 OpenAI API Key。请在设置页面中填入你的 API Key。');
         }
 
         sendChunk({ type: 'stage', id: 'validate', status: 'success', message: '配置参数校验通过' });

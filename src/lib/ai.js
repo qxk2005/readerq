@@ -27,7 +27,7 @@ export function createAIClient() {
   if (baseURL) baseURL = baseURL.trim();
 
   if (!apiKey) {
-    throw new Error('未配置 OpenAI API Key。请在设置中填入你的 API Key，或在 .env.local 中配置 OPENAI_API_KEY');
+    throw new Error('未配置 OpenAI API Key。请在设置中填入你的 API Key。');
   }
 
   return new OpenAI({ apiKey, baseURL });

@@ -31,14 +31,6 @@ async function buildElectron() {
     console.log('  ✓ .next/static/ copied');
   }
 
-  // Copy .env.local if it exists (for API keys and configuration)
-  const envSrc = path.join(rootDir, '.env.local');
-  const envDest = path.join(standaloneDir, '.env.local');
-  if (fs.existsSync(envSrc)) {
-    await fs.copy(envSrc, envDest);
-    console.log('  ✓ .env.local copied');
-  }
-
   // Verify key files exist
   const serverJs = path.join(standaloneDir, 'server.js');
   if (!fs.existsSync(serverJs)) {
