@@ -5,7 +5,7 @@ import { useTheme } from '@/context/ThemeContext';
 import { parseSubtitles, extractYouTubeId, parseSRT } from '@/lib/subtitleParser';
 import YouTubePlayer from './YouTubePlayer';
 import SubtitlePanel from './SubtitlePanel';
-import { Maximize2, Minimize2, Captions } from 'lucide-react';
+import { Maximize2, Minimize2, Captions, LogIn } from 'lucide-react';
 
 /**
  * 视频阅读主容器
@@ -123,6 +123,18 @@ export default function VideoReadingPane({ selectedDoc }) {
             title={isPlayerCollapsed ? '展开播放器' : '折叠播放器'}
           >
             {isPlayerCollapsed ? <Maximize2 size={14} /> : <Minimize2 size={14} />}
+          </button>
+          
+          <button
+            className="btn btn-ghost btn-sm"
+            onClick={() => {
+              window.open('https://accounts.google.com/ServiceLogin?service=youtube&continue=https://www.youtube.com&readerq-internal-popup=1', 'youtube-login');
+            }}
+            title="登录 YouTube (如遇机器人验证)"
+            style={{ marginLeft: '4px' }}
+          >
+            <LogIn size={14} />
+            <span style={{ marginLeft: '4px', fontSize: '12px' }}>登录以播放</span>
           </button>
         </div>
         {!isPlayerCollapsed && (

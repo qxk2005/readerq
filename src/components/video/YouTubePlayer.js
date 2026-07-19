@@ -13,7 +13,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
  * @param {React.Ref} playerRef - 暴露播放器实例的 ref
  */
 export default function YouTubePlayer({ videoId, onTimeUpdate, onStateChange, subtitleLang = 'auto', size = 'medium', playerRef }) {
-  const iframeRef = useRef(null);
+  const containerRef = useRef(null);
   const internalPlayerRef = useRef(null);
   const timerRef = useRef(null);
   const [isReady, setIsReady] = useState(false);
@@ -45,7 +45,7 @@ export default function YouTubePlayer({ videoId, onTimeUpdate, onStateChange, su
 
   // 初始化播放器
   const initPlayer = useCallback(() => {
-    if (!iframeRef.current || !videoId || !window.YT) return;
+    if (!containerRef.current || !videoId || !window.YT) return;
 
     try {
       // 如果已存在播放器实例，先销毁
@@ -60,7 +60,19 @@ export default function YouTubePlayer({ videoId, onTimeUpdate, onStateChange, su
 
       setIsReady(false);
 
-      const player = new window.YT.Player(iframeRef.current, {
+      const player = new window.YT.Player(containerRef.current, {
+        videoId: videoId,
+        host: 'https://www.youtube.com', // 强制使用 youtube.com
+        playerVars: {
+          autoplay: 0,
+          modestbranding: 1,
+          rel: 0,
+          cc_load_policy: subtitleLang !== 'off' ? 1 : 0,
+          cc_lang_pref: subtitleLang !== 'auto' && subtitleLang !== 'off' ? subtitleLang : undefined,
+          hl: 'zh-CN',
+          enablejsapi: 1,
+          origin: typeof window !== 'undefined' ? window.location.origin : ''
+        },
         events: {
           onReady: (event) => {
             internalPlayerRef.current = event.target;
@@ -101,7 +113,7 @@ export default function YouTubePlayer({ videoId, onTimeUpdate, onStateChange, su
     } catch (err) {
       console.error('YouTube Player 初始化异常:', err);
     }
-  }, [videoId, onTimeUpdate, onStateChange]);
+  }, [onTimeUpdate, onStateChange]);
 
   // 加载 YouTube IFrame API
   useEffect(() => {
@@ -132,7 +144,16 @@ export default function YouTubePlayer({ videoId, onTimeUpdate, onStateChange, su
       }
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [videoId]);
+  }, []);
+
+  // videoId 变化时重新加载
+  useEffect(() => {
+    if (isReady && internalPlayerRef.current && videoId) {
+      try {
+        internalPlayerRef.current.loadVideoById(videoId);
+      } catch { /* ignore */ }
+    }
+  }, [videoId, isReady]);
 
   // 字幕语言变化时切换
   useEffect(() => {
@@ -168,20 +189,9 @@ export default function YouTubePlayer({ videoId, onTimeUpdate, onStateChange, su
     );
   }
 
-  // 使用 youtube-nocookie 避免第三方 cookie 限制以及绕过机器人检测
-  const originUrl = typeof window !== 'undefined' ? window.location.origin : '';
-  const embedUrl = `https://www.youtube-nocookie.com/embed/${videoId}?enablejsapi=1&origin=${encodeURIComponent(originUrl)}&hl=zh-CN&autoplay=0&modestbranding=1&rel=0&cc_load_policy=${subtitleLang !== 'off' ? 1 : 0}`;
-
   return (
     <div className="youtube-player-container" style={{ maxHeight: sizeHeights[size] }}>
-      <iframe
-        ref={iframeRef}
-        src={embedUrl}
-        style={{ width: '100%', height: '100%', border: 'none' }}
-        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-        allowFullScreen
-        referrerPolicy="strict-origin-when-cross-origin"
-      />
+      <div id="youtube-player-div" ref={containerRef} style={{ width: '100%', height: '100%' }} />
     </div>
   );
 }

@@ -66,6 +66,21 @@ async function createWindow() {
 
   // 拦截 target="_blank" 的外部链接打开请求，使用系统浏览器打开
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    // 允许内部特殊弹窗（例如 YouTube 登录）在应用内打开为 Modal/新窗口
+    if (url.includes('readerq-internal-popup=1')) {
+      return { 
+        action: 'allow',
+        overrideBrowserWindowOptions: {
+          width: 500,
+          height: 600,
+          webPreferences: {
+            nodeIntegration: false,
+            contextIsolation: true
+          }
+        }
+      };
+    }
+
     if (url.startsWith('http:') || url.startsWith('https:')) {
       shell.openExternal(url);
     }
