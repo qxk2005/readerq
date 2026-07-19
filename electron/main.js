@@ -173,6 +173,9 @@ async function createWindow() {
 }
 
 app.whenReady().then(() => {
+  // 绕过 Google 的“未开启 JavaScript”或“不安全浏览器”拦截
+  app.userAgentFallback = app.userAgentFallback.replace(/Electron\/[\d\.]+\s/, '');
+
   // 自动授权 local-fonts 权限以获取系统字体列表
   const { session } = require('electron');
   session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => {
