@@ -44,6 +44,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import androidx.compose.ui.graphics.luminance
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -307,19 +308,10 @@ fun ReadingPane(
                 }
             }
 
-            if (currentDoc.category == "video") {
-                // 视频文章：YouTube 播放器 + 字幕面板
-                VideoReadingContent(
-                    doc = currentDoc,
-                    viewModel = viewModel,
-                    modifier = Modifier.weight(1f)
-                )
-            } else {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f)
-            ) {
+            val articleContent = @Composable { articleModifier: Modifier ->
+                Box(
+                    modifier = articleModifier
+                ) {
                 // Render WebView content
                 HtmlContentViewer(
                     html = currentDoc.html_content ?: "加载中...",
@@ -614,7 +606,19 @@ fun ReadingPane(
                     }
                 }
             }
-            } // else (非视频文章)
+            } // end articleContent
+
+            if (currentDoc.category == "video") {
+                // 视频文章：YouTube 播放器 + 切换面板
+                VideoReadingContent(
+                    doc = currentDoc,
+                    viewModel = viewModel,
+                    articleContent = articleContent,
+                    modifier = Modifier.weight(1f)
+                )
+            } else {
+                articleContent(Modifier.fillMaxWidth().weight(1f))
+            }
 
             // --- TTS 播放控制条 ---
             AnimatedVisibility(
@@ -1557,11 +1561,14 @@ fun MetadataRow(label: String, value: String) {
 fun VideoReadingContent(
     doc: DocumentEntity,
     viewModel: MainViewModel,
+    articleContent: @Composable (Modifier) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val subtitles by viewModel.subtitles.collectAsState()
     val subtitleLoading by viewModel.subtitleLoading.collectAsState()
     val context = LocalContext.current
+    var selectedTab by remember { mutableStateOf(if (subtitles.isNotEmpty()) "字幕" else "原文") }
+    var webView by remember { mutableStateOf<WebView?>(null) }
 
     // 从 source_url 提取 YouTube 视频 ID
     val videoId = remember(doc.source_url, doc.url) {
@@ -1569,8 +1576,7 @@ fun VideoReadingContent(
     }
 
     Column(
-        modifier = modifier
-            .fillMaxSize()
+        modifier = modifier.fillMaxSize()
     ) {
         // YouTube 播放器区域
         if (videoId != null) {
@@ -1583,6 +1589,7 @@ fun VideoReadingContent(
                 AndroidView(
                     factory = { ctx ->
                         WebView(ctx).apply {
+                            webView = this
                             settings.javaScriptEnabled = true
                             settings.domStorageEnabled = true
                             settings.mediaPlaybackRequiresUserGesture = false
@@ -1594,19 +1601,33 @@ fun VideoReadingContent(
                                 <style>
                                     * { margin: 0; padding: 0; }
                                     body { background: #000; }
-                                    iframe { width: 100%; height: 100%; position: absolute; top: 0; left: 0; }
+                                    #player { width: 100%; height: 100%; position: absolute; top: 0; left: 0; }
                                 </style>
                                 </head><body>
-                                <iframe 
-                                    src="https://www.youtube-nocookie.com/embed/$videoId?autoplay=0&modestbranding=1&rel=0" 
-                                    frameborder="0" 
-                                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
-                                    allowfullscreen>
-                                </iframe>
+                                <div id="player"></div>
+                                <script>
+                                    var player;
+                                    function onYouTubeIframeAPIReady() {
+                                        player = new YT.Player('player', {
+                                            videoId: '$videoId',
+                                            host: 'https://www.youtube.com',
+                                            playerVars: { 'playsinline': 1, 'autoplay': 0, 'modestbranding': 1, 'rel': 0, 'enablejsapi': 1 }
+                                        });
+                                    }
+                                    function seekTo(time) {
+                                        if (player && typeof player.seekTo === 'function') {
+                                            player.seekTo(time, true);
+                                        }
+                                    }
+                                    var tag = document.createElement('script');
+                                    tag.src = "https://www.youtube.com/iframe_api";
+                                    var firstScriptTag = document.getElementsByTagName('script')[0];
+                                    firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
+                                </script>
                                 </body></html>
                             """.trimIndent()
                             loadDataWithBaseURL(
-                                "https://www.youtube-nocookie.com",
+                                "https://www.youtube.com",
                                 embedHtml,
                                 "text/html",
                                 "UTF-8",
@@ -1634,16 +1655,52 @@ fun VideoReadingContent(
             }
         }
 
-        // 字幕面板区域
-        SubtitlePanelComposable(
-            doc = doc,
-            viewModel = viewModel,
-            subtitles = subtitles,
-            isLoading = subtitleLoading,
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f)
-        )
+        // TabRow
+        val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
+        androidx.compose.material3.TabRow(
+            selectedTabIndex = if (selectedTab == "字幕") 0 else 1,
+            containerColor = if (isDark) Color(0xFF16162A) else Color(0xFFEEEFF5),
+            contentColor = MaterialTheme.colorScheme.primary,
+            indicator = { tabPositions ->
+                androidx.compose.material3.TabRowDefaults.Indicator(
+                    modifier = Modifier.tabIndicatorOffset(tabPositions[if (selectedTab == "字幕") 0 else 1]),
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+        ) {
+            androidx.compose.material3.Tab(
+                selected = selectedTab == "字幕",
+                onClick = { selectedTab = "字幕" },
+                text = { Text("字幕", fontWeight = if (selectedTab == "字幕") FontWeight.Bold else FontWeight.Normal) }
+            )
+            androidx.compose.material3.Tab(
+                selected = selectedTab == "原文",
+                onClick = { selectedTab = "原文" },
+                text = { Text("原文", fontWeight = if (selectedTab == "原文") FontWeight.Bold else FontWeight.Normal) }
+            )
+        }
+
+        // 面板区域
+        Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
+            // 原文
+            articleContent(
+                if (selectedTab == "原文") Modifier.fillMaxSize() else Modifier.height(0.dp)
+            )
+            
+            // 字幕
+            if (selectedTab == "字幕") {
+                SubtitlePanelComposable(
+                    doc = doc,
+                    viewModel = viewModel,
+                    subtitles = subtitles,
+                    isLoading = subtitleLoading,
+                    onSeekTo = { time ->
+                        webView?.evaluateJavascript("seekTo($time)", null)
+                    },
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
+        }
     }
 }
 
@@ -1656,6 +1713,7 @@ fun SubtitlePanelComposable(
     viewModel: MainViewModel,
     subtitles: List<com.readerq.app.api.SubtitleSegment>,
     isLoading: Boolean,
+    onSeekTo: ((Float) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -1792,7 +1850,7 @@ fun SubtitlePanelComposable(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(6.dp))
-                            .clickable { /* 未来可做跳转视频时间 */ }
+                            .clickable { onSeekTo?.invoke(segment.startTime.toFloat()) }
                             .padding(horizontal = 8.dp, vertical = 4.dp),
                         verticalAlignment = Alignment.Top,
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
