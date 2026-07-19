@@ -6,6 +6,23 @@ import { LOCATION_LABELS, CATEGORY_LABELS } from '@/lib/utils';
 import { CATEGORY_ICONS_SVG, LOCATION_ICONS_SVG } from '@/components/ui/icons';
 import { Home, Tag, Plus, RefreshCw, Sun, Moon, Settings } from 'lucide-react';
 
+// 折叠左侧栏的矩形图标 (同 Readwise 官方)
+const SidebarCloseIcon = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <rect width="18" height="18" x="3" y="3" rx="2" />
+    <path d="M9 3v18" />
+  </svg>
+);
+
+// 展开左侧栏的矩形图标 (同 Readwise 官方)
+const SidebarOpenIcon = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <rect width="18" height="18" x="3" y="3" rx="2" />
+    <path d="M9 3v18" />
+    <path d="M14 9l3 3-3 3" />
+  </svg>
+);
+
 export default function Sidebar({ width }) {
   const {
     currentView, currentCategory, currentTag,
@@ -39,21 +56,109 @@ export default function Sidebar({ width }) {
       className={`sidebar ${sidebarCollapsed ? 'collapsed' : ''}`}
       style={(!sidebarCollapsed && width) ? { width: `${width}px`, minWidth: `${width}px` } : {}}
     >
-      <div className="sidebar-header">
-        {!sidebarCollapsed && (
-          <div className="sidebar-logo">
-            <img src="/logo.png" alt="ReaderQ Logo" className="sidebar-logo-img" />
-            <span>ReaderQ</span>
-          </div>
+      <div className="sidebar-header" style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: sidebarCollapsed ? 'center' : 'space-between',
+        width: '100%',
+        boxSizing: 'border-box'
+      }}>
+        {!sidebarCollapsed ? (
+          <>
+            {/* LOGO 靠左 */}
+            <div className="sidebar-logo" style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              fontWeight: '700',
+              fontSize: '1.15rem',
+              letterSpacing: '-0.03em',
+              color: 'var(--color-text-primary)'
+            }}>
+              <img src="/logo.png" alt="ReaderQ Logo" className="sidebar-logo-img" style={{ width: '20px', height: '20px' }} />
+              <span>ReaderQ</span>
+            </div>
+
+            {/* 同一行右侧有收拢左侧栏按钮以及加号添加按钮 */}
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px'
+            }}>
+              {/* 收拢左侧栏按钮 */}
+              <button
+                className="btn-icon add-doc-btn-header"
+                onClick={() => setSidebarCollapsed(true)}
+                data-tooltip="折叠侧栏"
+                style={{
+                  width: '28px',
+                  height: '28px',
+                  borderRadius: '6px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  background: 'transparent',
+                  border: 'none',
+                  cursor: 'pointer',
+                  color: 'var(--color-text-secondary)',
+                  padding: '0'
+                }}
+              >
+                <SidebarCloseIcon />
+              </button>
+
+              {/* 圆圈加号添加按钮 */}
+              <button
+                className="btn-icon add-doc-btn-header"
+                onClick={() => setShowAddUrl(true)}
+                data-tooltip="添加文章或文档"
+                style={{
+                  width: '28px',
+                  height: '28px',
+                  borderRadius: '6px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  background: 'transparent',
+                  border: 'none',
+                  cursor: 'pointer',
+                  color: 'var(--color-text-secondary)',
+                  padding: '0'
+                }}
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="10" />
+                  <path d="M12 8v8" />
+                  <path d="M8 12h8" />
+                </svg>
+              </button>
+            </div>
+          </>
+        ) : (
+          /* 折叠状态下只显示一个展开按钮，避开 macOS 红绿灯已在 globals.css 中处理 */
+          <button
+            className="btn-icon add-doc-btn-header"
+            onClick={() => setSidebarCollapsed(false)}
+            data-tooltip="展开侧栏"
+            style={{
+              width: '28px',
+              height: '28px',
+              borderRadius: '6px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              background: 'transparent',
+              border: 'none',
+              cursor: 'pointer',
+              color: 'var(--color-text-secondary)',
+              padding: '0'
+            }}
+          >
+            <SidebarOpenIcon />
+          </button>
         )}
-        <button
-          className="sidebar-toggle"
-          onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-          data-tooltip={sidebarCollapsed ? '展开侧栏' : '收起侧栏'}
-        >
-          {sidebarCollapsed ? '▶' : '◀'}
-        </button>
       </div>
+
 
       <nav className="sidebar-nav">
         {/* 主导航 */}

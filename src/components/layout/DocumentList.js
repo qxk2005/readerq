@@ -5,7 +5,7 @@ import { useApp } from '@/context/AppContext';
 import { useTheme } from '@/context/ThemeContext';
 import { LOCATION_LABELS, formatDate, truncateText, extractDomain } from '@/lib/utils';
 import { CATEGORY_ICONS_SVG, getCategoryIcon } from '@/components/ui/icons';
-import { Search, Inbox, Clock, Archive, RefreshCw, FileText, Tag, Trash2, RotateCcw } from 'lucide-react';
+import { Search, Inbox, Clock, Archive, RefreshCw, FileText, Tag, Trash2, RotateCcw, Plus } from 'lucide-react';
 
 function DocumentCard({ doc, isActive, onClick, isSelectionMode, isSelected, onToggleSelect, onMoveDoc, onDeleteDoc, currentView }) {
   const { docListElements } = useTheme();
@@ -126,7 +126,8 @@ export default function DocumentList({ width }) {
     page, hasMore, isFetchingMore,
     batchMoveDocuments,
     batchDeleteDocuments,
-    syncData, isSyncing
+    syncData, isSyncing,
+    setShowAddUrl
   } = useApp();
 
   const [isSelectionMode, setIsSelectionMode] = useState(false);
@@ -200,6 +201,14 @@ export default function DocumentList({ width }) {
             style={{ opacity: isSyncing ? 0.7 : 1, cursor: isSyncing ? 'not-allowed' : 'pointer' }}
           >
             <RefreshCw size={18} style={isSyncing ? { animation: 'spin 1s linear infinite' } : {}} />
+          </button>
+          <button
+            className="btn-icon"
+            onClick={() => setShowAddUrl(true)}
+            data-tooltip="添加文章或文档"
+            style={{ marginLeft: '6px' }}
+          >
+            <Plus size={18} />
           </button>
         </div>
         <div className="doclist-search">

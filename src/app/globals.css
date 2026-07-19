@@ -263,10 +263,28 @@ textarea:focus {
   min-height: 52px;
 }
 
-/* 仅在 macOS 下为红绿灯留出左侧空间 */
-.platform-darwin .sidebar-header {
-  padding-left: 80px;
+/* ---- 顶部窗口标题栏 (仅 macOS 下启用) ---- */
+.titlebar {
+  display: none;
 }
+
+.platform-darwin .titlebar {
+  display: flex;
+  height: 38px;
+  width: 100%;
+  background: var(--color-bg-sidebar);
+  -webkit-app-region: drag; /* 允许拖动整个窗口 */
+  box-sizing: border-box;
+}
+
+.platform-darwin .app-layout {
+  height: calc(100vh - 38px);
+}
+
+.platform-darwin .sidebar {
+  height: calc(100vh - 38px);
+}
+
 
 .sidebar-header button,
 .sidebar-header a,
@@ -1380,11 +1398,14 @@ textarea:focus {
   opacity: 1;
 }
 
-/* 顶部阅读导航栏的工具提示向下弹出，防止被 Electron 顶部隐藏式标题栏裁切 */
+/* 顶部导航栏的工具提示向下弹出，防止被 Electron 顶部隐藏式标题栏裁切 */
+.sidebar-header [data-tooltip]::after,
+.doclist-header [data-tooltip]::after,
 .reading-header [data-tooltip]::after {
   bottom: auto;
   top: calc(100% + 8px);
 }
+
 
 /* ---- 添加 URL 弹窗 ---- */
 .add-url-form {

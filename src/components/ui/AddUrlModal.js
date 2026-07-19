@@ -299,7 +299,7 @@ export default function AddUrlModal() {
                 <Check size={28} />
               </div>
               <h3 style={{ fontSize: 'var(--text-base)', fontWeight: '600', marginBottom: 'var(--space-2)' }}>保存成功</h3>
-              <p style={{ color: 'var(--color-text-secondary)', fontSize: 'var(--text-sm)' }}>文章已成功发送至你的 Readwise Reader</p>
+              <p style={{ color: 'var(--color-text-secondary)', fontSize: 'var(--text-sm)' }}>文章已成功发送至你的 ReaderQ</p>
             </div>
           ) : (
             <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
@@ -558,10 +558,10 @@ export default function AddUrlModal() {
                 {isLoading ? (
                   <>
                     <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} />
-                    <span>正在同步保存至 Reader...</span>
+                    <span>正在保存到 ReaderQ...</span>
                   </>
                 ) : (
-                  <span>保存到 Readwise Reader</span>
+                  <span>保存到 ReaderQ</span>
                 )}
               </button>
             </form>
