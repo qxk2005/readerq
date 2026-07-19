@@ -8,6 +8,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -25,6 +26,10 @@ import androidx.compose.ui.layout.ContentScale
 import com.readerq.app.data.DocumentEntity
 import com.readerq.app.R
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.ui.graphics.luminance
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -39,6 +44,7 @@ fun DocumentListPane(
     val theme by viewModel.theme.collectAsState()
 
     var showSearchBar by remember { mutableStateOf(false) }
+    var showAddDialog by remember { mutableStateOf(false) }
     val searchQuery by viewModel.searchQuery.collectAsState()
 
     // 确保在 Feed 标签卡中，View 为 feed
@@ -70,6 +76,13 @@ fun DocumentListPane(
                     Icon(
                         imageVector = Icons.Default.Search,
                         contentDescription = "Search",
+                        tint = MaterialTheme.colorScheme.onBackground
+                    )
+                }
+                IconButton(onClick = { showAddDialog = true }) {
+                    Icon(
+                        imageVector = Icons.Default.Add,
+                        contentDescription = "添加文章",
                         tint = MaterialTheme.colorScheme.onBackground
                     )
                 }
@@ -337,6 +350,14 @@ fun DocumentListPane(
             }
         }
     }
+
+    // 添加文章对话框
+    if (showAddDialog) {
+        AddDocumentDialog(
+            viewModel = viewModel,
+            onDismiss = { showAddDialog = false }
+        )
+    }
 }
 
 @Composable
@@ -476,5 +497,230 @@ fun DocumentItemCard(
             thickness = 1.dp,
             modifier = Modifier.fillMaxWidth()
         )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun AddDocumentDialog(
+    viewModel: MainViewModel,
+    onDismiss: () -> Unit
+) {
+    val isSaving by viewModel.isSavingDoc.collectAsState()
+    val saveResult by viewModel.saveDocResult.collectAsState()
+
+    var activeTab by remember { mutableStateOf("url") } // "url" | "text"
+    var urlInput by remember { mutableStateOf("") }
+    var titleInput by remember { mutableStateOf("") }
+    var textContent by remember { mutableStateOf("") }
+    var authorInput by remember { mutableStateOf("") }
+    var tagsInput by remember { mutableStateOf("") }
+
+    val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
+    val cardBg = if (isDark) Color(0xFF1E1E1E) else Color.White
+    val inputBg = if (isDark) Color(0xFF2A2A2A) else Color(0xFFF5F5F5)
+    val borderColor = if (isDark) Color(0xFF444444) else Color(0xFFE0E0E0)
+    val accentColor = Color(0xFF3B82F6)
+
+    // 处理保存结果
+    LaunchedEffect(saveResult) {
+        if (saveResult?.success == true) {
+            kotlinx.coroutines.delay(1500)
+            viewModel.clearSaveDocResult()
+            onDismiss()
+        }
+    }
+
+    Dialog(
+        onDismissRequest = { if (!isSaving) onDismiss() },
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth(0.9f)
+                .wrapContentHeight(),
+            shape = RoundedCornerShape(16.dp),
+            color = cardBg,
+            tonalElevation = 4.dp
+        ) {
+            Column(
+                modifier = Modifier.padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                // Title
+                Text(
+                    text = "添加文章",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp,
+                    color = MaterialTheme.colorScheme.onBackground
+                )
+
+                // Tab row
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    listOf("url" to "URL", "text" to "文本").forEach { (key, label) ->
+                        val isActive = activeTab == key
+                        Surface(
+                            onClick = { activeTab = key },
+                            shape = RoundedCornerShape(8.dp),
+                            color = if (isActive) accentColor else inputBg,
+                            border = if (isActive) null else BorderStroke(1.dp, borderColor)
+                        ) {
+                            Text(
+                                text = label,
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                                fontSize = 13.sp,
+                                fontWeight = if (isActive) FontWeight.Bold else FontWeight.Normal,
+                                color = if (isActive) Color.White else MaterialTheme.colorScheme.onBackground
+                            )
+                        }
+                    }
+                }
+
+                // Tab content
+                when (activeTab) {
+                    "url" -> {
+                        OutlinedTextField(
+                            value = urlInput,
+                            onValueChange = { urlInput = it },
+                            label = { Text("URL 地址") },
+                            placeholder = { Text("https://example.com/article") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = accentColor,
+                                unfocusedBorderColor = borderColor
+                            )
+                        )
+                    }
+                    "text" -> {
+                        OutlinedTextField(
+                            value = titleInput,
+                            onValueChange = { titleInput = it },
+                            label = { Text("标题") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = accentColor,
+                                unfocusedBorderColor = borderColor
+                            )
+                        )
+                        OutlinedTextField(
+                            value = textContent,
+                            onValueChange = { textContent = it },
+                            label = { Text("内容") },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 100.dp, max = 200.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = accentColor,
+                                unfocusedBorderColor = borderColor
+                            )
+                        )
+                    }
+                }
+
+                // Optional fields
+                OutlinedTextField(
+                    value = authorInput,
+                    onValueChange = { authorInput = it },
+                    label = { Text("作者 (可选)") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = accentColor,
+                        unfocusedBorderColor = borderColor
+                    )
+                )
+
+                OutlinedTextField(
+                    value = tagsInput,
+                    onValueChange = { tagsInput = it },
+                    label = { Text("标签 (可选，逗号分隔)") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = accentColor,
+                        unfocusedBorderColor = borderColor
+                    )
+                )
+
+                // Result message
+                saveResult?.let { result ->
+                    Text(
+                        text = result.message,
+                        color = if (result.success) Color(0xFF22C55E) else Color(0xFFEF4444),
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+
+                // Action buttons
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    TextButton(
+                        onClick = {
+                            viewModel.clearSaveDocResult()
+                            onDismiss()
+                        },
+                        enabled = !isSaving
+                    ) {
+                        Text("取消")
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Button(
+                        onClick = {
+                            val tags = tagsInput.split(",")
+                                .map { it.trim() }
+                                .filter { it.isNotBlank() }
+                                .takeIf { it.isNotEmpty() }
+
+                            when (activeTab) {
+                                "url" -> {
+                                    if (urlInput.isNotBlank()) {
+                                        viewModel.saveDocumentByUrl(
+                                            url = urlInput.trim(),
+                                            tags = tags,
+                                            author = authorInput
+                                        )
+                                    }
+                                }
+                                "text" -> {
+                                    if (titleInput.isNotBlank() && textContent.isNotBlank()) {
+                                        val html = "<h1>${titleInput}</h1>\n${textContent.split("\n").joinToString("\n") { "<p>$it</p>" }}"
+                                        viewModel.saveDocumentWithHtml(
+                                            title = titleInput,
+                                            html = html,
+                                            tags = tags,
+                                            author = authorInput
+                                        )
+                                    }
+                                }
+                            }
+                        },
+                        enabled = !isSaving && when (activeTab) {
+                            "url" -> urlInput.isNotBlank()
+                            "text" -> titleInput.isNotBlank() && textContent.isNotBlank()
+                            else -> false
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = accentColor)
+                    ) {
+                        if (isSaving) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(16.dp),
+                                color = Color.White,
+                                strokeWidth = 2.dp
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                        }
+                        Text(if (isSaving) "保存中..." else "保存")
+                    }
+                }
+            }
+        }
     }
 }

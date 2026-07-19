@@ -42,6 +42,8 @@ import com.readerq.app.R
 import androidx.compose.ui.res.painterResource
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import androidx.compose.ui.graphics.luminance
+import androidx.activity.compose.rememberLauncherForActivityResult
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -299,8 +301,20 @@ fun ReadingPane(
             LaunchedEffect(currentDoc.id) {
                 readingProgress = currentDoc.reading_progress
                 maxProgressRef.value = currentDoc.reading_progress
+                // 如果是视频文档，加载字幕
+                if (currentDoc.category == "video") {
+                    viewModel.loadSubtitles(currentDoc.id)
+                }
             }
 
+            if (currentDoc.category == "video") {
+                // 视频文章：YouTube 播放器 + 字幕面板
+                VideoReadingContent(
+                    doc = currentDoc,
+                    viewModel = viewModel,
+                    modifier = Modifier.weight(1f)
+                )
+            } else {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -600,6 +614,7 @@ fun ReadingPane(
                     }
                 }
             }
+            } // else (非视频文章)
 
             // --- TTS 播放控制条 ---
             AnimatedVisibility(
@@ -1532,4 +1547,289 @@ fun MetadataRow(label: String, value: String) {
         Text(text = value, color = MaterialTheme.colorScheme.onBackground, fontSize = 13.sp)
         Divider(color = Color.Gray.copy(alpha = 0.15f), modifier = Modifier.padding(top = 8.dp))
     }
+}
+
+/**
+ * 视频文章专用布局：YouTube 播放器 + 字幕面板
+ */
+@SuppressLint("SetJavaScriptEnabled")
+@Composable
+fun VideoReadingContent(
+    doc: DocumentEntity,
+    viewModel: MainViewModel,
+    modifier: Modifier = Modifier
+) {
+    val subtitles by viewModel.subtitles.collectAsState()
+    val subtitleLoading by viewModel.subtitleLoading.collectAsState()
+    val context = LocalContext.current
+
+    // 从 source_url 提取 YouTube 视频 ID
+    val videoId = remember(doc.source_url, doc.url) {
+        extractYouTubeVideoId(doc.source_url ?: doc.url)
+    }
+
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+    ) {
+        // YouTube 播放器区域
+        if (videoId != null) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .aspectRatio(16f / 9f)
+                    .background(Color.Black)
+            ) {
+                AndroidView(
+                    factory = { ctx ->
+                        WebView(ctx).apply {
+                            settings.javaScriptEnabled = true
+                            settings.domStorageEnabled = true
+                            settings.mediaPlaybackRequiresUserGesture = false
+                            webViewClient = WebViewClient()
+                            val embedHtml = """
+                                <!DOCTYPE html>
+                                <html><head>
+                                <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                                <style>
+                                    * { margin: 0; padding: 0; }
+                                    body { background: #000; }
+                                    iframe { width: 100%; height: 100%; position: absolute; top: 0; left: 0; }
+                                </style>
+                                </head><body>
+                                <iframe 
+                                    src="https://www.youtube-nocookie.com/embed/$videoId?autoplay=0&modestbranding=1&rel=0" 
+                                    frameborder="0" 
+                                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
+                                    allowfullscreen>
+                                </iframe>
+                                </body></html>
+                            """.trimIndent()
+                            loadDataWithBaseURL(
+                                "https://www.youtube-nocookie.com",
+                                embedHtml,
+                                "text/html",
+                                "UTF-8",
+                                null
+                            )
+                        }
+                    },
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
+        } else {
+            // 无法识别视频 ID
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(200.dp)
+                    .background(Color(0xFF1a1a2e)),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "无法识别视频链接",
+                    color = Color.White.copy(alpha = 0.7f),
+                    fontSize = 14.sp
+                )
+            }
+        }
+
+        // 字幕面板区域
+        SubtitlePanelComposable(
+            doc = doc,
+            viewModel = viewModel,
+            subtitles = subtitles,
+            isLoading = subtitleLoading,
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f)
+        )
+    }
+}
+
+/**
+ * 字幕面板 Composable
+ */
+@Composable
+fun SubtitlePanelComposable(
+    doc: DocumentEntity,
+    viewModel: MainViewModel,
+    subtitles: List<com.readerq.app.api.SubtitleSegment>,
+    isLoading: Boolean,
+    modifier: Modifier = Modifier
+) {
+    val context = LocalContext.current
+    val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
+    val panelBg = if (isDark) Color(0xFF1A1A2E) else Color(0xFFF8F9FA)
+    val borderColor = if (isDark) Color(0xFF333355) else Color(0xFFDEE2E6)
+    val accentColor = Color(0xFF3B82F6)
+    val textColor = MaterialTheme.colorScheme.onBackground
+
+    // 文件选择器
+    val srtPickerLauncher = rememberLauncherForActivityResult(
+        contract = androidx.activity.result.contract.ActivityResultContracts.GetContent()
+    ) { uri ->
+        uri?.let {
+            try {
+                val inputStream = context.contentResolver.openInputStream(it)
+                val srtContent = inputStream?.bufferedReader()?.use { reader -> reader.readText() }
+                if (!srtContent.isNullOrBlank()) {
+                    viewModel.uploadSubtitle(doc.id, srtContent)
+                    Toast.makeText(context, "字幕已上传", Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                Toast.makeText(context, "读取文件失败: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    Column(
+        modifier = modifier
+            .background(panelBg)
+    ) {
+        // 面板标题栏
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(if (isDark) Color(0xFF16162A) else Color(0xFFEEEFF5))
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(
+                text = "字幕",
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 14.sp,
+                color = textColor
+            )
+
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                // 上传按钮
+                Surface(
+                    onClick = { srtPickerLauncher.launch("*/*") },
+                    shape = RoundedCornerShape(6.dp),
+                    color = accentColor.copy(alpha = 0.15f)
+                ) {
+                    Text(
+                        text = if (subtitles.isEmpty()) "上传 SRT" else "替换",
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                        fontSize = 12.sp,
+                        color = accentColor,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+                // 删除按钮（只在有字幕时显示）
+                if (subtitles.isNotEmpty()) {
+                    Surface(
+                        onClick = {
+                            viewModel.deleteSubtitle(doc.id)
+                            Toast.makeText(context, "字幕已删除", Toast.LENGTH_SHORT).show()
+                        },
+                        shape = RoundedCornerShape(6.dp),
+                        color = Color(0xFFEF4444).copy(alpha = 0.15f)
+                    ) {
+                        Text(
+                            text = "删除",
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                            fontSize = 12.sp,
+                            color = Color(0xFFEF4444),
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                }
+            }
+        }
+
+        Divider(color = borderColor, thickness = 0.5.dp)
+
+        // 字幕内容
+        if (isLoading) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(20.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(24.dp),
+                    color = accentColor,
+                    strokeWidth = 2.dp
+                )
+            }
+        } else if (subtitles.isEmpty()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(20.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(
+                        text = "暂无字幕",
+                        color = textColor.copy(alpha = 0.5f),
+                        fontSize = 14.sp
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "点击上方「上传 SRT」按钮添加字幕文件",
+                        color = textColor.copy(alpha = 0.3f),
+                        fontSize = 12.sp
+                    )
+                }
+            }
+        } else {
+            // 字幕列表
+            val scrollState = rememberScrollState()
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(scrollState)
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                subtitles.forEach { segment ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(6.dp))
+                            .clickable { /* 未来可做跳转视频时间 */ }
+                            .padding(horizontal = 8.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.Top,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            text = com.readerq.app.api.SrtParser.formatTime(segment.startTime),
+                            fontSize = 11.sp,
+                            color = accentColor,
+                            fontWeight = FontWeight.Medium,
+                            modifier = Modifier.width(40.dp)
+                        )
+                        Text(
+                            text = segment.text,
+                            fontSize = 13.sp,
+                            color = textColor.copy(alpha = 0.85f),
+                            lineHeight = 18.sp
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * 从 URL 中提取 YouTube 视频 ID
+ */
+private fun extractYouTubeVideoId(url: String): String? {
+    val patterns = listOf(
+        Regex("""(?:youtube\.com/watch\?.*v=|youtu\.be/|youtube\.com/embed/)([a-zA-Z0-9_-]{11})"""),
+        Regex("""(?:youtube\.com/shorts/)([a-zA-Z0-9_-]{11})""")
+    )
+    for (pattern in patterns) {
+        val match = pattern.find(url)
+        if (match != null) {
+            return match.groupValues[1]
+        }
+    }
+    return null
 }

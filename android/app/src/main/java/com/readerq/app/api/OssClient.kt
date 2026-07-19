@@ -70,4 +70,95 @@ class OssClient(
             throw Exception("OSS 上传失败 (${response.status.value}): $errText")
         }
     }
+
+    private fun buildPublicUrl(objectKey: String): String {
+        return if (!customDomain.isNullOrBlank()) {
+            val cleanedDomain = customDomain.trim().removeSuffix("/")
+            val protocol = if (cleanedDomain.startsWith("http")) "" else "https://"
+            "$protocol$cleanedDomain/$objectKey"
+        } else {
+            "https://$bucket.$region.aliyuncs.com/$objectKey"
+        }
+    }
+
+    private fun getSubtitleObjectKey(documentId: String): String {
+        return "${pathPrefix.trim().removeSuffix("/")}/subtitles/$documentId.srt"
+    }
+
+    /**
+     * 上传 SRT 字幕到 OSS（跨客户端同步）
+     */
+    suspend fun uploadSubtitle(documentId: String, srtContent: String): String {
+        val objectKey = getSubtitleObjectKey(documentId)
+        val contentType = "text/plain; charset=utf-8"
+        val fileBytes = srtContent.toByteArray(Charsets.UTF_8)
+
+        val sdf = SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss z", Locale.US)
+        sdf.timeZone = TimeZone.getTimeZone("GMT")
+        val dateStr = sdf.format(Date())
+
+        val resource = "/$bucket/$objectKey"
+        val signature = generateSignature("PUT", contentType, dateStr, resource)
+        val authHeader = "OSS $accessKeyId:$signature"
+
+        val endpoint = "https://$bucket.$region.aliyuncs.com/$objectKey"
+        val response = client.put(endpoint) {
+            header("Authorization", authHeader)
+            header("Content-Type", contentType)
+            header("Date", dateStr)
+            setBody(fileBytes)
+        }
+
+        if (response.status.isSuccess()) {
+            return buildPublicUrl(objectKey)
+        } else {
+            val errText = response.bodyAsText()
+            throw Exception("OSS 字幕上传失败 (${response.status.value}): $errText")
+        }
+    }
+
+    /**
+     * 从 OSS 下载字幕文件
+     */
+    suspend fun downloadSubtitle(documentId: String): String? {
+        val objectKey = getSubtitleObjectKey(documentId)
+        val ossUrl = buildPublicUrl(objectKey)
+
+        return try {
+            val response = client.get(ossUrl)
+            if (response.status.isSuccess()) {
+                val text = response.bodyAsText()
+                if (text.isBlank()) null else text
+            } else {
+                null
+            }
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    /**
+     * 从 OSS 删除字幕文件
+     */
+    suspend fun deleteSubtitle(documentId: String) {
+        val objectKey = getSubtitleObjectKey(documentId)
+
+        val sdf = SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss z", Locale.US)
+        sdf.timeZone = TimeZone.getTimeZone("GMT")
+        val dateStr = sdf.format(Date())
+
+        val resource = "/$bucket/$objectKey"
+        val signature = generateSignature("DELETE", "", dateStr, resource)
+        val authHeader = "OSS $accessKeyId:$signature"
+
+        val endpoint = "https://$bucket.$region.aliyuncs.com/$objectKey"
+        try {
+            client.delete(endpoint) {
+                header("Authorization", authHeader)
+                header("Date", dateStr)
+            }
+        } catch (e: Exception) {
+            // 忽略删除失败（可能文件不存在）
+        }
+    }
 }

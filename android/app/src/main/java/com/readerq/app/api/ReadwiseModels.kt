@@ -188,3 +188,37 @@ data class HighlightImage(
     val src: String,
     val alt: String
 )
+
+// --- Save Document API Models ---
+
+@Serializable
+data class ReadwiseSaveRequest(
+    val url: String,
+    val html: String? = null,
+    val should_clean_html: Boolean? = null,
+    val title: String? = null,
+    val author: String? = null,
+    val summary: String? = null,
+    val published_date: String? = null,
+    val image_url: String? = null,
+    val location: String? = null,
+    val category: String? = null,
+    val tags: List<String>? = null,
+    val notes: String? = null
+)
+
+@Serializable
+data class ReadwiseSaveResponse(
+    val id: String? = null,
+    val url: String? = null,
+    val error: String? = null
+)
+
+// --- Subtitle Models ---
+
+data class SubtitleSegment(
+    val index: Int,
+    val startTime: Double, // 秒
+    val endTime: Double,   // 秒
+    val text: String
+)

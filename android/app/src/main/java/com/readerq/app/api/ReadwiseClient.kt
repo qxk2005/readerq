@@ -398,4 +398,16 @@ class ReadwiseClient(private val token: String) {
 
         return fetchedCount
     }
+
+    // 13. 保存文档到 Readwise (V3 save API)
+    suspend fun saveDocument(request: ReadwiseSaveRequest): ReadwiseSaveResponse {
+        val url = "https://readwise.io/api/v3/save/"
+        val response = executeWithRetry(url) {
+            post(url) {
+                authHeaders()
+                setBody(request)
+            }
+        }
+        return response.body()
+    }
 }

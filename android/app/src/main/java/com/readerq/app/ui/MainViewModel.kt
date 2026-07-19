@@ -506,6 +506,221 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    // --- Save Document Methods ---
+
+    private val _saveDocResult = MutableStateFlow<SaveDocResult?>(null)
+    val saveDocResult: StateFlow<SaveDocResult?> = _saveDocResult.asStateFlow()
+
+    private val _isSavingDoc = MutableStateFlow(false)
+    val isSavingDoc: StateFlow<Boolean> = _isSavingDoc.asStateFlow()
+
+    fun clearSaveDocResult() {
+        _saveDocResult.value = null
+    }
+
+    fun saveDocumentByUrl(
+        url: String,
+        tags: List<String>? = null,
+        author: String? = null,
+        notes: String? = null
+    ) {
+        val currentToken = _token.value ?: return
+        _isSavingDoc.value = true
+        _saveDocResult.value = null
+
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val client = ReadwiseClient(currentToken)
+                val request = com.readerq.app.api.ReadwiseSaveRequest(
+                    url = url,
+                    tags = if (!tags.isNullOrEmpty()) tags else null,
+                    author = author?.takeIf { it.isNotBlank() },
+                    notes = notes?.takeIf { it.isNotBlank() }
+                )
+                val result = client.saveDocument(request)
+                _saveDocResult.value = SaveDocResult(
+                    success = true,
+                    message = "文章已保存到 ReaderQ"
+                )
+                // 触发同步以获取新文章
+                startSync()
+            } catch (e: Exception) {
+                _saveDocResult.value = SaveDocResult(
+                    success = false,
+                    message = "保存失败: ${e.message}"
+                )
+            } finally {
+                _isSavingDoc.value = false
+            }
+        }
+    }
+
+    fun saveDocumentWithHtml(
+        title: String,
+        html: String,
+        tags: List<String>? = null,
+        author: String? = null,
+        notes: String? = null
+    ) {
+        val currentToken = _token.value ?: return
+        _isSavingDoc.value = true
+        _saveDocResult.value = null
+
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val client = ReadwiseClient(currentToken)
+                // 使用特殊 URL 格式来保存纯文本/HTML 内容
+                val request = com.readerq.app.api.ReadwiseSaveRequest(
+                    url = "https://readerq.app/upload/${System.currentTimeMillis()}",
+                    html = html,
+                    should_clean_html = false,
+                    title = title,
+                    tags = if (!tags.isNullOrEmpty()) tags else null,
+                    author = author?.takeIf { it.isNotBlank() },
+                    notes = notes?.takeIf { it.isNotBlank() }
+                )
+                val result = client.saveDocument(request)
+                _saveDocResult.value = SaveDocResult(
+                    success = true,
+                    message = "文档已上传到 ReaderQ"
+                )
+                startSync()
+            } catch (e: Exception) {
+                _saveDocResult.value = SaveDocResult(
+                    success = false,
+                    message = "上传失败: ${e.message}"
+                )
+            } finally {
+                _isSavingDoc.value = false
+            }
+        }
+    }
+
+    // --- Subtitle Methods ---
+
+    private val _subtitles = MutableStateFlow<List<com.readerq.app.api.SubtitleSegment>>(emptyList())
+    val subtitles: StateFlow<List<com.readerq.app.api.SubtitleSegment>> = _subtitles.asStateFlow()
+
+    private val _subtitleLoading = MutableStateFlow(false)
+    val subtitleLoading: StateFlow<Boolean> = _subtitleLoading.asStateFlow()
+
+    private val _subtitleSrtContent = MutableStateFlow<String?>(null) // 本地缓存的 SRT 原始内容
+
+    fun loadSubtitles(documentId: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            _subtitleLoading.value = true
+            try {
+                // 1. 尝试从本地 settings 加载
+                val localSrt = settingDao.getSetting("subtitle_$documentId")
+                if (!localSrt.isNullOrBlank()) {
+                    _subtitleSrtContent.value = localSrt
+                    _subtitles.value = com.readerq.app.api.SrtParser.parse(localSrt)
+                    _subtitleLoading.value = false
+                    return@launch
+                }
+
+                // 2. 尝试从 OSS 下载
+                val region = _ossRegion.value
+                val bucket = _ossBucket.value
+                val akId = _ossAccessKeyId.value
+                val akSecret = _ossAccessKeySecret.value
+                if (region.isNotBlank() && bucket.isNotBlank() && akId.isNotBlank() && akSecret.isNotBlank()) {
+                    val oss = com.readerq.app.api.OssClient(
+                        region, bucket, akId, akSecret,
+                        _ossCustomDomain.value, _ossPathPrefix.value
+                    )
+                    val remoteSrt = oss.downloadSubtitle(documentId)
+                    if (!remoteSrt.isNullOrBlank()) {
+                        // 缓存到本地
+                        settingDao.setSetting(SettingEntity("subtitle_$documentId", remoteSrt))
+                        _subtitleSrtContent.value = remoteSrt
+                        _subtitles.value = com.readerq.app.api.SrtParser.parse(remoteSrt)
+                        _subtitleLoading.value = false
+                        return@launch
+                    }
+                }
+
+                // 3. 无字幕
+                _subtitles.value = emptyList()
+                _subtitleSrtContent.value = null
+            } catch (e: Exception) {
+                _subtitles.value = emptyList()
+                _subtitleSrtContent.value = null
+            } finally {
+                _subtitleLoading.value = false
+            }
+        }
+    }
+
+    fun uploadSubtitle(documentId: String, srtContent: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            _subtitleLoading.value = true
+            try {
+                // 解析验证
+                val segments = com.readerq.app.api.SrtParser.parse(srtContent)
+                if (segments.isEmpty()) {
+                    _subtitleLoading.value = false
+                    return@launch
+                }
+
+                // 保存到本地
+                settingDao.setSetting(SettingEntity("subtitle_$documentId", srtContent))
+                _subtitleSrtContent.value = srtContent
+                _subtitles.value = segments
+
+                // 同步到 OSS
+                val region = _ossRegion.value
+                val bucket = _ossBucket.value
+                val akId = _ossAccessKeyId.value
+                val akSecret = _ossAccessKeySecret.value
+                if (region.isNotBlank() && bucket.isNotBlank() && akId.isNotBlank() && akSecret.isNotBlank()) {
+                    try {
+                        val oss = com.readerq.app.api.OssClient(
+                            region, bucket, akId, akSecret,
+                            _ossCustomDomain.value, _ossPathPrefix.value
+                        )
+                        oss.uploadSubtitle(documentId, srtContent)
+                    } catch (e: Exception) {
+                        // OSS 同步失败不影响本地使用
+                    }
+                }
+            } catch (e: Exception) {
+                // 解析或保存失败
+            } finally {
+                _subtitleLoading.value = false
+            }
+        }
+    }
+
+    fun deleteSubtitle(documentId: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                settingDao.removeSetting("subtitle_$documentId")
+                _subtitles.value = emptyList()
+                _subtitleSrtContent.value = null
+
+                // 同时删除 OSS
+                val region = _ossRegion.value
+                val bucket = _ossBucket.value
+                val akId = _ossAccessKeyId.value
+                val akSecret = _ossAccessKeySecret.value
+                if (region.isNotBlank() && bucket.isNotBlank() && akId.isNotBlank() && akSecret.isNotBlank()) {
+                    try {
+                        val oss = com.readerq.app.api.OssClient(
+                            region, bucket, akId, akSecret,
+                            _ossCustomDomain.value, _ossPathPrefix.value
+                        )
+                        oss.deleteSubtitle(documentId)
+                    } catch (e: Exception) {
+                        // 忽略
+                    }
+                }
+            } catch (e: Exception) {
+                // 忽略
+            }
+        }
+    }
+
     fun updateSidebarWidth(width: Float) {
         _sidebarWidthDp.value = width
         viewModelScope.launch(Dispatchers.IO) {
@@ -1396,6 +1611,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
 data class SyncProgress(val phase: String, val fetched: Int, val total: Int)
 data class SyncCounts(val local: Int, val remote: Int, val lastSync: String?)
+data class SaveDocResult(val success: Boolean, val message: String)
 
 data class TestStage(
     val id: String,
