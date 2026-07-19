@@ -1589,11 +1589,21 @@ fun VideoReadingContent(
                 AndroidView(
                     factory = { ctx ->
                         WebView(ctx).apply {
+                            layoutParams = android.view.ViewGroup.LayoutParams(
+                                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                                android.view.ViewGroup.LayoutParams.MATCH_PARENT
+                            )
                             webView = this
                             settings.javaScriptEnabled = true
                             settings.domStorageEnabled = true
                             settings.mediaPlaybackRequiresUserGesture = false
+                            
+                            // 借鉴桌面版思路：移除 User-Agent 中的 "wv" 标识，防止 Google 阻断 WebView
+                            val defaultUa = settings.userAgentString
+                            settings.userAgentString = defaultUa.replace("; wv", "")
+                            
                             webViewClient = WebViewClient()
+                            webChromeClient = android.webkit.WebChromeClient()
                             val embedHtml = """
                                 <!DOCTYPE html>
                                 <html><head>
@@ -1611,7 +1621,7 @@ fun VideoReadingContent(
                                         player = new YT.Player('player', {
                                             videoId: '$videoId',
                                             host: 'https://www.youtube.com',
-                                            playerVars: { 'playsinline': 1, 'autoplay': 0, 'modestbranding': 1, 'rel': 0, 'enablejsapi': 1 }
+                                            playerVars: { 'playsinline': 1, 'autoplay': 0, 'modestbranding': 1, 'rel': 0, 'enablejsapi': 1, 'origin': 'https://www.youtube.com' }
                                         });
                                     }
                                     function seekTo(time) {
