@@ -1621,7 +1621,7 @@ fun VideoReadingContent(
                                         player = new YT.Player('player', {
                                             videoId: '$videoId',
                                             host: 'https://www.youtube.com',
-                                            playerVars: { 'playsinline': 1, 'autoplay': 0, 'modestbranding': 1, 'rel': 0, 'enablejsapi': 1, 'origin': 'https://www.youtube.com' }
+                                            playerVars: { 'playsinline': 1, 'autoplay': 0, 'modestbranding': 1, 'rel': 0, 'enablejsapi': 1, 'origin': 'https://readerq.app' }
                                         });
                                     }
                                     function seekTo(time) {
@@ -1637,7 +1637,7 @@ fun VideoReadingContent(
                                 </body></html>
                             """.trimIndent()
                             loadDataWithBaseURL(
-                                "https://www.youtube.com",
+                                "https://readerq.app",
                                 embedHtml,
                                 "text/html",
                                 "UTF-8",
