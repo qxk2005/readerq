@@ -113,7 +113,7 @@ export function findFuzzyOffset(fullText, query) {
 }
 
 export function restoreHighlights(root, highlights, onHighlightClick) {
-  if (!root) return;
+  if (!root) return highlights; // 返回原始数据
   const fullText = root.textContent;
   
   // 预处理高亮：如果缺少 location_start，通过文本匹配推算
@@ -186,4 +186,7 @@ export function restoreHighlights(root, highlights, onHighlightClick) {
         });
       }
     }
+
+  // 返回包含推算位置信息的处理后高亮数组，供侧边栏排序使用
+  return processedHighlights;
 }

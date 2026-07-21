@@ -176,6 +176,8 @@ export default function ReadingPane() {
 
   const lastRenderedDocIdRef = useRef(null);
   const lastSyncedHlIdRef = useRef(null);
+  const highlightPositionsRef = useRef({}); // { [hlId]: location_start } 缓存推算出的位置
+  const [positionsReady, setPositionsReady] = useState(0); // 递增计数器，每次位置推算完成后+1触发重渲染
   const articleRef = useRef(null);
 
   // 文档切换时停止 TTS 朗读（useEffect 避免在渲染阶段触发外部副作用）
@@ -342,10 +344,17 @@ export default function ReadingPane() {
           timerId = setTimeout(() => {
             const activeContainer = document.querySelector('.blog-article') || articleContainer;
             if (!activeContainer) return;
-            restoreHighlights(activeContainer, highlights, (hl, e) => {
+            const processed = restoreHighlights(activeContainer, highlights, (hl, e) => {
               const rect = e.target.getBoundingClientRect();
               setEditingHighlight({ ...hl, rect });
             });
+            // 缓存推算出的 location_start 到 ref，供侧边栏排序使用
+            if (processed) {
+              const posMap = {};
+              processed.forEach(h => { if (h.location_start != null) posMap[h.id] = h.location_start; });
+              highlightPositionsRef.current = posMap;
+              setPositionsReady(c => c + 1);
+            }
           }, 100);
         }
       } else if (selectedDoc?.html_content) {
@@ -360,10 +369,17 @@ export default function ReadingPane() {
         articleContainer.innerHTML = sanitizeArticleHtml(selectedDoc.html_content);
         timerId = setTimeout(() => {
           if (!articleContainer) return;
-          restoreHighlights(articleContainer, highlights, (hl, e) => {
+          const processed = restoreHighlights(articleContainer, highlights, (hl, e) => {
             const rect = e.target.getBoundingClientRect();
             setEditingHighlight({ ...hl, rect });
           });
+          // 缓存推算出的 location_start 到 ref，供侧边栏排序使用
+          if (processed) {
+            const posMap = {};
+            processed.forEach(h => { if (h.location_start != null) posMap[h.id] = h.location_start; });
+            highlightPositionsRef.current = posMap;
+            setPositionsReady(c => c + 1);
+          }
           if (shouldPreserveScroll && scrollContainer) {
             scrollContainer.scrollTop = prevScrollTop;
           } else if (!shouldPreserveScroll && scrollContainer && selectedDoc?.reading_progress > 0) {
@@ -1436,17 +1452,19 @@ export default function ReadingPane() {
                 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
                   {(() => {
+                    const posMap = highlightPositionsRef.current;
+                    const getPos = (hl) => posMap[hl.id] ?? hl.location_start ?? Infinity;
                     const sortedHighlights = [...highlights].sort((a, b) => {
                       switch (highlightSortMode) {
                         case 'position_desc':
-                          return (b.location_start || 0) - (a.location_start || 0);
+                          return getPos(b) - getPos(a);
                         case 'time_asc':
                           return new Date(a.created_at || 0) - new Date(b.created_at || 0);
                         case 'time_desc':
                           return new Date(b.created_at || 0) - new Date(a.created_at || 0);
                         case 'position_asc':
                         default:
-                          return (a.location_start || 0) - (b.location_start || 0);
+                          return getPos(a) - getPos(b);
                       }
                     });
                     return sortedHighlights;
