@@ -1086,6 +1086,18 @@ fun HtmlContentViewer(
                             }
                         }
                     }
+
+                    @JavascriptInterface
+                    fun onHighlightPositions(positionsJson: String) {
+                        post {
+                            try {
+                                val posMap = Json.decodeFromString<Map<String, Int>>(positionsJson)
+                                viewModel.updateHighlightPositions(posMap)
+                            } catch (e: Exception) {
+                                // 忽略解析错误
+                            }
+                        }
+                    }
                 }, "AndroidBridge")
             }
         },
@@ -1474,10 +1486,38 @@ fun HtmlContentViewer(
                           }
                         };
 
+                        // 修改 restoreHighlights 使其返回处理后的高亮数据
+                        function restoreHighlightsAndGetPositions(root, highlights) {
+                          if (!root) return highlights;
+                          const fullText = root.textContent;
+                          const processedHighlights = highlights.map(hl => {
+                            if (hl.location_start == null || hl.location_end == null) {
+                              if (hl.text) {
+                                const offset = findFuzzyOffset(fullText, hl.text);
+                                if (offset) {
+                                  return { ...hl, location_start: offset.start, location_end: offset.end };
+                                }
+                              }
+                            }
+                            return hl;
+                          });
+                          // 执行 DOM 渲染（与原逻辑一致）
+                          restoreHighlights(root, highlights);
+                          return processedHighlights;
+                        }
+
                         try {
                           window.originalHtml = document.body.innerHTML;
                           var highlights = $highlightsJson;
-                          restoreHighlights(document.body, highlights);
+                          var processed = restoreHighlightsAndGetPositions(document.body, highlights);
+                          // 将推算出的位置信息回传给 Kotlin 层
+                          if (window.AndroidBridge && typeof window.AndroidBridge.onHighlightPositions === 'function') {
+                            var posMap = {};
+                            processed.forEach(function(h) {
+                              if (h.location_start != null) posMap[h.id] = h.location_start;
+                            });
+                            window.AndroidBridge.onHighlightPositions(JSON.stringify(posMap));
+                          }
                         } catch(e) {
                           console.error("Failed to restore highlights:", e);
                         }

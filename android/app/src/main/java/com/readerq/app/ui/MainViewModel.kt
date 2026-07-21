@@ -283,13 +283,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         .flowOn(Dispatchers.IO)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    // Sorted highlights based on current sort mode
-    val highlights: StateFlow<List<HighlightEntity>> = combine(_rawHighlights, _highlightSortMode) { hls, mode ->
+    // Highlight positions cache (computed by WebView JS text matching)
+    private val _highlightPositions = MutableStateFlow<Map<String, Int>>(emptyMap())
+
+    fun updateHighlightPositions(positions: Map<String, Int>) {
+        _highlightPositions.value = positions
+    }
+
+    // Sorted highlights based on current sort mode, using cached positions for accuracy
+    val highlights: StateFlow<List<HighlightEntity>> = combine(_rawHighlights, _highlightSortMode, _highlightPositions) { hls, mode, posMap ->
         when (mode) {
-            "position_desc" -> hls.sortedByDescending { it.location }
+            "position_desc" -> hls.sortedByDescending { posMap[it.id] ?: it.location }
             "time_asc" -> hls.sortedBy { it.created_at ?: "" }
             "time_desc" -> hls.sortedByDescending { it.created_at ?: "" }
-            else -> hls.sortedBy { it.location } // position_asc (default)
+            else -> hls.sortedBy { posMap[it.id] ?: it.location } // position_asc (default)
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
