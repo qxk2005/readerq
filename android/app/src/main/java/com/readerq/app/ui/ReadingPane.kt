@@ -25,6 +25,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -625,12 +626,14 @@ fun ReadingPane(
 
             if (currentDoc.category == "video") {
                 // 视频文章：YouTube 播放器 + 切换面板
-                VideoReadingContent(
-                    doc = currentDoc,
-                    viewModel = viewModel,
-                    articleContent = articleContent,
-                    modifier = Modifier.weight(1f)
-                )
+                androidx.compose.foundation.layout.Box(modifier = Modifier.weight(1f)) {
+                    VideoReadingContent(
+                        doc = currentDoc,
+                        viewModel = viewModel,
+                        articleContent = articleContent,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
             } else {
                 articleContent(Modifier.fillMaxWidth().weight(1f))
             }
@@ -1665,53 +1668,9 @@ fun VideoReadingContent(
                             
                             webViewClient = WebViewClient()
                             webChromeClient = android.webkit.WebChromeClient()
-                            val embedHtml = """
-                                <!DOCTYPE html>
-                                <html><head>
-                                <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                                <style>
-                                    * { margin: 0; padding: 0; }
-                                    body { background: #000; }
-                                    #player { width: 100%; height: 100%; position: absolute; top: 0; left: 0; }
-                                </style>
-                                </head><body>
-                                <div id="player"></div>
-                                <script>
-                                    var player;
-                                    function onYouTubeIframeAPIReady() {
-                                        player = new YT.Player('player', {
-                                            videoId: '$videoId',
-                                            host: 'https://www.youtube.com',
-                                            playerVars: { 'playsinline': 1, 'autoplay': 0, 'modestbranding': 1, 'rel': 0, 'enablejsapi': 1, 'origin': 'https://readerq.app' }
-                                        });
-                                        setInterval(function() {
-                                            if (player && typeof player.getCurrentTime === 'function') {
-                                                var time = player.getCurrentTime();
-                                                if (window.AndroidApp && window.AndroidApp.updateTime) {
-                                                    window.AndroidApp.updateTime(time);
-                                                }
-                                            }
-                                        }, 250);
-                                    }
-                                    function seekTo(time) {
-                                        if (player && typeof player.seekTo === 'function') {
-                                            player.seekTo(time, true);
-                                        }
-                                    }
-                                    var tag = document.createElement('script');
-                                    tag.src = "https://www.youtube.com/iframe_api";
-                                    var firstScriptTag = document.getElementsByTagName('script')[0];
-                                    firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
-                                </script>
-                                </body></html>
-                            """.trimIndent()
-                            loadDataWithBaseURL(
-                                "https://readerq.app",
-                                embedHtml,
-                                "text/html",
-                                "UTF-8",
-                                null
-                            )
+                            
+                            // Fix Compose SurfaceView glitch on some devices/emulators
+                            setLayerType(android.view.View.LAYER_TYPE_SOFTWARE, null)
                             
                             addJavascriptInterface(object : Any() {
                                 @android.webkit.JavascriptInterface
@@ -1721,8 +1680,60 @@ fun VideoReadingContent(
                             }, "AndroidApp")
                         }
                     },
-                    modifier = Modifier.fillMaxSize()
+                    modifier = Modifier.fillMaxSize().alpha(0.99f)
                 )
+                
+                LaunchedEffect(videoId, webView) {
+                    if (videoId != null && webView != null) {
+                        val embedHtml = """
+                            <!DOCTYPE html>
+                            <html><head>
+                            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                            <style>
+                                * { margin: 0; padding: 0; }
+                                body { background: #000; }
+                                #player { width: 100%; height: 100%; position: absolute; top: 0; left: 0; }
+                            </style>
+                            </head><body>
+                            <div id="player"></div>
+                            <script>
+                                var player;
+                                function onYouTubeIframeAPIReady() {
+                                    player = new YT.Player('player', {
+                                        videoId: '$videoId',
+                                        host: 'https://www.youtube.com',
+                                        playerVars: { 'playsinline': 1, 'autoplay': 0, 'modestbranding': 1, 'rel': 0, 'enablejsapi': 1, 'origin': 'https://readerq.app' }
+                                    });
+                                    setInterval(function() {
+                                        if (player && typeof player.getCurrentTime === 'function') {
+                                            var time = player.getCurrentTime();
+                                            if (window.AndroidApp && window.AndroidApp.updateTime) {
+                                                window.AndroidApp.updateTime(time);
+                                            }
+                                        }
+                                    }, 250);
+                                }
+                                function seekTo(time) {
+                                    if (player && typeof player.seekTo === 'function') {
+                                        player.seekTo(time, true);
+                                    }
+                                }
+                                var tag = document.createElement('script');
+                                tag.src = "https://www.youtube.com/iframe_api";
+                                var firstScriptTag = document.getElementsByTagName('script')[0];
+                                firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
+                            </script>
+                            </body></html>
+                        """.trimIndent()
+                        webView?.loadDataWithBaseURL(
+                            "https://readerq.app",
+                            embedHtml,
+                            "text/html",
+                            "UTF-8",
+                            null
+                        )
+                    }
+                }
             }
         } else {
             // 无法识别视频 ID
