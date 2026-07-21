@@ -5,6 +5,7 @@ import { createContext, useContext, useState, useEffect, useCallback } from 'rea
 const ThemeContext = createContext(null);
 
 export function ThemeProvider({ children }) {
+  const [isInitialized, setIsInitialized] = useState(false);
   const [theme, setThemeState] = useState('dark');
   const [fontSize, setFontSize] = useState(17);
   const [lineHeight, setLineHeight] = useState(1.8);
@@ -43,8 +44,12 @@ export function ThemeProvider({ children }) {
         if (settings.englishFont) setEnglishFont(settings.englishFont);
         if (settings.paddingX !== undefined) setPaddingX(settings.paddingX);
         if (settings.paragraphSpacing !== undefined) setParagraphSpacing(settings.paragraphSpacing);
-        if (settings.docListElements !== undefined) setDocListElements(settings.docListElements);
-        if (settings.videoSettings !== undefined) setVideoSettings(settings.videoSettings);
+        if (settings.docListElements !== undefined) {
+          setDocListElements(prev => ({ ...prev, ...settings.docListElements }));
+        }
+        if (settings.videoSettings !== undefined) {
+          setVideoSettings(prev => ({ ...prev, ...settings.videoSettings }));
+        }
       } catch { /* 忽略解析错误 */ }
     }
 
@@ -57,16 +62,18 @@ export function ThemeProvider({ children }) {
         document.documentElement.classList.add('platform-windows');
       }
     }
+    setIsInitialized(true);
   }, []);
 
   useEffect(() => {
+    if (!isInitialized) return;
     document.documentElement.setAttribute('data-theme', theme);
     localStorage.setItem('readerq-theme', JSON.stringify({
       theme, fontSize, lineHeight, contentWidth, fontFamily,
       chineseFont, englishFont, paddingX, paragraphSpacing,
       docListElements, videoSettings,
     }));
-  }, [theme, fontSize, lineHeight, contentWidth, fontFamily, chineseFont, englishFont, paddingX, paragraphSpacing, docListElements, videoSettings]);
+  }, [isInitialized, theme, fontSize, lineHeight, contentWidth, fontFamily, chineseFont, englishFont, paddingX, paragraphSpacing, docListElements, videoSettings]);
 
   const toggleTheme = useCallback(() => {
     setThemeState(prev => prev === 'dark' ? 'light' : 'dark');
