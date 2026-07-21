@@ -625,16 +625,12 @@ fun ReadingPane(
 
             if (currentDoc.category == "video") {
                 // 视频文章：YouTube 播放器 + 切换面板
-                Box(modifier = Modifier.weight(1f)) {
-                    androidx.compose.runtime.key(currentDoc.id) {
-                        VideoReadingContent(
-                            doc = currentDoc,
-                            viewModel = viewModel,
-                            articleContent = articleContent,
-                            modifier = Modifier.fillMaxSize()
-                        )
-                    }
-                }
+                VideoReadingContent(
+                    doc = currentDoc,
+                    viewModel = viewModel,
+                    articleContent = articleContent,
+                    modifier = Modifier.weight(1f)
+                )
             } else {
                 articleContent(Modifier.fillMaxWidth().weight(1f))
             }
