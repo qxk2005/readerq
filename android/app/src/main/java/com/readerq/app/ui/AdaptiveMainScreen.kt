@@ -47,7 +47,7 @@ fun AdaptiveMainScreen(
     val selectedDoc by viewModel.selectedDoc.collectAsState()
     val token by viewModel.token.collectAsState()
     val currentTab by viewModel.currentTab.collectAsState()
-    var isNavBarCollapsed by rememberSaveable { mutableStateOf(false) }
+    val isNavBarCollapsed by viewModel.isNavBarCollapsed.collectAsState()
 
     val theme by viewModel.theme.collectAsState()
     val detailPaneType by viewModel.detailPaneType.collectAsState()
@@ -173,7 +173,7 @@ fun AdaptiveMainScreen(
                                         .fillMaxHeight()
                                         .padding(vertical = 6.dp, horizontal = 2.dp)
                                         .clip(RoundedCornerShape(16.dp))
-                                        .clickable { isNavBarCollapsed = false }
+                                        .clickable { viewModel.setNavBarCollapsed(false) }
                                         .padding(horizontal = 4.dp),
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.Center
@@ -247,7 +247,7 @@ fun AdaptiveMainScreen(
                         
                         NavigationBarItem(
                             selected = false,
-                            onClick = { isNavBarCollapsed = true },
+                            onClick = { viewModel.setNavBarCollapsed(true) },
                             icon = {
                                 Column(
                                     horizontalAlignment = Alignment.CenterHorizontally,

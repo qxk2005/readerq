@@ -101,6 +101,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _isSidebarCollapsed = MutableStateFlow(false)
     val isSidebarCollapsed: StateFlow<Boolean> = _isSidebarCollapsed.asStateFlow()
 
+    private val _isNavBarCollapsed = MutableStateFlow(false)
+    val isNavBarCollapsed: StateFlow<Boolean> = _isNavBarCollapsed.asStateFlow()
+
     // Detail Pane Toggling & Width States
     private val _detailPaneType = MutableStateFlow<String?>(null)
     val detailPaneType: StateFlow<String?> = _detailPaneType.asStateFlow()
@@ -286,6 +289,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             
             _sidebarWidthDp.value = settingDao.getSetting("sidebar_width")?.replace("\"", "")?.toFloatOrNull() ?: 360f
             _isSidebarCollapsed.value = settingDao.getSetting("sidebar_collapsed")?.replace("\"", "")?.toBooleanStrictOrNull() ?: false
+            _isNavBarCollapsed.value = settingDao.getSetting("navbar_collapsed")?.replace("\"", "")?.toBooleanStrictOrNull() ?: false
             
             _openaiApiKey.value = settingDao.getSetting("openai_api_key")?.replace("\"", "") ?: ""
             _openaiBaseUrl.value = settingDao.getSetting("openai_base_url")?.replace("\"", "") ?: "https://api.openai.com/v1"
@@ -811,6 +815,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _isSidebarCollapsed.value = newState
         viewModelScope.launch(Dispatchers.IO) {
             settingDao.setSetting(SettingEntity("sidebar_collapsed", newState.toString()))
+        }
+    }
+
+    fun setNavBarCollapsed(collapsed: Boolean) {
+        _isNavBarCollapsed.value = collapsed
+        viewModelScope.launch(Dispatchers.IO) {
+            settingDao.setSetting(SettingEntity("navbar_collapsed", collapsed.toString()))
         }
     }
 
