@@ -926,7 +926,8 @@ fun HtmlContentViewer(
         val escapedText = hl.text.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n").replace("\r", "")
         val escapedNote = hl.note?.replace("\\", "\\\\")?.replace("\"", "\\\"")?.replace("\n", "\\n")?.replace("\r", "") ?: ""
         val color = hl.color ?: "yellow"
-        """{"id":"${hl.id}","text":"$escapedText","note":"$escapedNote","color":"$color","location_start":${hl.location}}"""
+        val loc = if (isVideo) "null" else hl.location.toString()
+        """{"id":"${hl.id}","text":"$escapedText","note":"$escapedNote","color":"$color","location_start":$loc}"""
     }
 
     val webViewRef = remember { mutableStateOf<WebView?>(null) }
