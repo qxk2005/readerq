@@ -106,6 +106,17 @@ export default function ReadingPane() {
   });
   const [isResizingRightPanel, setIsResizingRightPanel] = useState(false);
 
+  useEffect(() => {
+    fetch('/api/settings')
+      .then(res => res.json())
+      .then(data => {
+        if (data && data.ui_rightpanel_width) {
+          setRightPanelWidth(parseInt(data.ui_rightpanel_width, 10));
+        }
+      })
+      .catch(() => {});
+  }, []);
+
   // 拖拽调整右侧面板宽度
   const handleRightPanelResizeStart = (e) => {
     e.preventDefault();
@@ -131,10 +142,15 @@ export default function ReadingPane() {
     document.addEventListener('mouseup', handleMouseUp);
   };
 
-  // 宽度变化并拖动结束时保存到 localStorage
+  // 宽度变化并拖动结束时保存到 localStorage 和 数据库
   useEffect(() => {
     if (!isResizingRightPanel && rightPanelWidth !== 320) {
       localStorage.setItem('readerq_rightpanel_width', rightPanelWidth.toString());
+      fetch('/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ui_rightpanel_width: rightPanelWidth.toString() }),
+      }).catch(() => {});
     }
   }, [rightPanelWidth, isResizingRightPanel]);
 

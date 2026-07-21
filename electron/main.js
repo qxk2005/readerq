@@ -7,12 +7,20 @@ const fs = require('fs');
 let mainWindow;
 let serverProcess;
 
-function findOpenPort() {
-  return new Promise((resolve, reject) => {
+function findOpenPort(preferredPort = 36123) {
+  return new Promise((resolve) => {
     const server = net.createServer();
     server.unref();
-    server.on('error', reject);
-    server.listen(0, '127.0.0.1', () => {
+    server.on('error', () => {
+      const randomServer = net.createServer();
+      randomServer.unref();
+      randomServer.on('error', () => resolve(36123));
+      randomServer.listen(0, '127.0.0.1', () => {
+        const port = randomServer.address().port;
+        randomServer.close(() => resolve(port));
+      });
+    });
+    server.listen(preferredPort, '127.0.0.1', () => {
       const port = server.address().port;
       server.close(() => resolve(port));
     });

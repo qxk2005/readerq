@@ -320,6 +320,38 @@ export function AppProvider({ children }) {
     }
   }, []);
 
+  const [isSidebarInit, setIsSidebarInit] = useState(false);
+
+  // 初始化加载 Sidebar 收起状态
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('readerq_sidebar_collapsed');
+      if (saved !== null) {
+        setSidebarCollapsed(saved === 'true');
+      }
+    }
+    fetch('/api/settings')
+      .then(res => res.json())
+      .then(data => {
+        if (data && data.ui_sidebar_collapsed !== undefined && data.ui_sidebar_collapsed !== '') {
+          setSidebarCollapsed(data.ui_sidebar_collapsed === 'true');
+        }
+      })
+      .catch(() => {})
+      .finally(() => setIsSidebarInit(true));
+  }, []);
+
+  // 当 sidebarCollapsed 发生变更时持久化保存
+  useEffect(() => {
+    if (!isSidebarInit) return;
+    localStorage.setItem('readerq_sidebar_collapsed', sidebarCollapsed.toString());
+    fetch('/api/settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ui_sidebar_collapsed: sidebarCollapsed.toString() }),
+    }).catch(() => {});
+  }, [sidebarCollapsed, isSidebarInit]);
+
   // 初始化加载
   useEffect(() => {
     checkSyncStatus();

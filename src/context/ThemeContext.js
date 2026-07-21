@@ -30,31 +30,31 @@ export function ThemeProvider({ children }) {
   });
 
   useEffect(() => {
-    // 从 localStorage 读取主题设置
-    const saved = localStorage.getItem('readerq-theme');
-    if (saved) {
-      try {
-        const settings = JSON.parse(saved);
-        if (settings.theme) setThemeState(settings.theme);
-        if (settings.fontSize) setFontSize(settings.fontSize);
-        if (settings.lineHeight) setLineHeight(settings.lineHeight);
-        if (settings.contentWidth) setContentWidth(settings.contentWidth);
-        if (settings.fontFamily) setFontFamily(settings.fontFamily);
-        if (settings.chineseFont) setChineseFont(settings.chineseFont);
-        if (settings.englishFont) setEnglishFont(settings.englishFont);
-        if (settings.paddingX !== undefined) setPaddingX(settings.paddingX);
-        if (settings.paragraphSpacing !== undefined) setParagraphSpacing(settings.paragraphSpacing);
-        if (settings.docListElements !== undefined) {
-          setDocListElements(prev => ({ ...prev, ...settings.docListElements }));
-        }
-        if (settings.videoSettings !== undefined) {
-          setVideoSettings(prev => ({ ...prev, ...settings.videoSettings }));
-        }
-      } catch { /* 忽略解析错误 */ }
-    }
-
-    // 写入平台标识，以便在 CSS 中做跨平台 UI 适配
+    // 1. 先从 localStorage 同步读取设置（避免初次渲染闪烁）
     if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('readerq-theme');
+      if (saved) {
+        try {
+          const settings = JSON.parse(saved);
+          if (settings.theme) setThemeState(settings.theme);
+          if (settings.fontSize) setFontSize(settings.fontSize);
+          if (settings.lineHeight) setLineHeight(settings.lineHeight);
+          if (settings.contentWidth) setContentWidth(settings.contentWidth);
+          if (settings.fontFamily) setFontFamily(settings.fontFamily);
+          if (settings.chineseFont) setChineseFont(settings.chineseFont);
+          if (settings.englishFont) setEnglishFont(settings.englishFont);
+          if (settings.paddingX !== undefined) setPaddingX(settings.paddingX);
+          if (settings.paragraphSpacing !== undefined) setParagraphSpacing(settings.paragraphSpacing);
+          if (settings.docListElements !== undefined) {
+            setDocListElements(prev => ({ ...prev, ...settings.docListElements }));
+          }
+          if (settings.videoSettings !== undefined) {
+            setVideoSettings(prev => ({ ...prev, ...settings.videoSettings }));
+          }
+        } catch { /* 忽略解析错误 */ }
+      }
+
+      // 写入平台标识，以便在 CSS 中做跨平台 UI 适配
       const isMac = navigator.userAgent.indexOf('Mac') !== -1;
       if (isMac) {
         document.documentElement.classList.add('platform-darwin');
@@ -62,17 +62,62 @@ export function ThemeProvider({ children }) {
         document.documentElement.classList.add('platform-windows');
       }
     }
-    setIsInitialized(true);
+
+    // 2. 从服务器 SQLite 数据库二次获取最新设置以进行持久化同步
+    fetch('/api/settings')
+      .then(res => res.json())
+      .then(data => {
+        if (data && data.ui_theme_settings) {
+          try {
+            const settings = typeof data.ui_theme_settings === 'string'
+              ? JSON.parse(data.ui_theme_settings)
+              : data.ui_theme_settings;
+
+            if (settings.theme) setThemeState(settings.theme);
+            if (settings.fontSize) setFontSize(settings.fontSize);
+            if (settings.lineHeight) setLineHeight(settings.lineHeight);
+            if (settings.contentWidth) setContentWidth(settings.contentWidth);
+            if (settings.fontFamily) setFontFamily(settings.fontFamily);
+            if (settings.chineseFont) setChineseFont(settings.chineseFont);
+            if (settings.englishFont) setEnglishFont(settings.englishFont);
+            if (settings.paddingX !== undefined) setPaddingX(settings.paddingX);
+            if (settings.paragraphSpacing !== undefined) setParagraphSpacing(settings.paragraphSpacing);
+            if (settings.docListElements !== undefined) {
+              setDocListElements(prev => ({ ...prev, ...settings.docListElements }));
+            }
+            if (settings.videoSettings !== undefined) {
+              setVideoSettings(prev => ({ ...prev, ...settings.videoSettings }));
+            }
+          } catch (e) {
+            console.error('解析后端 UI 设置失败:', e);
+          }
+        }
+      })
+      .catch(err => {
+        console.error('获取后端 UI 设置失败:', err);
+      })
+      .finally(() => {
+        setIsInitialized(true);
+      });
   }, []);
 
   useEffect(() => {
     if (!isInitialized) return;
     document.documentElement.setAttribute('data-theme', theme);
-    localStorage.setItem('readerq-theme', JSON.stringify({
+    const themeConfig = {
       theme, fontSize, lineHeight, contentWidth, fontFamily,
       chineseFont, englishFont, paddingX, paragraphSpacing,
       docListElements, videoSettings,
-    }));
+    };
+    const themeJson = JSON.stringify(themeConfig);
+    localStorage.setItem('readerq-theme', themeJson);
+
+    // 同步保存至后台数据库 SQLite
+    fetch('/api/settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ui_theme_settings: themeJson }),
+    }).catch(err => console.error('保存 UI 设置到数据库失败:', err));
   }, [isInitialized, theme, fontSize, lineHeight, contentWidth, fontFamily, chineseFont, englishFont, paddingX, paragraphSpacing, docListElements, videoSettings]);
 
   const toggleTheme = useCallback(() => {

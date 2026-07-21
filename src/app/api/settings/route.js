@@ -19,6 +19,11 @@ const SETTING_KEYS = [
   'oss_access_key_secret',
   'oss_custom_domain',
   'oss_path_prefix',
+  'ui_theme_settings',
+  'ui_sidebar_width',
+  'ui_doclist_width',
+  'ui_rightpanel_width',
+  'ui_sidebar_collapsed',
 ];
 
 export async function GET() {

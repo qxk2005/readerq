@@ -39,6 +39,18 @@ export default function HomePage() {
     if (savedDocList) {
       setDocListWidth(parseInt(savedDocList, 10));
     }
+
+    fetch('/api/settings')
+      .then(res => res.json())
+      .then(data => {
+        if (data && data.ui_sidebar_width) {
+          setSidebarWidth(parseInt(data.ui_sidebar_width, 10));
+        }
+        if (data && data.ui_doclist_width) {
+          setDocListWidth(parseInt(data.ui_doclist_width, 10));
+        }
+      })
+      .catch(() => {});
   }, []);
   const [isResizingSidebar, setIsResizingSidebar] = useState(false);
   const [isResizingDocList, setIsResizingDocList] = useState(false);
@@ -91,16 +103,26 @@ export default function HomePage() {
     document.addEventListener('mouseup', handleMouseUp);
   };
 
-  // 宽度变化并拖动结束时保存到 localStorage
+  // 宽度变化并拖动结束时保存到 localStorage 与数据库
   useEffect(() => {
     if (!isResizingSidebar && sidebarWidth !== 240) {
       localStorage.setItem('readerq_sidebar_width', sidebarWidth.toString());
+      fetch('/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ui_sidebar_width: sidebarWidth.toString() }),
+      }).catch(() => {});
     }
   }, [sidebarWidth, isResizingSidebar]);
 
   useEffect(() => {
     if (!isResizingDocList && docListWidth !== 380) {
       localStorage.setItem('readerq_doclist_width', docListWidth.toString());
+      fetch('/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ui_doclist_width: docListWidth.toString() }),
+      }).catch(() => {});
     }
   }, [docListWidth, isResizingDocList]);
 
