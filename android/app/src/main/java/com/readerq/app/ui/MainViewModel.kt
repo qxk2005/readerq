@@ -264,13 +264,34 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         .flowOn(Dispatchers.IO)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    // Load highlights for currently selected document
-    val highlights: StateFlow<List<HighlightEntity>> = _selectedDoc
+    // Highlight sort mode: position_asc, position_desc, time_asc, time_desc
+    private val _highlightSortMode = MutableStateFlow("position_asc")
+    val highlightSortMode: StateFlow<String> = _highlightSortMode.asStateFlow()
+
+    fun setHighlightSortMode(mode: String) {
+        _highlightSortMode.value = mode
+        viewModelScope.launch(Dispatchers.IO) {
+            settingDao.setSetting(SettingEntity("highlight_sort_mode", mode))
+        }
+    }
+
+    // Load highlights for currently selected document (raw, unsorted)
+    private val _rawHighlights: StateFlow<List<HighlightEntity>> = _selectedDoc
         .flatMapLatest { doc ->
             if (doc != null) hlDao.getHighlightsForDocument(doc.id) else flowOf(emptyList())
         }
         .flowOn(Dispatchers.IO)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    // Sorted highlights based on current sort mode
+    val highlights: StateFlow<List<HighlightEntity>> = combine(_rawHighlights, _highlightSortMode) { hls, mode ->
+        when (mode) {
+            "position_desc" -> hls.sortedByDescending { it.location }
+            "time_asc" -> hls.sortedBy { it.created_at ?: "" }
+            "time_desc" -> hls.sortedByDescending { it.created_at ?: "" }
+            else -> hls.sortedBy { it.location } // position_asc (default)
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     // Load documents that contain highlights
     val documentsWithHighlights: StateFlow<List<DocumentEntity>> = docDao.getDocumentsWithHighlights()
@@ -290,6 +311,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             _sidebarWidthDp.value = settingDao.getSetting("sidebar_width")?.replace("\"", "")?.toFloatOrNull() ?: 360f
             _isSidebarCollapsed.value = settingDao.getSetting("sidebar_collapsed")?.replace("\"", "")?.toBooleanStrictOrNull() ?: false
             _isNavBarCollapsed.value = settingDao.getSetting("navbar_collapsed")?.replace("\"", "")?.toBooleanStrictOrNull() ?: false
+            _highlightSortMode.value = settingDao.getSetting("highlight_sort_mode")?.replace("\"", "") ?: "position_asc"
             
             _openaiApiKey.value = settingDao.getSetting("openai_api_key")?.replace("\"", "") ?: ""
             _openaiBaseUrl.value = settingDao.getSetting("openai_base_url")?.replace("\"", "") ?: "https://api.openai.com/v1"
@@ -1123,7 +1145,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                                     color = "yellow",
                                     location = 0,
                                     readwise_highlight_id = item.id,
-                                    tags_json = Json.encodeToString(item.tags.keys.toList())
+                                    tags_json = Json.encodeToString(item.tags.keys.toList()),
+                                    created_at = item.created_at
                                 )
                             )
                         } else {
@@ -1196,7 +1219,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                                         color = h.color ?: "yellow",
                                         location = h.location ?: 0,
                                         readwise_highlight_id = h.id.toString(),
-                                        tags_json = Json.encodeToString(h.tags.map { it.name })
+                                        tags_json = Json.encodeToString(h.tags.map { it.name }),
+                                        created_at = h.highlighted_at ?: h.created_at
                                     )
                                 )
                             }
@@ -1443,6 +1467,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
         viewModelScope.launch(Dispatchers.IO) {
             val localId = "local_" + System.currentTimeMillis()
+            val nowIso = java.time.Instant.now().toString()
             var localHl = HighlightEntity(
                 id = localId,
                 document_id = doc.id,
@@ -1451,7 +1476,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 color = color,
                 location = location,
                 readwise_highlight_id = null,
-                tags_json = "[]"
+                tags_json = "[]",
+                created_at = nowIso
             )
             // Insert local first (Optimistic update)
             hlDao.insertHighlight(localHl)

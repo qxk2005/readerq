@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useApp } from '@/context/AppContext';
 import { useTheme } from '@/context/ThemeContext';
 import { formatDate, extractDomain, CATEGORY_LABELS } from '@/lib/utils';
@@ -10,7 +10,7 @@ import GhostReader from '@/components/ai/GhostReader';
 import HighlightEditor from '@/components/HighlightEditor';
 import TagInput from '@/components/TagInput';
 import VideoReadingPane from '@/components/video/VideoReadingPane';
-import { BookOpen, Link, Info, Edit3, Bot, Loader2, ClipboardList, AlertTriangle, RefreshCw, CheckCircle2, XCircle, ImageIcon, Upload, Trash2, RotateCcw, Inbox, Clock, Archive, Volume2, Share2, Play, Pause, SkipBack, SkipForward, X, Copy, Check } from 'lucide-react';
+import { BookOpen, Link, Info, Edit3, Bot, Loader2, ClipboardList, AlertTriangle, RefreshCw, CheckCircle2, XCircle, ImageIcon, Upload, Trash2, RotateCcw, Inbox, Clock, Archive, Volume2, Share2, Play, Pause, SkipBack, SkipForward, X, Copy, Check, ArrowUpDown } from 'lucide-react';
 
 const scrollToElement = (container, element) => {
   if (!container || !element) return;
@@ -86,6 +86,7 @@ export default function ReadingPane() {
   const [sidebarEditTags, setSidebarEditTags] = useState([]);
   const [shareCopied, setShareCopied] = useState(false);
   const [videoTabMode, setVideoTabMode] = useState('subtitle'); // 'subtitle' | 'blog'
+  const [highlightSortMode, setHighlightSortMode] = useState('position_asc'); // 'position_asc' | 'position_desc' | 'time_asc' | 'time_desc'
 
   useEffect(() => {
     setVideoTabMode('subtitle');
@@ -1405,10 +1406,51 @@ export default function ReadingPane() {
 
               {/* Highlights List */}
               <div style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
-                <h3 style={{ fontSize: '11px', fontWeight: '600', color: 'var(--color-text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 'var(--space-3)' }}>Highlights ({highlights.length})</h3>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 'var(--space-3)' }}>
+                  <h3 style={{ fontSize: '11px', fontWeight: '600', color: 'var(--color-text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.05em', margin: 0 }}>Highlights ({highlights.length})</h3>
+                  {highlights.length > 0 && (
+                    <div style={{ position: 'relative' }}>
+                      <button
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: '4px',
+                          fontSize: '11px', color: 'var(--color-text-tertiary)',
+                          background: 'none', border: '1px solid var(--color-border)',
+                          borderRadius: 'var(--radius-sm)', padding: '2px 8px',
+                          cursor: 'pointer', whiteSpace: 'nowrap'
+                        }}
+                        onClick={() => {
+                          const modes = ['position_asc', 'position_desc', 'time_asc', 'time_desc'];
+                          const idx = modes.indexOf(highlightSortMode);
+                          setHighlightSortMode(modes[(idx + 1) % modes.length]);
+                        }}
+                        title="切换排序方式"
+                      >
+                        <ArrowUpDown size={12} />
+                        {highlightSortMode === 'position_asc' ? '位置 ↑' :
+                         highlightSortMode === 'position_desc' ? '位置 ↓' :
+                         highlightSortMode === 'time_asc' ? '时间 ↑' : '时间 ↓'}
+                      </button>
+                    </div>
+                  )}
+                </div>
                 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
-                  {highlights.map(hl => {
+                  {(() => {
+                    const sortedHighlights = [...highlights].sort((a, b) => {
+                      switch (highlightSortMode) {
+                        case 'position_desc':
+                          return (b.location_start || 0) - (a.location_start || 0);
+                        case 'time_asc':
+                          return new Date(a.created_at || 0) - new Date(b.created_at || 0);
+                        case 'time_desc':
+                          return new Date(b.created_at || 0) - new Date(a.created_at || 0);
+                        case 'position_asc':
+                        default:
+                          return (a.location_start || 0) - (b.location_start || 0);
+                      }
+                    });
+                    return sortedHighlights;
+                  })().map(hl => {
                     // 检测高亮文本中的 Markdown 图片
                     const mdImageRegex = /!\[([^\]]*)\]\(([^)]+)\)/g;
                     const mdImages = [];
@@ -1667,6 +1709,14 @@ export default function ReadingPane() {
                       ) : (
                         /* ===== 非编辑态：显示笔记、标签和同步状态 ===== */
                         <>
+                          {/* 高亮创建时间 */}
+                          {hl.created_at && (
+                            <div style={{ marginTop: 'var(--space-2)', fontSize: '11px', color: 'var(--color-text-tertiary)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                              <Clock size={11} />
+                              {new Date(hl.created_at).toLocaleString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                            </div>
+                          )}
+
                           {/* Verify Sync Status */}
                           <div style={{ marginTop: 'var(--space-2)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                             {verifyStatus[hl.id] ? (

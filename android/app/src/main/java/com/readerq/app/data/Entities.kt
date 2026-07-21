@@ -40,7 +40,8 @@ data class HighlightEntity(
     val color: String?, // e.g. yellow, green, blue, purple, red
     val location: Int,
     val readwise_highlight_id: String?,
-    val tags_json: String? // JSON representation of tags List/Map
+    val tags_json: String?, // JSON representation of tags List/Map
+    val created_at: String? = null // ISO 8601 timestamp of when highlight was created
 )
 
 @Entity(tableName = "settings")

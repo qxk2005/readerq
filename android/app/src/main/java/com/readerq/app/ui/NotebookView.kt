@@ -222,14 +222,47 @@ fun NotebookView(viewModel: MainViewModel) {
             }
         }
 
-        // Highlights list header
+        // Highlights list header with sort control
         item {
-            Text(
-                "高亮与批注 (${highlights.size})",
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onBackground,
-                fontSize = 15.sp
-            )
+            val sortMode by viewModel.highlightSortMode.collectAsState()
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    "高亮与批注 (${highlights.size})",
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onBackground,
+                    fontSize = 15.sp
+                )
+                if (highlights.isNotEmpty()) {
+                    val sortLabel = when (sortMode) {
+                        "position_asc" -> "位置 ↑"
+                        "position_desc" -> "位置 ↓"
+                        "time_asc" -> "时间 ↑"
+                        "time_desc" -> "时间 ↓"
+                        else -> "位置 ↑"
+                    }
+                    OutlinedButton(
+                        onClick = {
+                            val modes = listOf("position_asc", "position_desc", "time_asc", "time_desc")
+                            val idx = modes.indexOf(sortMode)
+                            viewModel.setHighlightSortMode(modes[(idx + 1) % modes.size])
+                        },
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
+                        modifier = Modifier.height(28.dp)
+                    ) {
+                        Icon(
+                            painter = painterResource(id = R.drawable.ic_sort),
+                            contentDescription = "排序",
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(sortLabel, fontSize = 11.sp)
+                    }
+                }
+            }
         }
 
         // Highlights items using modular independent card views
@@ -659,6 +692,37 @@ fun NotebookHighlightCard(
                                 Text(text = "#$tag", color = subTextColor, fontSize = 10.sp)
                             }
                         }
+                    }
+                }
+
+                // Created at timestamp
+                if (!hl.created_at.isNullOrBlank()) {
+                    Spacer(modifier = Modifier.height(6.dp))
+                    val formattedTime = remember(hl.created_at) {
+                        try {
+                            val instant = java.time.Instant.parse(hl.created_at)
+                            val zdt = instant.atZone(java.time.ZoneId.systemDefault())
+                            val formatter = java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
+                            zdt.format(formatter)
+                        } catch (e: Exception) {
+                            hl.created_at?.take(16)?.replace("T", " ") ?: ""
+                        }
+                    }
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Icon(
+                            painter = painterResource(id = R.drawable.ic_inbox),
+                            contentDescription = "创建时间",
+                            tint = subTextColor.copy(alpha = 0.6f),
+                            modifier = Modifier.size(12.dp)
+                        )
+                        Text(
+                            text = formattedTime,
+                            color = subTextColor.copy(alpha = 0.6f),
+                            fontSize = 10.sp
+                        )
                     }
                 }
             }
