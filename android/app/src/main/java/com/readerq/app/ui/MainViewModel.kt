@@ -611,6 +611,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _subtitleSrtContent = MutableStateFlow<String?>(null) // 本地缓存的 SRT 原始内容
 
     fun loadSubtitles(documentId: String) {
+        _subtitles.value = emptyList()
+        _subtitleSrtContent.value = null
         viewModelScope.launch(Dispatchers.IO) {
             _subtitleLoading.value = true
             try {
@@ -663,6 +665,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val blogLoading: StateFlow<Boolean> = _blogLoading.asStateFlow()
 
     fun loadBlog(documentId: String) {
+        _blogContent.value = null
         viewModelScope.launch(Dispatchers.IO) {
             _blogLoading.value = true
             try {
