@@ -245,6 +245,56 @@ export default function DailyReviewView({ onBackToArticles }) {
     setEditingTags(prev => prev.filter(t => t !== tagToRemove));
   };
 
+  // 快捷直接添加/移除标签 (常态卡片无需进入大编辑模式)
+  const [quickTagInput, setQuickTagInput] = useState('');
+  const [showQuickTagInput, setShowQuickTagInput] = useState(false);
+
+  const handleQuickAddTag = (tagToAdd) => {
+    if (!currentHl || !tagToAdd) return;
+    const trimmed = tagToAdd.trim().replace(/^#/, '');
+    if (!trimmed) return;
+
+    const currentTags = currentHl.tags || [];
+    if (currentTags.includes(trimmed)) return;
+
+    const newTags = [...currentTags, trimmed];
+
+    // 1. 0ms 前端即时显示
+    setHighlights(prev => prev.map((item, idx) => idx === currentIndex ? { ...item, tags: newTags } : item));
+    setQuickTagInput('');
+    setShowQuickTagInput(false);
+
+    // 2. 后台静默保存
+    fetch('/api/daily-review/update-highlight', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        highlightId: currentHl.id,
+        text: currentHl.text,
+        note: currentHl.note,
+        tags: newTags,
+      }),
+    }).catch(err => console.warn('快捷添加标签异常:', err));
+  };
+
+  const handleQuickRemoveTag = (tagToRemove) => {
+    if (!currentHl || !tagToRemove) return;
+    const newTags = (currentHl.tags || []).filter(t => t !== tagToRemove);
+
+    setHighlights(prev => prev.map((item, idx) => idx === currentIndex ? { ...item, tags: newTags } : item));
+
+    fetch('/api/daily-review/update-highlight', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        highlightId: currentHl.id,
+        text: currentHl.text,
+        note: currentHl.note,
+        tags: newTags,
+      }),
+    }).catch(err => console.warn('快捷删除标签异常:', err));
+  };
+
   // 提交回顾动作 (乐观 UI 0 毫秒秒切，后台异步静默同步，彻底卡顿)
   const handleAction = (actionType) => {
     if (!currentHl) return;
@@ -708,37 +758,155 @@ export default function DailyReviewView({ onBackToArticles }) {
                           {renderMarkdownContent(currentHl.text)}
                         </div>
 
-                        {/* 个人笔记展示 Note */}
+                        {/* 个人笔记展示 Note (支持 Markdown 格式) */}
                         {currentHl.note && (
                           <div style={{
                             backgroundColor: 'var(--color-bg-secondary)',
-                            padding: '12px 16px',
-                            borderRadius: '12px',
-                            fontSize: '13px',
-                            color: 'var(--color-text-secondary)',
-                            marginBottom: '20px',
-                            borderLeft: '3px solid var(--color-accent)'
+                            padding: '14px 18px',
+                            borderRadius: '14px',
+                            fontSize: '13.5px',
+                            color: 'var(--color-text-primary)',
+                            marginBottom: '22px',
+                            borderLeft: '4px solid var(--color-accent)',
+                            wordBreak: 'break-word',
+                            overflowWrap: 'anywhere'
                           }}>
-                            💡 <strong>我的笔记：</strong> {currentHl.note}
+                            <div style={{ fontSize: '11px', fontWeight: '700', color: 'var(--color-accent)', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                              💡 我的笔记 Note
+                            </div>
+                            {renderMarkdownContent(currentHl.note)}
                           </div>
                         )}
 
-                        {/* 标签列表 */}
-                        {currentHl.tags && currentHl.tags.length > 0 && (
-                          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '24px' }}>
-                            {currentHl.tags.map(tag => (
-                              <span key={tag} style={{
-                                fontSize: '11px',
-                                color: 'var(--color-text-tertiary)',
+                        {/* 标签列表与快捷直接添加标签控制组 (无需进入大编辑模式) */}
+                        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center', marginBottom: '24px', position: 'relative' }}>
+                          {(currentHl.tags || []).map(tag => (
+                            <span 
+                              key={tag} 
+                              style={{
+                                fontSize: '12px',
+                                color: 'var(--color-text-secondary)',
                                 backgroundColor: 'var(--color-bg-tertiary)',
-                                padding: '3px 8px',
-                                borderRadius: '6px'
-                              }}>
-                                #{tag}
-                              </span>
-                            ))}
-                          </div>
-                        )}
+                                padding: '4px 10px',
+                                borderRadius: '8px',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                fontWeight: '500',
+                                transition: 'all 0.15s ease'
+                              }}
+                            >
+                              #{tag}
+                              <button 
+                                onClick={() => handleQuickRemoveTag(tag)} 
+                                title="移除此标签"
+                                style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'var(--color-text-tertiary)', padding: 0, display: 'flex', alignItems: 'center' }}
+                              >
+                                <X size={12} />
+                              </button>
+                            </span>
+                          ))}
+
+                          {/* 快捷直接添加标签按键 */}
+                          {showQuickTagInput ? (
+                            <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                              <input
+                                type="text"
+                                className="form-input"
+                                placeholder="输入标签名..."
+                                autoFocus
+                                value={quickTagInput}
+                                onChange={(e) => setQuickTagInput(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') {
+                                    e.preventDefault();
+                                    handleQuickAddTag(quickTagInput);
+                                  } else if (e.key === 'Escape') {
+                                    setShowQuickTagInput(false);
+                                  }
+                                }}
+                                style={{ fontSize: '12px', padding: '4px 10px', borderRadius: '8px', width: '130px', height: '28px' }}
+                              />
+                              <button 
+                                className="btn btn-primary btn-sm" 
+                                onClick={() => handleQuickAddTag(quickTagInput)}
+                                style={{ height: '28px', padding: '0 10px', fontSize: '11px', borderRadius: '6px' }}
+                              >
+                                确定
+                              </button>
+                              <button 
+                                className="btn btn-ghost btn-sm" 
+                                onClick={() => setShowQuickTagInput(false)}
+                                style={{ height: '28px', padding: '0 6px', fontSize: '11px' }}
+                              >
+                                ✕
+                              </button>
+
+                              {/* 快捷标签自动补全弹出浮层 */}
+                              {quickTagInput.trim() && (
+                                <div style={{
+                                  position: 'absolute',
+                                  top: '100%',
+                                  left: 0,
+                                  marginTop: '4px',
+                                  backgroundColor: 'var(--color-bg-card)',
+                                  border: '1px solid var(--color-border)',
+                                  borderRadius: '10px',
+                                  boxShadow: 'var(--shadow-md)',
+                                  zIndex: 100,
+                                  maxHeight: '140px',
+                                  width: '180px',
+                                  overflowY: 'auto',
+                                  padding: '4px'
+                                }}>
+                                  {allSystemTags
+                                    .filter(t => t.toLowerCase().includes(quickTagInput.trim().toLowerCase()) && !(currentHl.tags || []).includes(t))
+                                    .slice(0, 6)
+                                    .map(suggestedTag => (
+                                      <div
+                                        key={suggestedTag}
+                                        onClick={() => handleQuickAddTag(suggestedTag)}
+                                        style={{
+                                          padding: '6px 10px',
+                                          borderRadius: '6px',
+                                          fontSize: '12px',
+                                          color: 'var(--color-text-primary)',
+                                          cursor: 'pointer',
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          gap: '4px'
+                                        }}
+                                        onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--color-bg-hover)'}
+                                        onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                                      >
+                                        <Tag size={11} style={{ color: 'var(--color-accent)' }} /> #{suggestedTag}
+                                      </div>
+                                    ))}
+                                </div>
+                              )}
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => setShowQuickTagInput(true)}
+                              style={{
+                                fontSize: '12px',
+                                color: 'var(--color-accent)',
+                                backgroundColor: 'rgba(0, 122, 255, 0.08)',
+                                border: '1px solid rgba(0, 122, 255, 0.2)',
+                                padding: '4px 10px',
+                                borderRadius: '8px',
+                                cursor: 'pointer',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                fontWeight: '600',
+                                transition: 'all 0.15s ease'
+                              }}
+                            >
+                              <Plus size={13} /> 添加标签
+                            </button>
+                          )}
+                        </div>
                       </>
                     )}
 
