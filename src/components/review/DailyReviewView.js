@@ -33,7 +33,7 @@ import {
  * 渲染卡片 Markdown 正文与图文
  * 优雅提取并展示 Markdown 图片，自动转义 **加粗** 和 [链接]，并防止超长 URL 撑爆卡片
  */
-function renderMarkdownContent(text) {
+function renderMarkdownContent(text, fontSize = '17px', textColor = 'var(--color-text-primary)') {
   if (!text) return null;
 
   // 1. 提取 Markdown 图片 ![alt](url)
@@ -58,9 +58,9 @@ function renderMarkdownContent(text) {
       <div 
         dangerouslySetInnerHTML={{ __html: cleanText }} 
         style={{
-          fontSize: '17px',
-          lineHeight: '1.8',
-          color: 'var(--color-text-primary)',
+          fontSize,
+          lineHeight: fontSize === '17px' ? '1.8' : '1.6',
+          color: textColor,
           wordBreak: 'break-word',
           overflowWrap: 'anywhere',
           whiteSpace: 'pre-wrap',
@@ -774,7 +774,7 @@ export default function DailyReviewView({ onBackToArticles }) {
                             <div style={{ fontSize: '11px', fontWeight: '700', color: 'var(--color-accent)', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '4px' }}>
                               💡 我的笔记 Note
                             </div>
-                            {renderMarkdownContent(currentHl.note)}
+                            {renderMarkdownContent(currentHl.note, '13.5px', 'var(--color-text-secondary)')}
                           </div>
                         )}
 
@@ -1185,8 +1185,9 @@ export default function DailyReviewView({ onBackToArticles }) {
                       </div>
 
                       {hl.note && (
-                        <div style={{ marginTop: '10px', fontSize: '12px', color: 'var(--color-text-secondary)', backgroundColor: 'var(--color-bg-secondary)', padding: '8px 12px', borderRadius: '8px' }}>
-                          💡 <strong>笔记：</strong> {hl.note}
+                        <div style={{ marginTop: '10px', fontSize: '12.5px', color: 'var(--color-text-secondary)', backgroundColor: 'var(--color-bg-secondary)', padding: '10px 14px', borderRadius: '10px' }}>
+                          <div style={{ fontSize: '10px', fontWeight: '700', color: 'var(--color-accent)', marginBottom: '4px' }}>💡 笔记 Note</div>
+                          {renderMarkdownContent(hl.note, '12.5px', 'var(--color-text-secondary)')}
                         </div>
                       )}
 
