@@ -38,6 +38,9 @@ export default function SettingsModal() {
   // API 配置与每日回顾状态
   const [readwiseToken, setReadwiseToken] = useState('');
   const [dailyReviewTarget, setDailyReviewTarget] = useState('auto');
+  const [officialStreak, setOfficialStreak] = useState('');
+  const [officialBestStreak, setOfficialBestStreak] = useState('');
+  const [officialTotalHl, setOfficialTotalHl] = useState('');
   const [openaiApiKey, setOpenaiApiKey] = useState('');
   const [openaiBaseUrl, setOpenaiBaseUrl] = useState('');
   const [openaiModel, setOpenaiModel] = useState('');
@@ -69,6 +72,9 @@ export default function SettingsModal() {
 
       setReadwiseToken(data.readwise_token || '');
       setDailyReviewTarget(data.daily_review_target || 'auto');
+      setOfficialStreak(data.readwise_official_streak || '');
+      setOfficialBestStreak(data.readwise_official_best_streak || '');
+      setOfficialTotalHl(data.readwise_official_total_highlights || '');
       setOpenaiApiKey(data.openai_api_key || '');
       setOpenaiBaseUrl(data.openai_base_url || '');
       setOpenaiModel(data.openai_model || '');
@@ -113,6 +119,9 @@ export default function SettingsModal() {
         body: JSON.stringify({
           readwise_token: readwiseToken,
           daily_review_target: dailyReviewTarget,
+          readwise_official_streak: officialStreak,
+          readwise_official_best_streak: officialBestStreak,
+          readwise_official_total_highlights: officialTotalHl,
           openai_api_key: openaiApiKey,
           openai_base_url: openaiBaseUrl,
           openai_model: openaiModel,
@@ -255,6 +264,7 @@ export default function SettingsModal() {
       case 'api':
         return <TabAPI {...{
           readwiseToken, setReadwiseToken, dailyReviewTarget, setDailyReviewTarget,
+          officialStreak, setOfficialStreak, officialBestStreak, setOfficialBestStreak, officialTotalHl, setOfficialTotalHl,
           openaiApiKey, setOpenaiApiKey,
           openaiBaseUrl, setOpenaiBaseUrl, openaiModel, setOpenaiModel,
           openaiMaxTokens, setOpenaiMaxTokens, envInfo,
@@ -404,6 +414,7 @@ export default function SettingsModal() {
 // ===== Tab: API 配置 =====
 function TabAPI({
   readwiseToken, setReadwiseToken, dailyReviewTarget, setDailyReviewTarget,
+  officialStreak, setOfficialStreak, officialBestStreak, setOfficialBestStreak, officialTotalHl, setOfficialTotalHl,
   openaiApiKey, setOpenaiApiKey,
   openaiBaseUrl, setOpenaiBaseUrl, openaiModel, setOpenaiModel,
   openaiMaxTokens, setOpenaiMaxTokens, envInfo,
@@ -455,11 +466,53 @@ function TabAPI({
           <option value="auto">✨ 与 Readwise 官方设置自动同步对齐 (推荐)</option>
           <option value="5">每天 5 条</option>
           <option value="10">每天 10 条</option>
-          <option value="15">每天 15 条</option>
+          <option value="15">每天 15 条 (Readwise 默认)</option>
           <option value="20">每天 20 条</option>
         </select>
         <div className="form-hint">
           “自动同步”模式下直接读取与对齐 Readwise 官方返回的所有每日回顾项目。
+        </div>
+      </div>
+
+      {/* Readwise 官方打卡统计同步 */}
+      <div className="form-group" style={{ background: 'var(--color-bg-tertiary)', padding: '12px', borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border-light)' }}>
+        <label className="form-label" style={{ fontWeight: '600', marginBottom: '8px' }}>
+          📊 Readwise 官方历史统计数据同步基准
+        </label>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px' }}>
+          <div>
+            <div style={{ fontSize: '11px', color: 'var(--color-text-tertiary)', marginBottom: '4px' }}>当前连续打卡 (Streak)</div>
+            <input
+              type="number"
+              className="form-input"
+              placeholder="例如 900"
+              value={officialStreak}
+              onChange={(e) => setOfficialStreak(e.target.value)}
+            />
+          </div>
+          <div>
+            <div style={{ fontSize: '11px', color: 'var(--color-text-tertiary)', marginBottom: '4px' }}>最长打卡纪录 (Best)</div>
+            <input
+              type="number"
+              className="form-input"
+              placeholder="例如 900"
+              value={officialBestStreak}
+              onChange={(e) => setOfficialBestStreak(e.target.value)}
+            />
+          </div>
+          <div>
+            <div style={{ fontSize: '11px', color: 'var(--color-text-tertiary)', marginBottom: '4px' }}>累计总高亮数 (Highlights)</div>
+            <input
+              type="number"
+              className="form-input"
+              placeholder="例如 27372"
+              value={officialTotalHl}
+              onChange={(e) => setOfficialTotalHl(e.target.value)}
+            />
+          </div>
+        </div>
+        <div className="form-hint" style={{ marginTop: '6px' }}>
+          填写从 Readwise 官方 Statistics 页面看到的指标后，ReaderQ 将与 Readwise 官方历史打卡数和高亮全量同步对齐。
         </div>
       </div>
 

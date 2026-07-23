@@ -182,37 +182,38 @@ export default function DailyReviewView({ onBackToArticles }) {
         <div style={{ 
           display: 'flex', 
           backgroundColor: 'var(--color-bg-tertiary)', 
-          padding: '3px', 
-          borderRadius: 'var(--radius-md)' 
+          padding: '4px', 
+          borderRadius: 'var(--radius-lg)',
+          marginLeft: 'auto'
         }}>
           <button
             onClick={() => setActiveTab('review')}
             style={{
               display: 'flex', alignItems: 'center', gap: '6px',
-              padding: '6px 16px', borderRadius: 'var(--radius-sm)',
-              border: 'none', fontSize: '13px', fontWeight: activeTab === 'review' ? '600' : '400',
+              padding: '8px 18px', borderRadius: 'var(--radius-md)',
+              border: 'none', fontSize: '13px', fontWeight: activeTab === 'review' ? '600' : '500',
               backgroundColor: activeTab === 'review' ? 'var(--color-bg-card)' : 'transparent',
               color: activeTab === 'review' ? 'var(--color-text-primary)' : 'var(--color-text-secondary)',
               boxShadow: activeTab === 'review' ? 'var(--shadow-sm)' : 'none',
               cursor: 'pointer', transition: 'all 0.2s cubic-bezier(0.16, 1, 0.3, 1)'
             }}
           >
-            <BookOpen size={14} /> 每日高亮 ({highlights.length})
+            <BookOpen size={15} /> 每日高亮 ({highlights.length})
           </button>
 
           <button
             onClick={() => setActiveTab('stats')}
             style={{
               display: 'flex', alignItems: 'center', gap: '6px',
-              padding: '6px 16px', borderRadius: 'var(--radius-sm)',
-              border: 'none', fontSize: '13px', fontWeight: activeTab === 'stats' ? '600' : '400',
+              padding: '8px 18px', borderRadius: 'var(--radius-md)',
+              border: 'none', fontSize: '13px', fontWeight: activeTab === 'stats' ? '600' : '500',
               backgroundColor: activeTab === 'stats' ? 'var(--color-bg-card)' : 'transparent',
               color: activeTab === 'stats' ? 'var(--color-text-primary)' : 'var(--color-text-secondary)',
               boxShadow: activeTab === 'stats' ? 'var(--shadow-sm)' : 'none',
               cursor: 'pointer', transition: 'all 0.2s cubic-bezier(0.16, 1, 0.3, 1)'
             }}
           >
-            <BarChart3 size={14} /> 回顾统计
+            <BarChart3 size={15} /> 回顾统计
           </button>
         </div>
       </div>
@@ -410,12 +411,21 @@ export default function DailyReviewView({ onBackToArticles }) {
                       paddingTop: '20px',
                       borderTop: '1px solid var(--color-border-light)'
                     }}>
-                      <div style={{ display: 'flex', gap: '8px' }}>
+                      <div style={{ display: 'flex', gap: '10px' }}>
                         <button
-                          className="btn btn-secondary btn-sm"
+                          className="btn btn-secondary"
                           disabled={currentIndex === 0}
                           onClick={() => setCurrentIndex(prev => Math.max(0, prev - 1))}
-                          style={{ borderRadius: '10px' }}
+                          style={{ 
+                            height: '42px', 
+                            padding: '0 20px', 
+                            borderRadius: '12px', 
+                            fontSize: '13px', 
+                            fontWeight: '600',
+                            display: 'flex', 
+                            alignItems: 'center', 
+                            gap: '6px' 
+                          }}
                         >
                           <ChevronLeft size={16} /> 上一条
                         </button>
@@ -423,10 +433,17 @@ export default function DailyReviewView({ onBackToArticles }) {
 
                       <div style={{ display: 'flex', gap: '12px' }}>
                         <button
-                          className="btn btn-secondary btn-sm"
+                          className="btn btn-secondary"
                           onClick={() => handleAction('favorite')}
                           style={{
-                            borderRadius: '10px',
+                            height: '42px',
+                            padding: '0 20px',
+                            borderRadius: '12px',
+                            fontSize: '13px',
+                            fontWeight: '600',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px',
                             color: actionHistory[currentHl.id] === 'favorite' ? '#ef4444' : 'inherit'
                           }}
                         >
@@ -434,9 +451,19 @@ export default function DailyReviewView({ onBackToArticles }) {
                         </button>
 
                         <button
-                          className="btn btn-primary btn-sm"
+                          className="btn btn-primary"
                           onClick={() => handleAction('reviewed')}
-                          style={{ padding: '8px 20px', borderRadius: '10px', fontWeight: '600' }}
+                          style={{
+                            height: '42px',
+                            padding: '0 22px',
+                            borderRadius: '12px',
+                            fontSize: '13px',
+                            fontWeight: '600',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            boxShadow: '0 4px 14px rgba(0, 122, 255, 0.3)'
+                          }}
                         >
                           已复习 / 下一条 (Space) <ChevronRight size={16} />
                         </button>
@@ -548,24 +575,26 @@ export default function DailyReviewView({ onBackToArticles }) {
                   return (
                     <div 
                       key={d}
-                      title={`${d}: 已复习 ${count}/5 条`}
+                      title={`${d}: 已复习 ${count}/${stats?.targetCount || 15} 条`}
                       style={{
-                        height: '42px',
-                        borderRadius: '8px',
+                        height: '46px',
+                        borderRadius: '10px',
                         backgroundColor: isDone ? '#34c759' : count > 0 ? 'rgba(52, 199, 89, 0.35)' : 'var(--color-bg-tertiary)',
                         color: isDone || count > 0 ? '#fff' : 'var(--color-text-tertiary)',
                         display: 'flex',
                         flexDirection: 'column',
                         alignItems: 'center',
-                        justify: 'center',
+                        justifyContent: 'center',
+                        textAlign: 'center',
                         fontSize: '11px',
                         fontWeight: '600',
-                        transition: 'transform 0.15s',
+                        lineHeight: '1.2',
+                        transition: 'all 0.15s ease',
                         cursor: 'pointer'
                       }}
                     >
-                      <div>{d.slice(8)}日</div>
-                      {count > 0 && <div style={{ fontSize: '9px', opacity: 0.9 }}>{count}条</div>}
+                      <div style={{ textAlign: 'center', width: '100%' }}>{d.slice(8)}日</div>
+                      {count > 0 && <div style={{ fontSize: '9px', opacity: 0.9, textAlign: 'center', marginTop: '2px' }}>{count}条</div>}
                     </div>
                   );
                 })}

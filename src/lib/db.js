@@ -876,13 +876,22 @@ export function recordReviewAction(reviewDate, highlightId, action, customTarget
 }
 
 /**
- * 获取每日回顾与打卡统计全量数据
+ * 获取每日回顾与打卡统计全量数据 (支持同步 Readwise 官方历史 Strike 与高亮基数)
  */
 export function getReviewStatsData() {
   const db = getDatabase();
   const todayDate = new Date().toISOString().split('T')[0];
 
-  // 1. 获取近 30 天的打卡数据
+  // 1. 读取设置中可能保存的 Readwise 官方基准统计数据
+  const officialStreakSetting = getSetting('readwise_official_streak');
+  const officialBestStreakSetting = getSetting('readwise_official_best_streak');
+  const officialTotalHlSetting = getSetting('readwise_official_total_highlights');
+
+  const baseStreak = officialStreakSetting ? parseInt(officialStreakSetting, 10) : 0;
+  const baseBestStreak = officialBestStreakSetting ? parseInt(officialBestStreakSetting, 10) : 0;
+  const baseTotalHl = officialTotalHlSetting ? parseInt(officialTotalHlSetting, 10) : 0;
+
+  // 2. 获取近 30 天的打卡数据
   const thirtyDaysAgo = new Date(Date.now() - 30 * 86400000).toISOString().split('T')[0];
   const statsList = db.prepare(`
     SELECT * FROM review_stats 
@@ -890,22 +899,29 @@ export function getReviewStatsData() {
     ORDER BY review_date ASC
   `).all(thirtyDaysAgo);
 
-  // 2. 获取累计复习过的总高亮数
-  const totalReviewedRow = db.prepare(`
-    SELECT COUNT(DISTINCT highlight_id) as total FROM daily_reviews
-  `).get();
-  const totalReviewed = totalReviewedRow?.total || 0;
+  // 3. 获取全库的高亮总数作为基础统计（若无官方手动基数）
+  const dbTotalHlRow = db.prepare('SELECT COUNT(*) as total FROM highlights').get();
+  const dbTotalHls = dbTotalHlRow?.total || 0;
 
-  // 3. 获取今天已完成的计数
+  const totalReviewedRow = db.prepare('SELECT COUNT(DISTINCT highlight_id) as total FROM daily_reviews').get();
+  const totalReviewedInApp = totalReviewedRow?.total || 0;
+  
+  // 综合得到呈现给用户的总高亮数
+  const displayTotalReviewed = baseTotalHl > 0 ? baseTotalHl : (dbTotalHls + totalReviewedInApp);
+
+  // 4. 获取今天已完成的计数
   const todayStat = db.prepare('SELECT * FROM review_stats WHERE review_date = ?').get(todayDate);
   const todayReviewedCount = todayStat?.reviewed_count || 0;
-  const targetCount = todayStat?.target_count || 5;
+  const targetCount = todayStat?.target_count || 15;
 
-  // 4. 获取历史最长打卡纪录 (Best Streak)
+  // 5. 获取历史最长打卡纪录 (Best Streak)
   const maxStreakRow = db.prepare('SELECT MAX(streak_days) as best FROM review_stats').get();
-  const bestStreak = maxStreakRow?.best || (todayStat?.streak_days || 0);
+  const localBestStreak = maxStreakRow?.best || (todayStat?.streak_days || 0);
 
-  // 5. 获取今日已看过的 highlight_id 列表
+  const finalStreak = Math.max(baseStreak, todayStat?.streak_days || (baseStreak > 0 ? baseStreak : 0));
+  const finalBestStreak = Math.max(baseBestStreak, localBestStreak, finalStreak);
+
+  // 6. 获取今日已看过的 highlight_id 列表
   const todayReviewedHls = db.prepare(`
     SELECT DISTINCT highlight_id FROM daily_reviews WHERE review_date = ?
   `).all(todayDate).map(r => r.highlight_id);
@@ -914,9 +930,9 @@ export function getReviewStatsData() {
     todayDate,
     todayReviewedCount,
     targetCount,
-    streakDays: todayStat?.streak_days || 0,
-    bestStreak,
-    totalReviewed,
+    streakDays: finalStreak,
+    bestStreak: finalBestStreak,
+    totalReviewed: displayTotalReviewed,
     statsList,
     todayReviewedHls
   };
