@@ -28,10 +28,11 @@ export default function TagInput({ value, onChange, allTags = [], placeholder = 
       return;
     }
 
-    // Filter tags that match input but aren't already selected
+    // Filter tags that match input but aren't already selected, and deduplicate
     const lowerVal = val.trim().toLowerCase();
-    const matches = allTags
-      .filter(t => t.toLowerCase().includes(lowerVal) && !value.includes(t))
+    const uniqueTags = Array.from(new Set(allTags.filter(Boolean)));
+    const matches = uniqueTags
+      .filter(t => typeof t === 'string' && t.toLowerCase().includes(lowerVal) && !value.includes(t))
       .slice(0, 5); // Max 5 suggestions
 
     setSuggestions(matches);
@@ -91,9 +92,9 @@ export default function TagInput({ value, onChange, allTags = [], placeholder = 
           minHeight: '34px'
         }}
       >
-        {value.map(tag => (
+        {(value || []).map((tag, idx) => (
           <span 
-            key={tag} 
+            key={`${tag}-${idx}`} 
             style={{ 
               display: 'flex', 
               alignItems: 'center', 
@@ -154,7 +155,7 @@ export default function TagInput({ value, onChange, allTags = [], placeholder = 
         >
           {suggestions.map((suggestion, index) => (
             <li 
-              key={suggestion}
+              key={`${suggestion}-${index}`}
               onClick={() => addTag(suggestion)}
               onMouseEnter={() => setSelectedIndex(index)}
               style={{ 

@@ -1681,7 +1681,7 @@ export default function ReadingPane() {
                             <TagInput
                               value={sidebarEditTags}
                               onChange={setSidebarEditTags}
-                              allTags={allTags.map(t => t.name)}
+                              allTags={Array.from(new Set((allTags || []).map(t => t.name || t.key || t).filter(Boolean)))}
                               placeholder="添加标签..."
                             />
                           </div>
