@@ -36,16 +36,12 @@ import {
 function renderMarkdownContent(text, fontSize = '17px', textColor = 'var(--color-text-primary)') {
   if (!text) return null;
 
-  // 1. 提取 Markdown 图片 ![alt](url)
-  const imageRegex = /!\[([^\]]*)\]\(([^)]+)\)/g;
-  const images = [];
-  let match;
-  while ((match = imageRegex.exec(text)) !== null) {
-    images.push({ alt: match[1], url: match[2] });
-  }
+  let cleanText = String(text);
 
-  // 清理字符串中的 Markdown 图片语法，只保留文本
-  let cleanText = text.replace(imageRegex, '').trim();
+  // 1. 转换 Markdown 图片 ![alt](url) 在原位内联渲染，不添加深色外框背景
+  cleanText = cleanText.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (match, alt, url) => {
+    return `<img src="${url}" alt="${alt || ''}" style="max-width: 100%; max-height: 480px; border-radius: 12px; margin: 14px 0; display: block; object-fit: contain;" onError="this.style.display='none'" />`;
+  });
 
   // 2. 转换 **加粗**
   cleanText = cleanText.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
@@ -67,27 +63,6 @@ function renderMarkdownContent(text, fontSize = '17px', textColor = 'var(--color
           fontFamily: 'SF Pro Display, -apple-system, sans-serif'
         }}
       />
-      {images.length > 0 && (
-        <div style={{ marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-          {images.map((img, i) => (
-            <img
-              key={i}
-              src={img.url}
-              alt={img.alt || '高亮插图'}
-              style={{
-                maxWidth: '100%',
-                maxHeight: '360px',
-                borderRadius: '12px',
-                objectFit: 'contain',
-                border: '1px solid var(--color-border-light)',
-                backgroundColor: 'var(--color-bg-secondary)',
-                display: 'block'
-              }}
-              onError={(e) => e.target.style.display = 'none'}
-            />
-          ))}
-        </div>
-      )}
     </div>
   );
 }
@@ -952,70 +927,72 @@ export default function DailyReviewView({ onBackToArticles }) {
                       </>
                     )}
 
-                    {/* 底部操作控制条 (统一居中、等间距 16px) */}
-                    <div style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: '16px',
-                      paddingTop: '24px',
-                      marginTop: '8px',
-                      borderTop: '1px solid var(--color-border-light)'
-                    }}>
-                      <button
-                        className="btn btn-secondary"
-                        disabled={currentIndex === 0}
-                        onClick={() => setCurrentIndex(prev => Math.max(0, prev - 1))}
-                        style={{ 
-                          height: '42px', 
-                          padding: '0 20px', 
-                          borderRadius: '12px', 
-                          fontSize: '13px', 
-                          fontWeight: '600',
-                          display: 'flex', 
-                          alignItems: 'center', 
-                          gap: '8px' 
-                        }}
-                      >
-                        <ChevronLeft size={16} /> 上一条
-                      </button>
+                    {/* 底部操作控制条 (仅常态非编辑模式下显示，彻底防误触) */}
+                    {!isEditing && (
+                      <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justify: 'center',
+                        gap: '16px',
+                        paddingTop: '24px',
+                        marginTop: '8px',
+                        borderTop: '1px solid var(--color-border-light)'
+                      }}>
+                        <button
+                          className="btn btn-secondary"
+                          disabled={currentIndex === 0}
+                          onClick={() => setCurrentIndex(prev => Math.max(0, prev - 1))}
+                          style={{ 
+                            height: '42px', 
+                            padding: '0 20px', 
+                            borderRadius: '12px', 
+                            fontSize: '13px', 
+                            fontWeight: '600',
+                            display: 'flex', 
+                            alignItems: 'center', 
+                            gap: '8px' 
+                          }}
+                        >
+                          <ChevronLeft size={16} /> 上一条
+                        </button>
 
-                      <button
-                        className="btn btn-secondary"
-                        onClick={() => handleAction('favorite')}
-                        style={{
-                          height: '42px',
-                          padding: '0 20px',
-                          borderRadius: '12px',
-                          fontSize: '13px',
-                          fontWeight: '600',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '8px',
-                          color: actionHistory[currentHl.id] === 'favorite' ? '#ef4444' : 'inherit'
-                        }}
-                      >
-                        <Heart size={16} fill={actionHistory[currentHl.id] === 'favorite' ? '#ef4444' : 'none'} /> 收藏 (F)
-                      </button>
+                        <button
+                          className="btn btn-secondary"
+                          onClick={() => handleAction('favorite')}
+                          style={{
+                            height: '42px',
+                            padding: '0 20px',
+                            borderRadius: '12px',
+                            fontSize: '13px',
+                            fontWeight: '600',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px',
+                            color: actionHistory[currentHl.id] === 'favorite' ? '#ef4444' : 'inherit'
+                          }}
+                        >
+                          <Heart size={16} fill={actionHistory[currentHl.id] === 'favorite' ? '#ef4444' : 'none'} /> 收藏 (F)
+                        </button>
 
-                      <button
-                        className="btn btn-primary"
-                        onClick={() => handleAction('reviewed')}
-                        style={{
-                          height: '42px',
-                          padding: '0 24px',
-                          borderRadius: '12px',
-                          fontSize: '13px',
-                          fontWeight: '600',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '8px',
-                          boxShadow: '0 4px 14px rgba(0, 122, 255, 0.3)'
-                        }}
-                      >
-                        已复习 / 下一条 (Space) <ChevronRight size={16} />
-                      </button>
-                    </div>
+                        <button
+                          className="btn btn-primary"
+                          onClick={() => handleAction('reviewed')}
+                          style={{
+                            height: '42px',
+                            padding: '0 24px',
+                            borderRadius: '12px',
+                            fontSize: '13px',
+                            fontWeight: '600',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px',
+                            boxShadow: '0 4px 14px rgba(0, 122, 255, 0.3)'
+                          }}
+                        >
+                          已复习 / 下一条 (Space) <ChevronRight size={16} />
+                        </button>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
