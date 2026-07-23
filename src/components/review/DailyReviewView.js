@@ -19,7 +19,14 @@ import {
   ExternalLink,
   Award,
   Zap,
-  RefreshCw
+  RefreshCw,
+  Edit3,
+  ListOrdered,
+  Tag,
+  Plus,
+  X,
+  FileText,
+  Save
 } from 'lucide-react';
 
 /**
@@ -92,9 +99,22 @@ export default function DailyReviewView({ onBackToArticles }) {
   const [highlights, setHighlights] = useState([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [stats, setStats] = useState(null);
-  const [actionHistory, setActionHistory] = useState({}); // { highlightId: 'reviewed' | 'favorite' | 'discard' }
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showCelebration, setShowCelebration] = useState(false);
+
+  // 高亮与标签编辑状态
+  const [isEditing, setIsEditing] = useState(false);
+  const [editingText, setEditingText] = useState('');
+  const [editingNote, setEditingNote] = useState('');
+  const [editingTags, setEditingTags] = useState([]);
+  const [newTagInput, setNewTagInput] = useState('');
+  const [saveLoading, setSaveLoading] = useState(false);
+
+  // 本文章全部高亮 Drawer 面板状态
+  const [showDrawer, setShowDrawer] = useState(false);
+  const [drawerTitle, setDrawerTitle] = useState('');
+  const [drawerHighlights, setDrawerHighlights] = useState([]);
+  const [drawerLoading, setDrawerLoading] = useState(false);
 
   // 加载每日回顾数据
   const fetchDailyReview = useCallback(async () => {
@@ -134,6 +154,81 @@ export default function DailyReviewView({ onBackToArticles }) {
   const currentHl = useMemo(() => {
     return highlights[currentIndex] || null;
   }, [highlights, currentIndex]);
+
+  // 打开当前文章的全部高亮 Drawer
+  const handleOpenArticleDrawer = async (title) => {
+    if (!title) return;
+    setDrawerTitle(title);
+    setShowDrawer(true);
+    setDrawerLoading(true);
+    try {
+      const res = await fetch(`/api/daily-review/article-highlights?title=${encodeURIComponent(title)}`);
+      const data = await res.json();
+      setDrawerHighlights(data.highlights || []);
+    } catch (err) {
+      console.error('获取文章高亮异常:', err);
+    } finally {
+      setDrawerLoading(false);
+    }
+  };
+
+  // 进入编辑模式
+  const handleStartEdit = () => {
+    if (!currentHl) return;
+    setEditingText(currentHl.text || '');
+    setEditingNote(currentHl.note || '');
+    setEditingTags(currentHl.tags ? [...currentHl.tags] : []);
+    setIsEditing(true);
+  };
+
+  // 保存 Markdown 与标签编辑
+  const handleSaveEdit = async () => {
+    if (!currentHl) return;
+    setSaveLoading(true);
+
+    const updatedHl = {
+      ...currentHl,
+      text: editingText,
+      note: editingNote,
+      tags: editingTags,
+    };
+
+    // 1. 0ms 乐观立即更新前端展示
+    setHighlights(prev => prev.map((item, idx) => idx === currentIndex ? updatedHl : item));
+    setIsEditing(false);
+
+    // 2. 后台保存
+    try {
+      await fetch('/api/daily-review/update-highlight', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          highlightId: currentHl.id,
+          text: editingText,
+          note: editingNote,
+          tags: editingTags,
+        }),
+      });
+    } catch (err) {
+      console.error('保存高亮编辑失败:', err);
+    } finally {
+      setSaveLoading(false);
+    }
+  };
+
+  // 添加标签
+  const handleAddTag = () => {
+    const trimmed = newTagInput.trim().replace(/^#/, '');
+    if (trimmed && !editingTags.includes(trimmed)) {
+      setEditingTags(prev => [...prev, trimmed]);
+      setNewTagInput('');
+    }
+  };
+
+  // 移除标签
+  const handleRemoveTag = (tagToRemove) => {
+    setEditingTags(prev => prev.filter(t => t !== tagToRemove));
+  };
 
   // 提交回顾动作 (乐观 UI 0 毫秒秒切，后台异步静默同步，彻底卡顿)
   const handleAction = (actionType) => {
@@ -411,52 +506,156 @@ export default function DailyReviewView({ onBackToArticles }) {
                         </div>
                       </div>
 
-                      {currentHl.source_url && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                         <button
-                          className="btn btn-ghost btn-sm"
-                          onClick={() => window.open(currentHl.source_url, '_blank')}
-                          title="查看原网页"
+                          className="btn btn-secondary btn-sm"
+                          onClick={() => handleOpenArticleDrawer(currentHl.title)}
+                          title="查看属于本文章的所有划线高亮"
+                          style={{ borderRadius: '8px', fontSize: '12px', padding: '4px 10px', display: 'flex', alignItems: 'center', gap: '4px' }}
                         >
-                          <ExternalLink size={14} />
+                          <ListOrdered size={14} /> 本文全部高亮 <ChevronRight size={14} />
                         </button>
-                      )}
-                    </div>
 
-                    {/* 高亮引用正文 Highlight Text (Markdown 渲染 + 防溢出) */}
-                    <div style={{ margin: '0 0 24px', wordBreak: 'break-word', overflowWrap: 'anywhere', width: '100%' }}>
-                      {renderMarkdownContent(currentHl.text)}
-                    </div>
+                        <button
+                          className="btn btn-secondary btn-sm"
+                          onClick={handleStartEdit}
+                          title="编辑高亮 Markdown 正文与标签"
+                          style={{ borderRadius: '8px', fontSize: '12px', padding: '4px 10px', display: 'flex', alignItems: 'center', gap: '4px' }}
+                        >
+                          <Edit3 size={14} /> {isEditing ? '编辑中' : '编辑'}
+                        </button>
 
-                    {/* 个人笔记展示 Note */}
-                    {currentHl.note && (
-                      <div style={{
-                        backgroundColor: 'var(--color-bg-secondary)',
-                        padding: '12px 16px',
-                        borderRadius: '12px',
-                        fontSize: '13px',
-                        color: 'var(--color-text-secondary)',
-                        marginBottom: '20px',
-                        borderLeft: '3px solid var(--color-accent)'
-                      }}>
-                        💡 <strong>我的笔记：</strong> {currentHl.note}
+                        {currentHl.source_url && (
+                          <button
+                            className="btn btn-ghost btn-sm"
+                            onClick={() => window.open(currentHl.source_url, '_blank')}
+                            title="查看原网页"
+                            style={{ padding: '4px' }}
+                          >
+                            <ExternalLink size={14} />
+                          </button>
+                        )}
                       </div>
-                    )}
+                    </div>
 
-                    {/* 标签列表 */}
-                    {currentHl.tags && currentHl.tags.length > 0 && (
-                      <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '24px' }}>
-                        {currentHl.tags.map(tag => (
-                          <span key={tag} style={{
-                            fontSize: '11px',
-                            color: 'var(--color-text-tertiary)',
-                            backgroundColor: 'var(--color-bg-tertiary)',
-                            padding: '3px 8px',
-                            borderRadius: '6px'
+                    {/* 编辑模式与常规展示模式 */}
+                    {isEditing ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginBottom: '24px', backgroundColor: 'var(--color-bg-secondary)', padding: '20px', borderRadius: '16px', border: '1px solid var(--color-border-light)' }}>
+                        <div>
+                          <label style={{ fontSize: '12px', fontWeight: '600', color: 'var(--color-text-secondary)', marginBottom: '6px', display: 'block' }}>
+                            ✏️ 编辑高亮 Markdown 文本 (支持图文与格式)
+                          </label>
+                          <textarea
+                            className="form-input"
+                            rows={4}
+                            value={editingText}
+                            onChange={(e) => setEditingText(e.target.value)}
+                            style={{ width: '100%', fontFamily: 'var(--font-mono)', fontSize: '13px', lineHeight: '1.6', borderRadius: '10px' }}
+                          />
+                        </div>
+
+                        <div>
+                          <label style={{ fontSize: '12px', fontWeight: '600', color: 'var(--color-text-secondary)', marginBottom: '6px', display: 'block' }}>
+                            💡 编辑个人笔记 Note
+                          </label>
+                          <input
+                            type="text"
+                            className="form-input"
+                            placeholder="写下关于此高亮的心得或笔记..."
+                            value={editingNote}
+                            onChange={(e) => setEditingNote(e.target.value)}
+                            style={{ borderRadius: '10px' }}
+                          />
+                        </div>
+
+                        <div>
+                          <label style={{ fontSize: '12px', fontWeight: '600', color: 'var(--color-text-secondary)', marginBottom: '6px', display: 'block' }}>
+                            🏷️ 管理标签 Tags
+                          </label>
+                          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '8px' }}>
+                            {editingTags.map(tag => (
+                              <span key={tag} style={{
+                                fontSize: '12px',
+                                color: 'var(--color-accent)',
+                                backgroundColor: 'rgba(0, 122, 255, 0.12)',
+                                padding: '4px 10px',
+                                borderRadius: '16px',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                fontWeight: '600'
+                              }}>
+                                #{tag}
+                                <button onClick={() => handleRemoveTag(tag)} style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'inherit', padding: 0 }}>
+                                  <X size={12} />
+                                </button>
+                              </span>
+                            ))}
+                          </div>
+                          <div style={{ display: 'flex', gap: '8px' }}>
+                            <input
+                              type="text"
+                              className="form-input"
+                              placeholder="输入新标签后回车或点击添加..."
+                              value={newTagInput}
+                              onChange={(e) => setNewTagInput(e.target.value)}
+                              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddTag(); } }}
+                              style={{ flex: 1, fontSize: '12px', borderRadius: '10px' }}
+                            />
+                            <button className="btn btn-secondary btn-sm" onClick={handleAddTag} style={{ borderRadius: '10px' }}>
+                              <Plus size={14} /> 添加
+                            </button>
+                          </div>
+                        </div>
+
+                        <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '8px' }}>
+                          <button className="btn btn-secondary btn-sm" onClick={() => setIsEditing(false)} style={{ borderRadius: '10px' }}>
+                            取消
+                          </button>
+                          <button className="btn btn-primary btn-sm" onClick={handleSaveEdit} disabled={saveLoading} style={{ borderRadius: '10px' }}>
+                            <Save size={14} /> {saveLoading ? '保存中...' : '保存修改'}
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        {/* 高亮引用正文 Highlight Text (Markdown 渲染 + 防溢出) */}
+                        <div style={{ margin: '0 0 24px', wordBreak: 'break-word', overflowWrap: 'anywhere', width: '100%' }}>
+                          {renderMarkdownContent(currentHl.text)}
+                        </div>
+
+                        {/* 个人笔记展示 Note */}
+                        {currentHl.note && (
+                          <div style={{
+                            backgroundColor: 'var(--color-bg-secondary)',
+                            padding: '12px 16px',
+                            borderRadius: '12px',
+                            fontSize: '13px',
+                            color: 'var(--color-text-secondary)',
+                            marginBottom: '20px',
+                            borderLeft: '3px solid var(--color-accent)'
                           }}>
-                            #{tag}
-                          </span>
-                        ))}
-                      </div>
+                            💡 <strong>我的笔记：</strong> {currentHl.note}
+                          </div>
+                        )}
+
+                        {/* 标签列表 */}
+                        {currentHl.tags && currentHl.tags.length > 0 && (
+                          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '24px' }}>
+                            {currentHl.tags.map(tag => (
+                              <span key={tag} style={{
+                                fontSize: '11px',
+                                color: 'var(--color-text-tertiary)',
+                                backgroundColor: 'var(--color-bg-tertiary)',
+                                padding: '3px 8px',
+                                borderRadius: '6px'
+                              }}>
+                                #{tag}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </>
                     )}
 
                     {/* 底部操作控制条 (统一居中、等间距 16px) */}
@@ -659,6 +858,103 @@ export default function DailyReviewView({ onBackToArticles }) {
         )}
 
       </div>
+
+      {/* 本文章全部高亮右侧抽屉 Drawer */}
+      {showDrawer && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          backgroundColor: 'rgba(0,0,0,0.45)',
+          backdropFilter: 'blur(4px)',
+          zIndex: 9999,
+          display: 'flex',
+          justifyContent: 'flex-end',
+          animation: 'fadeIn 0.2s ease'
+        }} onClick={() => setShowDrawer(false)}>
+          <div style={{
+            width: '460px',
+            maxWidth: '90vw',
+            height: '100%',
+            backgroundColor: 'var(--color-bg-card)',
+            boxShadow: '-8px 0 32px rgba(0,0,0,0.18)',
+            display: 'flex',
+            flexDirection: 'column',
+            animation: 'slideInRight 0.25s cubic-bezier(0.16, 1, 0.3, 1)'
+          }} onClick={(e) => e.stopPropagation()}>
+            {/* Drawer 头部 Header */}
+            <div style={{
+              padding: '20px 24px',
+              borderBottom: '1px solid var(--color-border)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              backgroundColor: 'var(--color-bg-secondary)'
+            }}>
+              <div>
+                <div style={{ fontSize: '11px', fontWeight: '600', color: 'var(--color-accent)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                  📚 本文所有划线高亮 ({drawerHighlights.length})
+                </div>
+                <h3 style={{ fontSize: '15px', fontWeight: '700', margin: '4px 0 0', color: 'var(--color-text-primary)', display: '-webkit-box', WebkitLineClamp: 1, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                  {drawerTitle}
+                </h3>
+              </div>
+              <button className="btn btn-ghost btn-sm" onClick={() => setShowDrawer(false)} style={{ padding: '6px', borderRadius: '50%' }}>
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Drawer 滚动列表 */}
+            <div style={{ flex: 1, overflowY: 'auto', padding: '20px' }}>
+              {drawerLoading ? (
+                <div style={{ textAlign: 'center', padding: '40px', color: 'var(--color-text-tertiary)' }}>
+                  加载文章高亮中...
+                </div>
+              ) : drawerHighlights.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '40px', color: 'var(--color-text-tertiary)' }}>
+                  本文暂无其他高亮记录
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                  {drawerHighlights.map((hl, idx) => (
+                    <div key={hl.id || idx} style={{
+                      backgroundColor: 'var(--color-bg-primary)',
+                      padding: '16px',
+                      borderRadius: '14px',
+                      border: '1px solid var(--color-border-light)',
+                      borderLeft: `4px solid var(--highlight-${hl.color || 'yellow'})`,
+                      position: 'relative'
+                    }}>
+                      <div style={{ fontSize: '11px', color: 'var(--color-text-tertiary)', marginBottom: '8px', fontWeight: '600' }}>
+                        高亮 #{idx + 1} · {hl.created_at ? new Date(hl.created_at).toLocaleDateString() : ''}
+                      </div>
+
+                      <div style={{ fontSize: '14px', lineHeight: '1.6', color: 'var(--color-text-primary)', wordBreak: 'break-word' }}>
+                        {renderMarkdownContent(hl.text)}
+                      </div>
+
+                      {hl.note && (
+                        <div style={{ marginTop: '10px', fontSize: '12px', color: 'var(--color-text-secondary)', backgroundColor: 'var(--color-bg-secondary)', padding: '8px 12px', borderRadius: '8px' }}>
+                          💡 <strong>笔记：</strong> {hl.note}
+                        </div>
+                      )}
+
+                      {hl.tags && hl.tags.length > 0 && (
+                        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginTop: '10px' }}>
+                          {hl.tags.map(tag => (
+                            <span key={tag} style={{ fontSize: '10px', color: 'var(--color-accent)', backgroundColor: 'rgba(0, 122, 255, 0.1)', padding: '2px 6px', borderRadius: '4px' }}>
+                              #{tag}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

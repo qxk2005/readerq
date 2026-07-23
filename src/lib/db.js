@@ -968,20 +968,90 @@ export function getFallbackDailyReviewHighlights(limit = 5) {
   `).all(countLimit);
 
   return rows.map(r => {
-    let tags = {};
-    try { tags = JSON.parse(r.tags_json || '{}'); } catch { /* ignore */ }
+    let tagList = [];
+    try {
+      const parsed = JSON.parse(r.tags_json || '[]');
+      tagList = Array.isArray(parsed) ? parsed : Object.keys(parsed || {});
+    } catch { /* ignore */ }
+
     return {
-      id: r.highlight_id,
-      text: r.text,
+      id: String(r.highlight_id),
+      text: r.text || '',
       note: r.note || '',
       color: r.color || 'yellow',
-      created_at: r.created_at,
-      title: r.doc_title || '未知文档',
+      title: r.doc_title || 'Readwise Highlight',
       author: r.doc_author || '',
       source_url: r.source_url || '',
       image_url: r.image_url || '',
       category: r.category || 'article',
-      tags: Object.keys(tags),
+      tags: tagList,
+      created_at: r.created_at
+    };
+  });
+}
+
+/**
+ * 更新单条划线高亮的 Markdown 正文、笔记与标签
+ */
+export function updateHighlightAndTags(highlightId, text, note, tags = []) {
+  const db = getDatabase();
+  const tagsJson = JSON.stringify(Array.isArray(tags) ? tags : []);
+  const now = new Date().toISOString();
+
+  // 更新 highlights 表
+  const result = db.prepare(`
+    UPDATE highlights
+    SET text = ?, note = ?, tags_json = ?, updated_at = ?
+    WHERE id = ? OR id = ?
+  `).run(text, note, tagsJson, now, highlightId, parseInt(highlightId, 10) || 0);
+
+  return result.changes > 0;
+}
+
+/**
+ * 根据文章标题或 Document ID 获取属于该文章的所有划线高亮
+ */
+export function getArticleHighlightsByTitle(title) {
+  const db = getDatabase();
+  if (!title) return [];
+
+  const rows = db.prepare(`
+    SELECT 
+      h.id as highlight_id,
+      h.text,
+      h.note,
+      h.color,
+      h.created_at,
+      h.tags_json,
+      d.id as doc_id,
+      d.title as doc_title,
+      d.author as doc_author,
+      d.source_url,
+      d.image_url
+    FROM highlights h
+    LEFT JOIN documents d ON h.document_id = d.id
+    WHERE d.title = ? OR d.title LIKE ?
+    ORDER BY h.created_at DESC
+  `).all(title, `%${title}%`);
+
+  return rows.map(r => {
+    let tagList = [];
+    try {
+      const parsed = JSON.parse(r.tags_json || '[]');
+      tagList = Array.isArray(parsed) ? parsed : Object.keys(parsed || {});
+    } catch { /* ignore */ }
+
+    return {
+      id: String(r.highlight_id),
+      text: r.text || '',
+      note: r.note || '',
+      color: r.color || 'yellow',
+      title: r.doc_title || title,
+      author: r.doc_author || '',
+      source_url: r.source_url || '',
+      image_url: r.image_url || '',
+      tags: tagList,
+      created_at: r.created_at
     };
   });
 }
