@@ -697,6 +697,28 @@ class ReadwiseAPI {
 
   /**
    * 验证 Token 是否有效
+  /**
+   * 获取 Readwise 官方每日回顾 (Daily Review)
+   * API: GET https://readwise.io/api/v2/review/
+   */
+  async getDailyReview() {
+    return this.fetchWithRetry('https://readwise.io/api/v2/review/');
+  }
+
+  /**
+   * 提交 Readwise 官方回顾操作状态
+   * API: POST https://readwise.io/api/v2/review/action/
+   * @param {Object} payload - { highlight_id, action: 'keep'|'discard'|'master'|'favorite' }
+   */
+  async submitReviewAction(payload) {
+    return this.fetchWithRetry('https://readwise.io/api/v2/review/action/', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  }
+
+  /**
+   * 验证 Token 是否有效
    */
   async validateToken() {
     try {

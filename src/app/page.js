@@ -11,9 +11,12 @@ import CommandPalette from '@/components/layout/CommandPalette';
 import SettingsModal from '@/components/settings/SettingsModal';
 import AddUrlModal from '@/components/ui/AddUrlModal';
 import TagsManagerModal from '@/components/tags/TagsManagerModal';
+import DailyReviewView from '@/components/review/DailyReviewView';
 
 export default function HomePage() {
   const {
+    currentView,
+    switchView,
     setShowCommandPalette,
     setShowAiPanel,
     showAiPanel,
@@ -197,12 +200,20 @@ export default function HomePage() {
             onMouseDown={handleSidebarResizeStart} 
           />
         )}
-        <DocumentList width={docListWidth} />
-        <div 
-          className={`resizer-bar ${isResizingDocList ? 'dragging' : ''}`} 
-          onMouseDown={handleDocListResizeStart} 
-        />
-        <ReadingPane />
+        {currentView === 'daily-review' ? (
+          <div style={{ flex: 1, minWidth: 0, height: '100%', overflow: 'hidden' }}>
+            <DailyReviewView onBackToArticles={() => switchView('all')} />
+          </div>
+        ) : (
+          <>
+            <DocumentList width={docListWidth} />
+            <div 
+              className={`resizer-bar ${isResizingDocList ? 'dragging' : ''}`} 
+              onMouseDown={handleDocListResizeStart} 
+            />
+            <ReadingPane />
+          </>
+        )}
       </div>
 
       {/* 同步状态通知 */}

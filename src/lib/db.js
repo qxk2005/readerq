@@ -110,6 +110,22 @@ function initSchema(db) {
       FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE CASCADE
     );
 
+    CREATE TABLE IF NOT EXISTS daily_reviews (
+      id TEXT PRIMARY KEY,
+      review_date TEXT,
+      highlight_id TEXT,
+      action TEXT,
+      created_at TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS review_stats (
+      review_date TEXT PRIMARY KEY,
+      reviewed_count INTEGER DEFAULT 0,
+      target_count INTEGER DEFAULT 5,
+      streak_days INTEGER DEFAULT 0,
+      completed_at TEXT
+    );
+
     CREATE INDEX IF NOT EXISTS idx_documents_location ON documents(location);
     CREATE INDEX IF NOT EXISTS idx_documents_category ON documents(category);
     CREATE INDEX IF NOT EXISTS idx_documents_updated_at ON documents(updated_at);
@@ -815,4 +831,139 @@ export function getSubtitle(documentId) {
 export function deleteSubtitle(documentId) {
   const db = getDatabase();
   db.prepare('DELETE FROM subtitles WHERE document_id = ?').run(documentId);
+}
+
+/**
+ * 记录单条每日回顾动作并更新连续打卡 (Streak)
+ */
+export function recordReviewAction(reviewDate, highlightId, action) {
+  const db = getDatabase();
+  const now = new Date().toISOString();
+  const id = `${reviewDate}_${highlightId}_${action}_${Date.now()}`;
+
+  // 1. 插入每日回顾记录
+  db.prepare(`
+    INSERT OR REPLACE INTO daily_reviews (id, review_date, highlight_id, action, created_at)
+    VALUES (?, ?, ?, ?, ?)
+  `).run(id, reviewDate, highlightId, action, now);
+
+  // 2. 更新或查询今日打卡统计
+  let stat = db.prepare('SELECT * FROM review_stats WHERE review_date = ?').get(reviewDate);
+  let reviewedCount = (stat?.reviewed_count || 0) + 1;
+  const targetCount = 5;
+
+  // 3. 计算连续打卡 Streak 天数
+  let streakDays = 1;
+  const yesterday = new Date(new Date(reviewDate).getTime() - 86400000).toISOString().split('T')[0];
+  const yesterdayStat = db.prepare('SELECT * FROM review_stats WHERE review_date = ?').get(yesterday);
+  if (yesterdayStat && yesterdayStat.streak_days > 0) {
+    streakDays = yesterdayStat.streak_days + 1;
+  }
+
+  const completedAt = reviewedCount >= targetCount ? now : (stat?.completed_at || null);
+
+  db.prepare(`
+    INSERT OR REPLACE INTO review_stats (review_date, reviewed_count, target_count, streak_days, completed_at)
+    VALUES (?, ?, ?, ?, ?)
+  `).run(reviewDate, reviewedCount, targetCount, streakDays, completedAt);
+
+  return {
+    reviewedCount,
+    targetCount,
+    streakDays,
+    isCompleted: reviewedCount >= targetCount
+  };
+}
+
+/**
+ * 获取每日回顾与打卡统计全量数据
+ */
+export function getReviewStatsData() {
+  const db = getDatabase();
+  const todayDate = new Date().toISOString().split('T')[0];
+
+  // 1. 获取近 30 天的打卡数据
+  const thirtyDaysAgo = new Date(Date.now() - 30 * 86400000).toISOString().split('T')[0];
+  const statsList = db.prepare(`
+    SELECT * FROM review_stats 
+    WHERE review_date >= ?
+    ORDER BY review_date ASC
+  `).all(thirtyDaysAgo);
+
+  // 2. 获取累计复习过的总高亮数
+  const totalReviewedRow = db.prepare(`
+    SELECT COUNT(DISTINCT highlight_id) as total FROM daily_reviews
+  `).get();
+  const totalReviewed = totalReviewedRow?.total || 0;
+
+  // 3. 获取今天已完成的计数
+  const todayStat = db.prepare('SELECT * FROM review_stats WHERE review_date = ?').get(todayDate);
+  const todayReviewedCount = todayStat?.reviewed_count || 0;
+
+  // 4. 获取历史最长打卡纪录 (Best Streak)
+  const maxStreakRow = db.prepare('SELECT MAX(streak_days) as best FROM review_stats').get();
+  const bestStreak = maxStreakRow?.best || (todayStat?.streak_days || 0);
+
+  // 5. 获取今日已看过的 highlight_id 列表
+  const todayReviewedHls = db.prepare(`
+    SELECT DISTINCT highlight_id FROM daily_reviews WHERE review_date = ?
+  `).all(todayDate).map(r => r.highlight_id);
+
+  return {
+    todayDate,
+    todayReviewedCount,
+    targetCount: 5,
+    streakDays: todayStat?.streak_days || 0,
+    bestStreak,
+    totalReviewed,
+    statsList,
+    todayReviewedHls
+  };
+}
+
+/**
+ * 当无法链接 Readwise API 时，从本地数据库抽取 5 条高亮进行备用每日回顾 (Fallback)
+ */
+export function getFallbackDailyReviewHighlights() {
+  const db = getDatabase();
+  
+  // 关联高亮与文档元数据，按随机/间隔从库中选取 5 条
+  const rows = db.prepare(`
+    SELECT 
+      h.id as highlight_id,
+      h.text,
+      h.note,
+      h.color,
+      h.created_at,
+      h.tags_json,
+      d.id as doc_id,
+      d.title as doc_title,
+      d.author as doc_author,
+      d.source_url,
+      d.image_url,
+      d.category
+    FROM highlights h
+    LEFT JOIN documents d ON h.document_id = d.id
+    WHERE h.text IS NOT NULL AND h.text != ''
+    ORDER BY RANDOM()
+    LIMIT 5
+  `).all();
+
+  return rows.map(r => {
+    let tags = {};
+    try { tags = JSON.parse(r.tags_json || '{}'); } catch { /* ignore */ }
+    return {
+      id: r.highlight_id,
+      text: r.text,
+      note: r.note || '',
+      color: r.color || 'yellow',
+      created_at: r.created_at,
+      title: r.doc_title || '未知文档',
+      author: r.doc_author || '',
+      source_url: r.source_url || '',
+      image_url: r.image_url || '',
+      category: r.category || 'article',
+      tags: Object.keys(tags),
+    };
+  });
 }
