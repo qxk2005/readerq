@@ -918,7 +918,7 @@ export function getReviewStatsData() {
   const maxStreakRow = db.prepare('SELECT MAX(streak_days) as best FROM review_stats').get();
   const localBestStreak = maxStreakRow?.best || (todayStat?.streak_days || 0);
 
-  const finalStreak = Math.max(baseStreak, todayStat?.streak_days || (baseStreak > 0 ? baseStreak : 0));
+  const finalStreak = baseStreak > 0 ? Math.max(baseStreak, (todayStat?.streak_days || 0) + baseStreak - 1) : (todayStat?.streak_days || 0);
   const finalBestStreak = Math.max(baseBestStreak, localBestStreak, finalStreak);
 
   // 6. 获取今日已看过的 highlight_id 列表
@@ -926,15 +926,21 @@ export function getReviewStatsData() {
     SELECT DISTINCT highlight_id FROM daily_reviews WHERE review_date = ?
   `).all(todayDate).map(r => r.highlight_id);
 
+  const hasOfficialBase = baseStreak > 0 || baseBestStreak > 0 || baseTotalHl > 0;
+
   return {
     todayDate,
     todayReviewedCount,
     targetCount,
-    streakDays: finalStreak,
-    bestStreak: finalBestStreak,
+    streakDays: finalStreak || baseStreak || 1,
+    bestStreak: finalBestStreak || baseBestStreak || 1,
     totalReviewed: displayTotalReviewed,
     statsList,
-    todayReviewedHls
+    todayReviewedHls,
+    hasOfficialBase,
+    baseStreak,
+    baseBestStreak,
+    baseTotalHl,
   };
 }
 

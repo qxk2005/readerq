@@ -9,6 +9,10 @@ import { getSetting, setSetting } from '@/lib/db';
 
 const SETTING_KEYS = [
   'readwise_token',
+  'daily_review_target',
+  'readwise_official_streak',
+  'readwise_official_best_streak',
+  'readwise_official_total_highlights',
   'openai_api_key',
   'openai_base_url',
   'openai_model',

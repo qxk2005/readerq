@@ -1004,6 +1004,46 @@ export default function DailyReviewView({ onBackToArticles }) {
         {activeTab === 'stats' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
             
+            {/* 数据来源与 Readwise 官方基准说明提示框 */}
+            <div style={{
+              backgroundColor: 'var(--color-bg-secondary)',
+              border: '1px solid var(--color-border-light)',
+              borderRadius: '16px',
+              padding: '14px 20px',
+              display: 'flex',
+              alignItems: 'center',
+              justify: 'space-between',
+              fontSize: '12.5px',
+              color: 'var(--color-text-secondary)',
+              lineHeight: '1.5'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <Sparkles size={16} style={{ color: 'var(--color-accent)', flexShrink: 0 }} />
+                <div>
+                  {stats?.hasOfficialBase ? (
+                    <span>
+                      已启用 <strong>Readwise 官方历史统计数据对齐</strong> (Streak 算法自动叠加官方基准 {stats?.baseStreak || 0} 天，全库高亮: {Number(stats?.totalReviewed || 0).toLocaleString()} 条)。
+                    </span>
+                  ) : (
+                    <span>
+                      💡 由于 Readwise 官方 API 未开放全量 Streak 数据，打卡目前记录在本地。如需对齐官方 900+ 天 Streak，请在 [设置 -&gt; API 配置] 中填入数字。
+                    </span>
+                  )}
+                </div>
+              </div>
+              <button 
+                className="btn btn-secondary btn-sm"
+                onClick={() => {
+                  if (typeof window !== 'undefined') {
+                    window.dispatchEvent(new CustomEvent('open-settings'));
+                  }
+                }}
+                style={{ fontSize: '11px', borderRadius: '8px', padding: '4px 10px', marginLeft: '12px', flexShrink: 0 }}
+              >
+                ⚙️ 对齐/更新官方数字
+              </button>
+            </div>
+
             {/* 顶栏三大数据卡片 */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px' }}>
               
