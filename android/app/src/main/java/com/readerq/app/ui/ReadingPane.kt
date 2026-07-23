@@ -1709,8 +1709,8 @@ fun VideoReadingContent(
                             webViewClient = WebViewClient()
                             webChromeClient = android.webkit.WebChromeClient()
                             
-                            // Fix Compose SurfaceView glitch on some devices/emulators
-                            setLayerType(android.view.View.LAYER_TYPE_SOFTWARE, null)
+                            // 开启 GPU 硬件加速以支持 HTML5 / YouTube 视频 Surface 贴图渲染，防止黑屏
+                            setLayerType(android.view.View.LAYER_TYPE_HARDWARE, null)
                             
                             addJavascriptInterface(object : Any() {
                                 @android.webkit.JavascriptInterface
