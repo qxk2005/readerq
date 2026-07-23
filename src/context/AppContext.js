@@ -37,6 +37,7 @@ export function AppProvider({ children }) {
   const [showCommandPalette, setShowCommandPalette] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showAddUrl, setShowAddUrl] = useState(false);
+  const [showTagsManager, setShowTagsManager] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [isContentLoading, setIsContentLoading] = useState(false);
   const [contentError, setContentError] = useState(null);
@@ -406,6 +407,8 @@ export function AppProvider({ children }) {
     setShowSettings,
     showAddUrl,
     setShowAddUrl,
+    showTagsManager,
+    setShowTagsManager,
     sidebarCollapsed,
     setSidebarCollapsed,
     isContentLoading,

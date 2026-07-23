@@ -28,7 +28,7 @@ export default function Sidebar({ width }) {
     currentView, currentCategory, currentTag,
     switchView, switchCategory, switchTag,
     tags, stats, sidebarCollapsed, setSidebarCollapsed,
-    setShowSettings, setShowAddUrl, syncData, isSyncing,
+    setShowSettings, setShowAddUrl, setShowTagsManager, syncData, isSyncing,
   } = useApp();
   const { theme, toggleTheme } = useTheme();
 
@@ -220,7 +220,17 @@ export default function Sidebar({ width }) {
         {/* 标签 */}
         {!sidebarCollapsed && tags.length > 0 && (
           <div className="sidebar-section">
-            <div className="sidebar-section-title">标签</div>
+            <div className="sidebar-section-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span>标签</span>
+              <button
+                className="btn-icon"
+                onClick={() => setShowTagsManager(true)}
+                data-tooltip="管理所有标签"
+                style={{ width: '20px', height: '20px', padding: 0, borderRadius: '4px' }}
+              >
+                <Tag size={12} />
+              </button>
+            </div>
             {tags.slice(0, 15).map(tag => (
               <button
                 key={tag.key}

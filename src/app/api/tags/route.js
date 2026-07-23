@@ -1,11 +1,14 @@
 import { NextResponse } from 'next/server';
-import { getCachedTags } from '@/lib/db';
+import { getCachedTags, getDetailedTagsStats } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+export async function GET(request) {
   try {
-    const tags = getCachedTags();
+    const { searchParams } = new URL(request.url);
+    const isDetailed = searchParams.get('detailed') === 'true';
+
+    const tags = isDetailed ? getDetailedTagsStats() : getCachedTags();
     return NextResponse.json({ success: true, tags });
   } catch (error) {
     console.error('获取标签失败:', error);

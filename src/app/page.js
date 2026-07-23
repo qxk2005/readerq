@@ -10,6 +10,7 @@ import CommandPalette from '@/components/layout/CommandPalette';
 
 import SettingsModal from '@/components/settings/SettingsModal';
 import AddUrlModal from '@/components/ui/AddUrlModal';
+import TagsManagerModal from '@/components/tags/TagsManagerModal';
 
 export default function HomePage() {
   const {
@@ -224,6 +225,7 @@ export default function HomePage() {
       <CommandPalette />
       <SettingsModal />
       <AddUrlModal />
+      <TagsManagerModal />
     </>
   );
 }

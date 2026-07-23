@@ -1921,6 +1921,13 @@ textarea:focus {
   text-decoration: underline;
 }
 
+/* ---- 标签管理弹窗特有样式 ---- */
+.tag-manager-card:hover {
+  border-color: var(--color-primary) !important;
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+
 /* 旋转动画 */
 @keyframes spin-animation {
   from { transform: rotate(0deg); }

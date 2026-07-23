@@ -314,6 +314,99 @@ export function getCachedTags() {
 }
 
 /**
+ * 获取带详细统计信息的标签列表 (包含文档数、高亮数、总次数与最后使用时间)
+ */
+export function getDetailedTagsStats() {
+  const db = getDatabase();
+  const allTags = db.prepare('SELECT * FROM tags').all();
+
+  const docs = db.prepare(`
+    SELECT tags_json, updated_at, created_at FROM documents 
+    WHERE tags_json IS NOT NULL AND tags_json != '' AND tags_json != '{}'
+  `).all();
+
+  const highlights = db.prepare(`
+    SELECT tags_json, created_at FROM highlights 
+    WHERE tags_json IS NOT NULL AND tags_json != '' AND tags_json != '{}'
+  `).all();
+
+  const tagStatsMap = {};
+
+  allTags.forEach(t => {
+    tagStatsMap[t.key] = {
+      key: t.key,
+      name: t.name || t.key,
+      document_count: 0,
+      highlight_count: 0,
+      total_count: 0,
+      last_used_at: null,
+    };
+  });
+
+  docs.forEach(doc => {
+    try {
+      const tagsObj = JSON.parse(doc.tags_json || '{}');
+      const time = doc.updated_at || doc.created_at;
+      const tagKeys = Array.isArray(tagsObj) ? tagsObj : Object.keys(tagsObj);
+
+      tagKeys.forEach(rawKey => {
+        const k = String(rawKey);
+        if (!tagStatsMap[k]) {
+          tagStatsMap[k] = {
+            key: k,
+            name: k,
+            document_count: 0,
+            highlight_count: 0,
+            total_count: 0,
+            last_used_at: null,
+          };
+        }
+        tagStatsMap[k].document_count += 1;
+        tagStatsMap[k].total_count += 1;
+
+        if (time) {
+          if (!tagStatsMap[k].last_used_at || new Date(time) > new Date(tagStatsMap[k].last_used_at)) {
+            tagStatsMap[k].last_used_at = time;
+          }
+        }
+      });
+    } catch { /* 忽略解析错误 */ }
+  });
+
+  highlights.forEach(hl => {
+    try {
+      const tagsObj = JSON.parse(hl.tags_json || '{}');
+      const time = hl.created_at;
+      const tagKeys = Array.isArray(tagsObj) ? tagsObj : Object.keys(tagsObj);
+
+      tagKeys.forEach(rawKey => {
+        const k = String(rawKey);
+        if (!tagStatsMap[k]) {
+          tagStatsMap[k] = {
+            key: k,
+            name: k,
+            document_count: 0,
+            highlight_count: 0,
+            total_count: 0,
+            last_used_at: null,
+          };
+        }
+        tagStatsMap[k].highlight_count += 1;
+        tagStatsMap[k].total_count += 1;
+
+        if (time) {
+          if (!tagStatsMap[k].last_used_at || new Date(time) > new Date(tagStatsMap[k].last_used_at)) {
+            tagStatsMap[k].last_used_at = time;
+          }
+        }
+      });
+    } catch { /* 忽略解析错误 */ }
+  });
+
+  return Object.values(tagStatsMap);
+}
+
+/**
  * 保存同步状态
  */
 export function setSyncState(key, value) {
