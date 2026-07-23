@@ -24,6 +24,16 @@ export function AppProvider({ children }) {
   // 兼容现有的 showAiPanel 逻辑
   const showAiPanel = rightPanelTab === 'chat';
   const setShowAiPanel = (show) => setRightPanelTab(show ? 'chat' : null);
+
+  // 轮询右侧面板状态：'info' (信息) -> 'notebook' (笔记) -> 'chat' (AI 助手) -> null (收拢)
+  const cycleRightPanelTab = useCallback(() => {
+    setRightPanelTab(prev => {
+      if (prev === 'info') return 'notebook';
+      if (prev === 'notebook') return 'chat';
+      if (prev === 'chat') return null;
+      return 'info';
+    });
+  }, []);
   const [showCommandPalette, setShowCommandPalette] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showAddUrl, setShowAddUrl] = useState(false);
@@ -391,6 +401,7 @@ export function AppProvider({ children }) {
     setShowCommandPalette,
     rightPanelTab,
     setRightPanelTab,
+    cycleRightPanelTab,
     showSettings,
     setShowSettings,
     showAddUrl,

@@ -19,6 +19,7 @@ export default function HomePage() {
     setSidebarCollapsed,
     sidebarCollapsed,
     setShowAddUrl,
+    cycleRightPanelTab,
     syncData,
     isSyncing,
     syncError,
@@ -165,10 +166,10 @@ export default function HomePage() {
         setSidebarCollapsed(prev => !prev);
       }
 
-      // ] -> 切换 AI 面板
+      // ] -> 轮询切换右侧栏 (信息 -> 笔记 -> AI助手 -> 收拢)
       if (e.key === ']' && !e.metaKey && !e.ctrlKey && document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA') {
         e.preventDefault();
-        setShowAiPanel(prev => !prev);
+        cycleRightPanelTab();
       }
 
       // Escape -> 关闭弹窗
@@ -179,7 +180,7 @@ export default function HomePage() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [setShowCommandPalette, setShowAiPanel, setSidebarCollapsed, syncData, toggleTheme, setShowAddUrl]);
+  }, [setShowCommandPalette, cycleRightPanelTab, setSidebarCollapsed, syncData, toggleTheme, setShowAddUrl]);
 
   return (
     <>
