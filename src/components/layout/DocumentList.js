@@ -193,7 +193,7 @@ export default function DocumentList({ width }) {
           <button
             className="btn-icon"
             onClick={() => {
-              if (!isSyncing) syncData({ full: false, location: currentView });
+              if (!isSyncing) syncData({ full: false });
             }}
             disabled={isSyncing}
             data-tooltip={isSyncing ? "同步中..." : "增量同步"}

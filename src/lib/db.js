@@ -144,17 +144,6 @@ function initSchema(db) {
 export function upsertDocument(doc) {
   const db = getDatabase();
 
-  // 检查本地已有文档是否是 trash 状态以防覆盖
-  let targetLocation = doc.location || null;
-  try {
-    const existing = db.prepare('SELECT location FROM documents WHERE id = ?').get(doc.id);
-    if (existing && existing.location === 'trash') {
-      targetLocation = 'trash';
-    }
-  } catch (e) {
-    // 忽略异常，继续流程
-  }
-
   const stmt = db.prepare(`
     INSERT INTO documents
     (id, url, source_url, title, author, source, category, location,
@@ -205,7 +194,7 @@ export function upsertDocument(doc) {
     author: doc.author || null,
     source: doc.source || null,
     category: doc.category || null,
-    location: targetLocation,
+    location: doc.location || null,
     site_name: doc.site_name || null,
     word_count: doc.word_count || null,
     reading_time: doc.reading_time || null,
