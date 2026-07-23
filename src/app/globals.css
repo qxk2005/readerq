@@ -416,6 +416,15 @@ textarea:focus {
   gap: var(--space-2);
 }
 
+/* 当侧边栏收窄/折叠时，底部 3 个按钮自动切换为垂直一列居中排列，防止被宽度遮挡截断 */
+.sidebar.collapsed .sidebar-footer {
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  padding: var(--space-3) 0;
+  gap: var(--space-3);
+}
+
 /* ---- 文档列表面板 ---- */
 .doclist-panel {
   width: var(--doclist-width);
