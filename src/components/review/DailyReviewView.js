@@ -59,10 +59,11 @@ function renderMarkdownContent(text) {
         dangerouslySetInnerHTML={{ __html: cleanText }} 
         style={{
           fontSize: '17px',
-          lineHeight: '1.75',
+          lineHeight: '1.8',
           color: 'var(--color-text-primary)',
           wordBreak: 'break-word',
           overflowWrap: 'anywhere',
+          whiteSpace: 'pre-wrap',
           fontFamily: 'SF Pro Display, -apple-system, sans-serif'
         }}
       />
@@ -110,6 +111,19 @@ export default function DailyReviewView({ onBackToArticles }) {
   const [editingTags, setEditingTags] = useState([]);
   const [newTagInput, setNewTagInput] = useState('');
   const [saveLoading, setSaveLoading] = useState(false);
+  const [allSystemTags, setAllSystemTags] = useState([]);
+
+  // 加载系统现有全量标签 (用于编辑标签自动完成)
+  useEffect(() => {
+    fetch('/api/tags')
+      .then(res => res.json())
+      .then(data => {
+        if (data.tags && Array.isArray(data.tags)) {
+          setAllSystemTags(data.tags.map(t => typeof t === 'string' ? t : t.name).filter(Boolean));
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   // 本文章全部高亮 Drawer 面板状态
   const [showDrawer, setShowDrawer] = useState(false);
@@ -270,10 +284,12 @@ export default function DailyReviewView({ onBackToArticles }) {
       });
   };
 
-  // 键盘快捷键响应
+  // 键盘快捷键响应 (编辑模式及焦点在输入框时严密禁用)
   useEffect(() => {
     const handleKeyDown = (e) => {
-      if (activeTab !== 'review' || showCelebration || !currentHl) return;
+      if (activeTab !== 'review' || showCelebration || !currentHl || isEditing) return;
+      if (e.target && ['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) return;
+
       if (e.key === ' ' || e.key === 'ArrowRight' || e.key === 'Enter') {
         e.preventDefault();
         handleAction('reviewed');
@@ -284,7 +300,7 @@ export default function DailyReviewView({ onBackToArticles }) {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [activeTab, showCelebration, currentHl, handleAction]);
+  }, [activeTab, showCelebration, currentHl, isEditing, handleAction]);
 
   if (loading) {
     return (
@@ -541,80 +557,147 @@ export default function DailyReviewView({ onBackToArticles }) {
 
                     {/* 编辑模式与常规展示模式 */}
                     {isEditing ? (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginBottom: '24px', backgroundColor: 'var(--color-bg-secondary)', padding: '20px', borderRadius: '16px', border: '1px solid var(--color-border-light)' }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '18px', marginBottom: '24px', backgroundColor: 'var(--color-bg-secondary)', padding: '24px', borderRadius: '16px', border: '1px solid var(--color-border-light)' }}>
                         <div>
-                          <label style={{ fontSize: '12px', fontWeight: '600', color: 'var(--color-text-secondary)', marginBottom: '6px', display: 'block' }}>
-                            ✏️ 编辑高亮 Markdown 文本 (支持图文与格式)
+                          <label style={{ fontSize: '12px', fontWeight: '700', color: 'var(--color-text-secondary)', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <Edit3 size={14} /> 编辑高亮 Markdown 文本 (支持上下拖拽调节高度)
                           </label>
                           <textarea
                             className="form-input"
-                            rows={4}
+                            rows={8}
                             value={editingText}
                             onChange={(e) => setEditingText(e.target.value)}
-                            style={{ width: '100%', fontFamily: 'var(--font-mono)', fontSize: '13px', lineHeight: '1.6', borderRadius: '10px' }}
+                            style={{ 
+                              width: '100%', 
+                              minHeight: '180px',
+                              resize: 'vertical',
+                              fontFamily: 'var(--font-mono)', 
+                              fontSize: '13.5px', 
+                              lineHeight: '1.7', 
+                              borderRadius: '12px',
+                              padding: '14px'
+                            }}
                           />
                         </div>
 
                         <div>
-                          <label style={{ fontSize: '12px', fontWeight: '600', color: 'var(--color-text-secondary)', marginBottom: '6px', display: 'block' }}>
-                            💡 编辑个人笔记 Note
+                          <label style={{ fontSize: '12px', fontWeight: '700', color: 'var(--color-text-secondary)', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            💡 编辑个人笔记 Note (支持上下拖拽调节高度)
                           </label>
-                          <input
-                            type="text"
+                          <textarea
                             className="form-input"
+                            rows={3}
                             placeholder="写下关于此高亮的心得或笔记..."
                             value={editingNote}
                             onChange={(e) => setEditingNote(e.target.value)}
-                            style={{ borderRadius: '10px' }}
+                            style={{ 
+                              width: '100%', 
+                              minHeight: '80px',
+                              resize: 'vertical',
+                              fontSize: '13px', 
+                              lineHeight: '1.6', 
+                              borderRadius: '12px',
+                              padding: '12px'
+                            }}
                           />
                         </div>
 
                         <div>
-                          <label style={{ fontSize: '12px', fontWeight: '600', color: 'var(--color-text-secondary)', marginBottom: '6px', display: 'block' }}>
-                            🏷️ 管理标签 Tags
+                          <label style={{ fontSize: '12px', fontWeight: '700', color: 'var(--color-text-secondary)', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <Tag size={14} /> 管理与添加标签 (自动匹配完成)
                           </label>
-                          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '8px' }}>
+                          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '10px' }}>
                             {editingTags.map(tag => (
                               <span key={tag} style={{
                                 fontSize: '12px',
                                 color: 'var(--color-accent)',
                                 backgroundColor: 'rgba(0, 122, 255, 0.12)',
-                                padding: '4px 10px',
+                                padding: '5px 12px',
                                 borderRadius: '16px',
                                 display: 'inline-flex',
                                 alignItems: 'center',
-                                gap: '4px',
+                                gap: '6px',
                                 fontWeight: '600'
                               }}>
                                 #{tag}
                                 <button onClick={() => handleRemoveTag(tag)} style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'inherit', padding: 0 }}>
-                                  <X size={12} />
+                                  <X size={13} />
                                 </button>
                               </span>
                             ))}
                           </div>
-                          <div style={{ display: 'flex', gap: '8px' }}>
-                            <input
-                              type="text"
-                              className="form-input"
-                              placeholder="输入新标签后回车或点击添加..."
-                              value={newTagInput}
-                              onChange={(e) => setNewTagInput(e.target.value)}
-                              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddTag(); } }}
-                              style={{ flex: 1, fontSize: '12px', borderRadius: '10px' }}
-                            />
-                            <button className="btn btn-secondary btn-sm" onClick={handleAddTag} style={{ borderRadius: '10px' }}>
-                              <Plus size={14} /> 添加
-                            </button>
+
+                          <div style={{ position: 'relative' }}>
+                            <div style={{ display: 'flex', gap: '8px' }}>
+                              <input
+                                type="text"
+                                className="form-input"
+                                placeholder="输入新标签后回车或从建议中选择..."
+                                value={newTagInput}
+                                onChange={(e) => setNewTagInput(e.target.value)}
+                                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddTag(); } }}
+                                style={{ flex: 1, fontSize: '13px', borderRadius: '10px', padding: '8px 12px' }}
+                              />
+                              <button className="btn btn-secondary btn-sm" onClick={handleAddTag} style={{ borderRadius: '10px', padding: '0 16px' }}>
+                                <Plus size={14} /> 添加
+                              </button>
+                            </div>
+
+                            {/* 标签自动完成匹配下拉列表 */}
+                            {newTagInput.trim() && (
+                              <div style={{
+                                position: 'absolute',
+                                top: '100%',
+                                left: 0,
+                                right: 0,
+                                marginTop: '4px',
+                                backgroundColor: 'var(--color-bg-card)',
+                                border: '1px solid var(--color-border)',
+                                borderRadius: '12px',
+                                boxShadow: 'var(--shadow-md)',
+                                zIndex: 100,
+                                maxHeight: '160px',
+                                overflowY: 'auto',
+                                padding: '6px'
+                              }}>
+                                {allSystemTags
+                                  .filter(t => t.toLowerCase().includes(newTagInput.trim().toLowerCase()) && !editingTags.includes(t))
+                                  .slice(0, 8)
+                                  .map(suggestedTag => (
+                                    <div
+                                      key={suggestedTag}
+                                      onClick={() => {
+                                        setEditingTags(prev => [...prev, suggestedTag]);
+                                        setNewTagInput('');
+                                      }}
+                                      style={{
+                                        padding: '8px 12px',
+                                        borderRadius: '8px',
+                                        fontSize: '12px',
+                                        color: 'var(--color-text-primary)',
+                                        cursor: 'pointer',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '6px',
+                                        transition: 'background 0.15s'
+                                      }}
+                                      onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--color-bg-hover)'}
+                                      onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                                    >
+                                      <Tag size={12} style={{ color: 'var(--color-accent)' }} /> #{suggestedTag} (点击选中)
+                                    </div>
+                                  ))}
+                              </div>
+                            )}
                           </div>
                         </div>
 
-                        <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '8px' }}>
-                          <button className="btn btn-secondary btn-sm" onClick={() => setIsEditing(false)} style={{ borderRadius: '10px' }}>
+                        <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '12px' }}>
+                          <button className="btn btn-secondary" onClick={() => setIsEditing(false)} style={{ borderRadius: '10px', padding: '8px 18px', fontSize: '13px' }}>
                             取消
                           </button>
-                          <button className="btn btn-primary btn-sm" onClick={handleSaveEdit} disabled={saveLoading} style={{ borderRadius: '10px' }}>
-                            <Save size={14} /> {saveLoading ? '保存中...' : '保存修改'}
+                          <button className="btn btn-primary" onClick={handleSaveEdit} disabled={saveLoading} style={{ borderRadius: '10px', padding: '8px 22px', fontSize: '13px', fontWeight: '600' }}>
+                            <Save size={15} /> {saveLoading ? '保存中...' : '保存修改'}
                           </button>
                         </div>
                       </div>
