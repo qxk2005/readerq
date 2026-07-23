@@ -5,36 +5,36 @@
 
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Noto+Serif+SC:wght@400;500;600;700&display=swap');
 
-/* ---- CSS 变量 / 设计令牌 ---- */
+/* ---- CSS 变量 / 设计令牌 (Apple macOS Sequoia & iOS 18 Aesthetics) ---- */
 :root {
-  /* 色彩 - 浅色模式 */
+  /* 色彩 - 苹果原生浅色模式 (Apple Light System) */
   --color-bg-primary: #ffffff;
-  --color-bg-secondary: #f8f9fa;
-  --color-bg-tertiary: #f0f1f3;
-  --color-bg-hover: #ebedf0;
-  --color-bg-active: #e2e5e9;
-  --color-bg-sidebar: #f5f6f8;
+  --color-bg-secondary: #f2f2f7;
+  --color-bg-tertiary: #e5e5ea;
+  --color-bg-hover: rgba(0, 0, 0, 0.04);
+  --color-bg-active: rgba(0, 0, 0, 0.08);
+  --color-bg-sidebar: #f8f8fb;
   --color-bg-card: #ffffff;
-  --color-bg-overlay: rgba(0, 0, 0, 0.5);
-  --color-bg-tooltip: #1a1a2e;
-  --color-bg-glass: rgba(255, 255, 255, 0.72);
+  --color-bg-overlay: rgba(0, 0, 0, 0.35);
+  --color-bg-tooltip: #1c1c1e;
+  --color-bg-glass: rgba(255, 255, 255, 0.78);
 
-  --color-text-primary: #1a1a2e;
-  --color-text-secondary: #4a4a68;
-  --color-text-tertiary: #8a8aa3;
-  --color-text-link: #3b82f6;
+  --color-text-primary: #1c1c1e;
+  --color-text-secondary: #3c3c43;
+  --color-text-tertiary: rgba(60, 60, 67, 0.6);
+  --color-text-link: #007aff;
   --color-text-inverse: #ffffff;
 
-  --color-border: #e2e5e9;
-  --color-border-light: #f0f1f3;
-  --color-border-focus: #3b82f6;
+  --color-border: rgba(0, 0, 0, 0.08);
+  --color-border-light: rgba(0, 0, 0, 0.05);
+  --color-border-focus: #007aff;
 
-  --color-accent: #6366f1;
-  --color-accent-hover: #4f46e5;
-  --color-accent-light: #eef2ff;
-  --color-success: #22c55e;
-  --color-warning: #f59e0b;
-  --color-danger: #ef4444;
+  --color-accent: #007aff;
+  --color-accent-hover: #0062cc;
+  --color-accent-light: rgba(0, 122, 255, 0.08);
+  --color-success: #34c759;
+  --color-warning: #ff9500;
+  --color-danger: #ff3b30;
 
   /* 高亮颜色 */
   --highlight-yellow: #fef08a;
@@ -43,10 +43,10 @@
   --highlight-purple: #ddd6fe;
   --highlight-red: #fecaca;
 
-  /* 字体 */
-  --font-ui: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  /* 字体 (Apple SF Pro 原生字体优先) */
+  --font-ui: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", 'Inter', sans-serif;
   --font-reading: 'Noto Serif SC', 'Georgia', 'Times New Roman', serif;
-  --font-mono: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+  --font-mono: 'SF Mono', 'JetBrains Mono', 'Fira Code', monospace;
 
   /* 字号 */
   --text-xs: 0.6875rem;
@@ -68,18 +68,18 @@
   --space-10: 2.5rem;
   --space-12: 3rem;
 
-  /* 圆角 */
-  --radius-sm: 4px;
-  --radius-md: 8px;
-  --radius-lg: 12px;
-  --radius-xl: 16px;
+  /* 圆角 (Apple 标志性大圆角) */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 20px;
   --radius-full: 9999px;
 
-  /* 阴影 */
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
-  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.07), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
-  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -4px rgba(0, 0, 0, 0.04);
-  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.04);
+  /* 阴影 (Apple 环境高阶质感阴影) */
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.02);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.06), 0 1px 3px rgba(0, 0, 0, 0.04);
+  --shadow-lg: 0 12px 28px rgba(0, 0, 0, 0.09), 0 2px 6px rgba(0, 0, 0, 0.04);
+  --shadow-xl: 0 24px 48px rgba(0, 0, 0, 0.12), 0 4px 12px rgba(0, 0, 0, 0.06);
 
   /* 布局 */
   --sidebar-width: 240px;
@@ -87,43 +87,48 @@
   --doclist-width: 380px;
   --reading-max-width: 720px;
 
-  /* 过渡 */
-  --transition-fast: 0.15s ease;
-  --transition-base: 0.25s ease;
-  --transition-slow: 0.35s ease;
+  /* 苹果 Spring 动画与过渡 */
+  --ease-apple: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --transition-fast: 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+  --transition-base: 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+  --transition-slow: 0.35s cubic-bezier(0.16, 1, 0.3, 1);
 
   /* 滚动条 */
   --scrollbar-width: 6px;
-  --scrollbar-thumb: #c1c1d1;
+  --scrollbar-thumb: rgba(0, 0, 0, 0.2);
   --scrollbar-track: transparent;
 }
 
-/* ---- 深色模式 ---- */
+/* ---- 苹果深色模式 (macOS Sequoia Dark) ---- */
 [data-theme='dark'] {
-  --color-bg-primary: #0f0f1a;
-  --color-bg-secondary: #16162a;
-  --color-bg-tertiary: #1e1e36;
-  --color-bg-hover: #262642;
-  --color-bg-active: #2e2e4e;
-  --color-bg-sidebar: #111124;
-  --color-bg-card: #1a1a30;
-  --color-bg-overlay: rgba(0, 0, 0, 0.7);
-  --color-bg-tooltip: #2a2a4a;
-  --color-bg-glass: rgba(15, 15, 26, 0.85);
+  --color-bg-primary: #1c1c1e;
+  --color-bg-secondary: #2c2c2e;
+  --color-bg-tertiary: #3a3a3c;
+  --color-bg-hover: rgba(255, 255, 255, 0.08);
+  --color-bg-active: rgba(255, 255, 255, 0.14);
+  --color-bg-sidebar: #141416;
+  --color-bg-card: #2c2c2e;
+  --color-bg-overlay: rgba(0, 0, 0, 0.65);
+  --color-bg-tooltip: #3a3a3c;
+  --color-bg-glass: rgba(28, 28, 30, 0.82);
 
-  --color-text-primary: #e8e8f0;
-  --color-text-secondary: #a8a8c0;
-  --color-text-tertiary: #68688a;
-  --color-text-link: #818cf8;
-  --color-text-inverse: #0f0f1a;
+  --color-text-primary: #ffffff;
+  --color-text-secondary: rgba(235, 235, 245, 0.75);
+  --color-text-tertiary: rgba(235, 235, 245, 0.45);
+  --color-text-link: #0a84ff;
+  --color-text-inverse: #000000;
 
-  --color-border: #2a2a44;
-  --color-border-light: #1e1e36;
-  --color-border-focus: #818cf8;
+  --color-border: rgba(255, 255, 255, 0.1);
+  --color-border-light: rgba(255, 255, 255, 0.06);
+  --color-border-focus: #0a84ff;
 
-  --color-accent: #818cf8;
-  --color-accent-hover: #6366f1;
-  --color-accent-light: #1e1e3a;
+  --color-accent: #0a84ff;
+  --color-accent-hover: #409cff;
+  --color-accent-light: rgba(10, 132, 255, 0.15);
+  --color-success: #30d158;
+  --color-warning: #ffd60a;
+  --color-danger: #ff453a;
 
   --highlight-yellow: #854d0e40;
   --highlight-green: #14532d40;
@@ -131,12 +136,12 @@
   --highlight-purple: #3b185940;
   --highlight-red: #7f1d1d40;
 
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
-  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.4);
-  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.5);
-  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.6);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 12px 28px rgba(0, 0, 0, 0.6);
+  --shadow-xl: 0 24px 48px rgba(0, 0, 0, 0.7);
 
-  --scrollbar-thumb: #3a3a5a;
+  --scrollbar-thumb: rgba(255, 255, 255, 0.2);
 }
 
 /* ---- 全局重置 ---- */
@@ -498,34 +503,34 @@ textarea:focus {
   padding: var(--space-2);
 }
 
-/* ---- 文档卡片 ---- */
+/* ---- 文档卡片 (Apple macOS / iOS Card Aesthetics) ---- */
 .doc-card {
-  padding: var(--space-3) var(--space-3);
-  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-lg);
   cursor: pointer;
   transition: all var(--transition-fast);
-  margin: 6px 12px;
+  margin: 6px 10px;
   position: relative;
-  border: 1px solid transparent;
-  background: var(--color-bg-primary);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
-}
-
-/* 斑马纹交替底色 */
-.doc-card:nth-child(even) {
-  background: var(--color-bg-tertiary);
+  border: 1px solid var(--color-border-light);
+  background: var(--color-bg-card);
+  box-shadow: var(--shadow-sm);
 }
 
 .doc-card:hover {
   background: var(--color-bg-hover);
-  border-color: var(--color-border-light);
+  border-color: var(--color-border);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
+}
+
+.doc-card:active {
+  transform: scale(0.985);
 }
 
 .doc-card.active {
   background: var(--color-accent-light);
   border-color: var(--color-accent);
-  border-left: 3px solid var(--color-accent);
-  padding-left: calc(var(--space-3) - 3px);
+  box-shadow: 0 0 0 1px var(--color-accent), var(--shadow-md);
 }
 
 .doc-card-header {
@@ -823,7 +828,7 @@ textarea:focus {
   max-width: 320px;
 }
 
-/* ---- 按钮 ---- */
+/* ---- 按钮 (Apple Fluid Motion & Press Feedback) ---- */
 .btn {
   display: inline-flex;
   align-items: center;
@@ -835,26 +840,39 @@ textarea:focus {
   font-weight: 500;
   transition: all var(--transition-fast);
   white-space: nowrap;
+  user-select: none;
+}
+
+.btn:active {
+  transform: scale(0.96);
 }
 
 .btn-primary {
   background: var(--color-accent);
   color: white;
+  box-shadow: 0 1px 3px rgba(0, 122, 255, 0.25);
 }
 
 .btn-primary:hover {
   background: var(--color-accent-hover);
   transform: translateY(-1px);
-  box-shadow: var(--shadow-md);
+  box-shadow: 0 4px 12px rgba(0, 122, 255, 0.35);
+}
+
+.btn-primary:active {
+  transform: scale(0.96);
+  box-shadow: 0 1px 2px rgba(0, 122, 255, 0.2);
 }
 
 .btn-secondary {
   background: var(--color-bg-tertiary);
   color: var(--color-text-primary);
+  border: 1px solid var(--color-border-light);
 }
 
 .btn-secondary:hover {
   background: var(--color-bg-hover);
+  border-color: var(--color-border);
 }
 
 .btn-ghost {
@@ -877,6 +895,7 @@ textarea:focus {
   justify-content: center;
   color: var(--color-text-tertiary);
   transition: all var(--transition-fast);
+  user-select: none;
 }
 
 .btn-icon:hover {
@@ -884,9 +903,14 @@ textarea:focus {
   color: var(--color-text-primary);
 }
 
+.btn-icon:active {
+  transform: scale(0.92);
+}
+
 .btn-sm {
   padding: var(--space-1) var(--space-3);
   font-size: var(--text-xs);
+  border-radius: var(--radius-sm);
 }
 
 /* ---- 标签徽章 ---- */
@@ -1079,32 +1103,36 @@ textarea:focus {
   flex: 1;
 }
 
-/* ---- 命令面板 ---- */
+/* ---- 命令面板 (Apple Command Palette Aesthetics) ---- */
 .command-palette-overlay {
   position: fixed;
   inset: 0;
   background: var(--color-bg-overlay);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   display: flex;
   align-items: flex-start;
   justify-content: center;
-  padding-top: 20vh;
+  padding-top: 18vh;
   z-index: 1000;
-  animation: fadeIn 0.15s ease;
+  animation: fadeIn 0.18s var(--ease-apple);
 }
 
 .command-palette {
-  width: 560px;
-  max-height: 420px;
-  background: var(--color-bg-primary);
+  width: 580px;
+  max-height: 440px;
+  background: var(--color-bg-glass);
+  backdrop-filter: blur(25px) saturate(190%);
+  -webkit-backdrop-filter: blur(25px) saturate(190%);
   border-radius: var(--radius-xl);
   box-shadow: var(--shadow-xl);
   border: 1px solid var(--color-border);
   overflow: hidden;
-  animation: scaleIn 0.2s ease;
+  animation: scaleIn 0.22s var(--ease-apple);
 }
 
 @keyframes scaleIn {
-  from { transform: scale(0.95); opacity: 0; }
+  from { transform: scale(0.96); opacity: 0; }
   to { transform: scale(1); opacity: 1; }
 }
 
@@ -1115,6 +1143,7 @@ textarea:focus {
   border-bottom: 1px solid var(--color-border-light);
   font-size: var(--text-base);
   background: transparent;
+  color: var(--color-text-primary);
 }
 
 .command-palette-input:focus {
@@ -1123,7 +1152,7 @@ textarea:focus {
 
 .command-palette-list {
   overflow-y: auto;
-  max-height: 360px;
+  max-height: 380px;
 }
 
 .command-palette-item {
@@ -1164,28 +1193,33 @@ textarea:focus {
   border: 1px solid var(--color-border);
 }
 
-/* ---- 设置弹窗 ---- */
+/* ---- 弹窗 (macOS Sequoia Modal Aesthetics) ---- */
 .modal-overlay {
   position: fixed;
   inset: 0;
   background: var(--color-bg-overlay);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 1000;
-  animation: fadeIn 0.15s ease;
+  animation: fadeIn 0.18s var(--ease-apple);
 }
 
 .modal {
-  width: 520px;
-  max-height: 80vh;
-  background: var(--color-bg-primary);
+  width: 540px;
+  max-height: 82vh;
+  background: var(--color-bg-glass);
+  backdrop-filter: blur(25px) saturate(190%);
+  -webkit-backdrop-filter: blur(25px) saturate(190%);
   border-radius: var(--radius-xl);
+  border: 1px solid var(--color-border);
   box-shadow: var(--shadow-xl);
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  animation: scaleIn 0.2s ease;
+  animation: scaleIn 0.22s var(--ease-apple);
 }
 
 .modal-header {

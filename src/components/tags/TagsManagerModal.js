@@ -112,6 +112,10 @@ export default function TagsManagerModal() {
           padding: '0',
           overflow: 'hidden',
           borderRadius: 'var(--radius-xl)',
+          background: 'var(--color-bg-glass)',
+          backdropFilter: 'blur(25px) saturate(190%)',
+          WebkitBackdropFilter: 'blur(25px) saturate(190%)',
+          border: '1px solid var(--color-border)',
           boxShadow: 'var(--shadow-xl)',
         }}
       >
