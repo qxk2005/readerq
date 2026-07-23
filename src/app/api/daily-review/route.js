@@ -39,16 +39,14 @@ export async function GET() {
       console.warn('[DailyReview API] 调取 Readwise 官方 Review 接口失败，使用本地数据库智能抽样备用:', apiErr.message);
     }
 
-    // 2. 如果官方 API 未返回或未配置 Token，从本地抽取作为 Fallback
+    // 2. 如果官方 API 未返回或未配置 Token，从本地数据库智能抽取指定数量 (默认 15 条)
+    const targetLimit = userTarget === 'auto' ? 15 : (parseInt(userTarget, 10) || 15);
     if (!highlights || highlights.length === 0) {
-      const fallbackLimit = userTarget === 'auto' ? 5 : parseInt(userTarget, 10) || 5;
-      highlights = getFallbackDailyReviewHighlights(fallbackLimit);
+      highlights = getFallbackDailyReviewHighlights(targetLimit);
     }
 
-    // 3. 动态将 statsData.targetCount 与实际获取到的回顾条数完全对齐
-    if (highlights.length > 0) {
-      statsData.targetCount = highlights.length;
-    }
+    // 3. 动态将 statsData.targetCount 与实际回顾条数完全对齐 (优先使用配置的目标数 15)
+    statsData.targetCount = targetLimit;
 
     return NextResponse.json({
       success: true,

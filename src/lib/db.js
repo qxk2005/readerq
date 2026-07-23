@@ -850,7 +850,7 @@ export function recordReviewAction(reviewDate, highlightId, action, customTarget
   // 2. 更新或查询今日打卡统计
   let stat = db.prepare('SELECT * FROM review_stats WHERE review_date = ?').get(reviewDate);
   let reviewedCount = (stat?.reviewed_count || 0) + 1;
-  const targetCount = customTargetCount || stat?.target_count || 5;
+  const targetCount = customTargetCount || stat?.target_count || 15;
 
   // 3. 计算连续打卡 Streak 天数
   let streakDays = 1;

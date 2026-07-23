@@ -403,71 +403,69 @@ export default function DailyReviewView({ onBackToArticles }) {
                       </div>
                     )}
 
-                    {/* 底部操作控制条 */}
+                    {/* 底部操作控制条 (统一居中、等间距 16px) */}
                     <div style={{
                       display: 'flex',
                       alignItems: 'center',
-                      justify: 'space-between',
-                      paddingTop: '20px',
+                      justifyContent: 'center',
+                      gap: '16px',
+                      paddingTop: '24px',
+                      marginTop: '8px',
                       borderTop: '1px solid var(--color-border-light)'
                     }}>
-                      <div style={{ display: 'flex', gap: '10px' }}>
-                        <button
-                          className="btn btn-secondary"
-                          disabled={currentIndex === 0}
-                          onClick={() => setCurrentIndex(prev => Math.max(0, prev - 1))}
-                          style={{ 
-                            height: '42px', 
-                            padding: '0 20px', 
-                            borderRadius: '12px', 
-                            fontSize: '13px', 
-                            fontWeight: '600',
-                            display: 'flex', 
-                            alignItems: 'center', 
-                            gap: '6px' 
-                          }}
-                        >
-                          <ChevronLeft size={16} /> 上一条
-                        </button>
-                      </div>
+                      <button
+                        className="btn btn-secondary"
+                        disabled={currentIndex === 0}
+                        onClick={() => setCurrentIndex(prev => Math.max(0, prev - 1))}
+                        style={{ 
+                          height: '42px', 
+                          padding: '0 20px', 
+                          borderRadius: '12px', 
+                          fontSize: '13px', 
+                          fontWeight: '600',
+                          display: 'flex', 
+                          alignItems: 'center', 
+                          gap: '8px' 
+                        }}
+                      >
+                        <ChevronLeft size={16} /> 上一条
+                      </button>
 
-                      <div style={{ display: 'flex', gap: '12px' }}>
-                        <button
-                          className="btn btn-secondary"
-                          onClick={() => handleAction('favorite')}
-                          style={{
-                            height: '42px',
-                            padding: '0 20px',
-                            borderRadius: '12px',
-                            fontSize: '13px',
-                            fontWeight: '600',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '6px',
-                            color: actionHistory[currentHl.id] === 'favorite' ? '#ef4444' : 'inherit'
-                          }}
-                        >
-                          <Heart size={16} fill={actionHistory[currentHl.id] === 'favorite' ? '#ef4444' : 'none'} /> 收藏 (F)
-                        </button>
+                      <button
+                        className="btn btn-secondary"
+                        onClick={() => handleAction('favorite')}
+                        style={{
+                          height: '42px',
+                          padding: '0 20px',
+                          borderRadius: '12px',
+                          fontSize: '13px',
+                          fontWeight: '600',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px',
+                          color: actionHistory[currentHl.id] === 'favorite' ? '#ef4444' : 'inherit'
+                        }}
+                      >
+                        <Heart size={16} fill={actionHistory[currentHl.id] === 'favorite' ? '#ef4444' : 'none'} /> 收藏 (F)
+                      </button>
 
-                        <button
-                          className="btn btn-primary"
-                          onClick={() => handleAction('reviewed')}
-                          style={{
-                            height: '42px',
-                            padding: '0 22px',
-                            borderRadius: '12px',
-                            fontSize: '13px',
-                            fontWeight: '600',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '6px',
-                            boxShadow: '0 4px 14px rgba(0, 122, 255, 0.3)'
-                          }}
-                        >
-                          已复习 / 下一条 (Space) <ChevronRight size={16} />
-                        </button>
-                      </div>
+                      <button
+                        className="btn btn-primary"
+                        onClick={() => handleAction('reviewed')}
+                        style={{
+                          height: '42px',
+                          padding: '0 24px',
+                          borderRadius: '12px',
+                          fontSize: '13px',
+                          fontWeight: '600',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px',
+                          boxShadow: '0 4px 14px rgba(0, 122, 255, 0.3)'
+                        }}
+                      >
+                        已复习 / 下一条 (Space) <ChevronRight size={16} />
+                      </button>
                     </div>
                   </div>
                 )}
