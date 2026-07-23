@@ -99,6 +99,7 @@ export default function DailyReviewView({ onBackToArticles }) {
   const [highlights, setHighlights] = useState([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [stats, setStats] = useState(null);
+  const [actionHistory, setActionHistory] = useState({}); // { highlightId: 'reviewed' | 'favorite' | 'discard' }
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showCelebration, setShowCelebration] = useState(false);
 
