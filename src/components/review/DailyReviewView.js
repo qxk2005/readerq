@@ -88,6 +88,7 @@ export default function DailyReviewView({ onBackToArticles }) {
         body: JSON.stringify({
           highlightId: targetHlId,
           action: actionType,
+          targetCount: highlights.length,
         }),
       });
 
@@ -245,7 +246,7 @@ export default function DailyReviewView({ onBackToArticles }) {
                   🎉 今日回顾已全部完成！
                 </h2>
                 <p style={{ fontSize: '15px', color: 'rgba(255,255,255,0.7)', maxWidth: '480px', margin: '0 auto 32px' }}>
-                  太棒了！您已成功复习了今日 5 条精选高亮，习惯正在慢慢重塑您的知识记忆。
+                  太棒了！您已成功复习了今日 {highlights.length} 条精选高亮，习惯正在慢慢重塑您的知识记忆。
                 </p>
 
                 <div style={{ display: 'flex', justifyContent: 'center', gap: '24px', marginBottom: '36px' }}>
@@ -532,7 +533,7 @@ export default function DailyReviewView({ onBackToArticles }) {
                   <Calendar size={18} /> 近 30 天复习热力打卡
                 </div>
                 <div style={{ fontSize: '12px', color: 'var(--color-text-tertiary)' }}>
-                  目标: 每天 5 条
+                  目标: 每天 {stats?.targetCount || highlights.length || 5} 条 (自动对齐 Readwise)
                 </div>
               </div>
 

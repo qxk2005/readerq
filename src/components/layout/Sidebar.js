@@ -209,7 +209,7 @@ export default function Sidebar({ width }) {
             {!sidebarCollapsed && (
               <>
                 <span className="sidebar-item-label" style={{ fontWeight: '600' }}>每日回顾</span>
-                <span className="sidebar-item-count" style={{ background: 'rgba(255, 149, 0, 0.15)', color: '#ff9500', fontWeight: '700' }}>5</span>
+                <span className="sidebar-item-count" style={{ background: 'rgba(255, 149, 0, 0.15)', color: '#ff9500', fontWeight: '700' }}>Review</span>
               </>
             )}
           </button>

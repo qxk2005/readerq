@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getServerReadwiseClient } from '@/lib/readwise';
-import { getReviewStatsData, recordReviewAction, getFallbackDailyReviewHighlights } from '@/lib/db';
+import { getReviewStatsData, recordReviewAction, getFallbackDailyReviewHighlights, getSetting } from '@/lib/db';
 
 /**
  * GET /api/daily-review
@@ -9,6 +9,7 @@ import { getReviewStatsData, recordReviewAction, getFallbackDailyReviewHighlight
 export async function GET() {
   try {
     const statsData = getReviewStatsData();
+    let userTarget = getSetting('daily_review_target') || 'auto';
     let highlights = [];
 
     // 1. 尝试从 Readwise 官方 API 获取 Daily Review 推荐
@@ -38,9 +39,15 @@ export async function GET() {
       console.warn('[DailyReview API] 调取 Readwise 官方 Review 接口失败，使用本地数据库智能抽样备用:', apiErr.message);
     }
 
-    // 2. 如果官方 API 未返回或未配置 Token，从本地抽取 5 条作为 Fallback
+    // 2. 如果官方 API 未返回或未配置 Token，从本地抽取作为 Fallback
     if (!highlights || highlights.length === 0) {
-      highlights = getFallbackDailyReviewHighlights();
+      const fallbackLimit = userTarget === 'auto' ? 5 : parseInt(userTarget, 10) || 5;
+      highlights = getFallbackDailyReviewHighlights(fallbackLimit);
+    }
+
+    // 3. 动态将 statsData.targetCount 与实际获取到的回顾条数完全对齐
+    if (highlights.length > 0) {
+      statsData.targetCount = highlights.length;
     }
 
     return NextResponse.json({
@@ -64,7 +71,7 @@ export async function GET() {
 export async function POST(request) {
   try {
     const body = await request.json();
-    const { highlightId, action, reviewDate } = body;
+    const { highlightId, action, reviewDate, targetCount } = body;
 
     if (!highlightId) {
       return NextResponse.json({ error: '缺少 highlightId' }, { status: 400 });
@@ -74,7 +81,7 @@ export async function POST(request) {
     const act = action || 'reviewed';
 
     // 1. 记录到本地数据库并更新打卡与 Streak
-    const statResult = recordReviewAction(todayDate, highlightId, act);
+    const statResult = recordReviewAction(todayDate, highlightId, act, targetCount);
 
     // 2. 尝试将回顾结果异步发给 Readwise 官方 API
     let syncedToReadwise = false;

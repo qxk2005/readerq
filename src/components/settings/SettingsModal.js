@@ -35,8 +35,9 @@ export default function SettingsModal() {
   const [localSyncStatus, setLocalSyncStatus] = useState(null);
   const [showChangelog, setShowChangelog] = useState(false);
 
-  // API 配置表单状态
+  // API 配置与每日回顾状态
   const [readwiseToken, setReadwiseToken] = useState('');
+  const [dailyReviewTarget, setDailyReviewTarget] = useState('auto');
   const [openaiApiKey, setOpenaiApiKey] = useState('');
   const [openaiBaseUrl, setOpenaiBaseUrl] = useState('');
   const [openaiModel, setOpenaiModel] = useState('');
@@ -67,6 +68,7 @@ export default function SettingsModal() {
       if (data.error) return;
 
       setReadwiseToken(data.readwise_token || '');
+      setDailyReviewTarget(data.daily_review_target || 'auto');
       setOpenaiApiKey(data.openai_api_key || '');
       setOpenaiBaseUrl(data.openai_base_url || '');
       setOpenaiModel(data.openai_model || '');
@@ -110,6 +112,7 @@ export default function SettingsModal() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           readwise_token: readwiseToken,
+          daily_review_target: dailyReviewTarget,
           openai_api_key: openaiApiKey,
           openai_base_url: openaiBaseUrl,
           openai_model: openaiModel,
@@ -251,7 +254,8 @@ export default function SettingsModal() {
     switch (activeTab) {
       case 'api':
         return <TabAPI {...{
-          readwiseToken, setReadwiseToken, openaiApiKey, setOpenaiApiKey,
+          readwiseToken, setReadwiseToken, dailyReviewTarget, setDailyReviewTarget,
+          openaiApiKey, setOpenaiApiKey,
           openaiBaseUrl, setOpenaiBaseUrl, openaiModel, setOpenaiModel,
           openaiMaxTokens, setOpenaiMaxTokens, envInfo,
           testConfig, testLoading, testStages, testResult,
@@ -399,7 +403,8 @@ export default function SettingsModal() {
 
 // ===== Tab: API 配置 =====
 function TabAPI({
-  readwiseToken, setReadwiseToken, openaiApiKey, setOpenaiApiKey,
+  readwiseToken, setReadwiseToken, dailyReviewTarget, setDailyReviewTarget,
+  openaiApiKey, setOpenaiApiKey,
   openaiBaseUrl, setOpenaiBaseUrl, openaiModel, setOpenaiModel,
   openaiMaxTokens, setOpenaiMaxTokens, envInfo,
   testConfig, testLoading, testStages, testResult,
@@ -434,6 +439,27 @@ function TabAPI({
         <input type="password" className="form-input" placeholder="粘贴你的 Readwise Token..." value={readwiseToken} onChange={(e) => setReadwiseToken(e.target.value)} autoComplete="off" />
         <div className="form-hint">
           从 <a href="https://readwise.io/access_token" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--color-text-link)' }}>readwise.io/access_token</a> 获取
+        </div>
+      </div>
+
+      {/* 每日回顾复习目标配置 */}
+      <div className="form-group">
+        <label className="form-label">
+          每日回顾 (Daily Review) 复习目标数量
+        </label>
+        <select
+          className="form-input"
+          value={dailyReviewTarget || 'auto'}
+          onChange={(e) => setDailyReviewTarget(e.target.value)}
+        >
+          <option value="auto">✨ 与 Readwise 官方设置自动同步对齐 (推荐)</option>
+          <option value="5">每天 5 条</option>
+          <option value="10">每天 10 条</option>
+          <option value="15">每天 15 条</option>
+          <option value="20">每天 20 条</option>
+        </select>
+        <div className="form-hint">
+          “自动同步”模式下直接读取与对齐 Readwise 官方返回的所有每日回顾项目。
         </div>
       </div>
 

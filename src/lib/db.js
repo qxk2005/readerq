@@ -836,7 +836,7 @@ export function deleteSubtitle(documentId) {
 /**
  * 记录单条每日回顾动作并更新连续打卡 (Streak)
  */
-export function recordReviewAction(reviewDate, highlightId, action) {
+export function recordReviewAction(reviewDate, highlightId, action, customTargetCount = 5) {
   const db = getDatabase();
   const now = new Date().toISOString();
   const id = `${reviewDate}_${highlightId}_${action}_${Date.now()}`;
@@ -850,7 +850,7 @@ export function recordReviewAction(reviewDate, highlightId, action) {
   // 2. 更新或查询今日打卡统计
   let stat = db.prepare('SELECT * FROM review_stats WHERE review_date = ?').get(reviewDate);
   let reviewedCount = (stat?.reviewed_count || 0) + 1;
-  const targetCount = 5;
+  const targetCount = customTargetCount || stat?.target_count || 5;
 
   // 3. 计算连续打卡 Streak 天数
   let streakDays = 1;
@@ -899,6 +899,7 @@ export function getReviewStatsData() {
   // 3. 获取今天已完成的计数
   const todayStat = db.prepare('SELECT * FROM review_stats WHERE review_date = ?').get(todayDate);
   const todayReviewedCount = todayStat?.reviewed_count || 0;
+  const targetCount = todayStat?.target_count || 5;
 
   // 4. 获取历史最长打卡纪录 (Best Streak)
   const maxStreakRow = db.prepare('SELECT MAX(streak_days) as best FROM review_stats').get();
@@ -912,7 +913,7 @@ export function getReviewStatsData() {
   return {
     todayDate,
     todayReviewedCount,
-    targetCount: 5,
+    targetCount,
     streakDays: todayStat?.streak_days || 0,
     bestStreak,
     totalReviewed,
@@ -922,12 +923,13 @@ export function getReviewStatsData() {
 }
 
 /**
- * 当无法链接 Readwise API 时，从本地数据库抽取 5 条高亮进行备用每日回顾 (Fallback)
+ * 当无法链接 Readwise API 时，根据目标条数从本地数据库抽取高亮进行备用每日回顾 (Fallback)
  */
-export function getFallbackDailyReviewHighlights() {
+export function getFallbackDailyReviewHighlights(limit = 5) {
   const db = getDatabase();
+  const countLimit = parseInt(limit, 10) || 5;
   
-  // 关联高亮与文档元数据，按随机/间隔从库中选取 5 条
+  // 关联高亮与文档元数据，按随机/间隔从库中选取指定数量条数
   const rows = db.prepare(`
     SELECT 
       h.id as highlight_id,
@@ -946,8 +948,8 @@ export function getFallbackDailyReviewHighlights() {
     LEFT JOIN documents d ON h.document_id = d.id
     WHERE h.text IS NOT NULL AND h.text != ''
     ORDER BY RANDOM()
-    LIMIT 5
-  `).all();
+    LIMIT ?
+  `).all(countLimit);
 
   return rows.map(r => {
     let tags = {};
