@@ -76,12 +76,9 @@ function killProcess(pid) {
       // Windows: 使用 taskkill 强制终止进程树
       execSync(`taskkill /PID ${pid} /T /F`, { stdio: 'ignore' });
     } else {
-      // Unix: 先尝试杀掉进程组，再 fallback 到单进程
-      try {
-        process.kill(-pid, 'SIGTERM');
-      } catch {
-        process.kill(pid, 'SIGTERM');
-      }
+      // Unix: 强制使用 SIGKILL (kill -9) 终止进程，防止卡死进程忽略 SIGTERM
+      try { process.kill(-pid, 'SIGKILL'); } catch { process.kill(pid, 'SIGKILL'); }
+      try { execSync(`kill -9 ${pid} 2>/dev/null`, { stdio: 'ignore' }); } catch {}
     }
     return true;
   } catch {
@@ -104,6 +101,13 @@ function stopServer() {
   if (portPids.length > 0) {
     portPids.forEach(p => killProcess(p));
     log(`  ✓ 已清理端口 ${PORT}`, 'Y');
+  }
+
+  // 阻塞轮询直到 3000 端口彻底空闲
+  let waitCount = 0;
+  while (findProcessOnPort(PORT).length > 0 && waitCount < 30) {
+    try { execSync('sleep 0.1 2>/dev/null || timeout 0.1 2>/dev/null'); } catch {}
+    waitCount++;
   }
 
   // 清理 PID 文件
