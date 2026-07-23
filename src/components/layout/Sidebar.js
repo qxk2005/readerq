@@ -238,13 +238,6 @@ export default function Sidebar({ width }) {
       <div className="sidebar-footer">
         <button
           className="btn-icon"
-          onClick={() => setShowAddUrl(true)}
-          data-tooltip="添加文章"
-        >
-          <Plus size={18} />
-        </button>
-        <button
-          className="btn-icon"
           onClick={() => syncData(false)}
           data-tooltip={isSyncing ? '同步中...' : '同步数据'}
           disabled={isSyncing}
