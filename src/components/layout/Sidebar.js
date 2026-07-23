@@ -4,7 +4,7 @@ import { useApp } from '@/context/AppContext';
 import { useTheme } from '@/context/ThemeContext';
 import { LOCATION_LABELS, CATEGORY_LABELS } from '@/lib/utils';
 import { CATEGORY_ICONS_SVG, LOCATION_ICONS_SVG } from '@/components/ui/icons';
-import { Home, Tag, Plus, RefreshCw, Sun, Moon, Settings } from 'lucide-react';
+import { Home, Tag, Plus, RefreshCw, Sun, Moon, Settings, SlidersHorizontal } from 'lucide-react';
 
 // 折叠左侧栏的矩形图标 (同 Readwise 官方)
 const SidebarCloseIcon = () => (
@@ -217,30 +217,37 @@ export default function Sidebar({ width }) {
           ))}
         </div>
 
-        {/* 标签 */}
-        {!sidebarCollapsed && tags.length > 0 && (
+        {/* 标签 Section (只显示最近使用的 4 个标签，最后一行是固定的标签管理按钮) */}
+        {tags.length > 0 && (
           <div className="sidebar-section">
-            <div className="sidebar-section-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span>标签</span>
-              <button
-                className="btn-icon"
-                onClick={() => setShowTagsManager(true)}
-                data-tooltip="管理所有标签"
-                style={{ width: '20px', height: '20px', padding: 0, borderRadius: '4px' }}
-              >
-                <Tag size={12} />
-              </button>
-            </div>
-            {tags.slice(0, 15).map(tag => (
+            {!sidebarCollapsed && (
+              <div className="sidebar-section-title">
+                <span>最近标签</span>
+              </div>
+            )}
+            {tags.slice(0, 4).map(tag => (
               <button
                 key={tag.key}
                 className={`sidebar-item ${currentTag === tag.key ? 'active' : ''}`}
                 onClick={() => switchTag(tag.key)}
               >
                 <span className="sidebar-item-icon"><Tag size={16} /></span>
-                <span className="sidebar-item-label">{tag.name}</span>
+                {!sidebarCollapsed && <span className="sidebar-item-label">{tag.name}</span>}
               </button>
             ))}
+
+            {/* 最后一行固定的标签管理按钮 */}
+            <button
+              className="sidebar-item"
+              onClick={() => setShowTagsManager(true)}
+              data-tooltip={sidebarCollapsed ? "管理所有标签" : undefined}
+              style={{ color: 'var(--color-text-secondary)', marginTop: '2px' }}
+            >
+              <span className="sidebar-item-icon"><SlidersHorizontal size={16} /></span>
+              {!sidebarCollapsed && (
+                <span className="sidebar-item-label" style={{ fontWeight: '500' }}>标签管理...</span>
+              )}
+            </button>
           </div>
         )}
       </nav>

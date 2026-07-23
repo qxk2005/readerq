@@ -318,13 +318,19 @@ export function AppProvider({ children }) {
     _setSelectedDoc(prev => (prev && prev.id === id ? { ...prev, ...updates } : prev));
   }, []);
 
-  // 获取所有标签
+  // 获取所有标签 (包含最后使用时间，并按最新使用时间降序排列)
   const fetchTags = useCallback(async () => {
     try {
-      const res = await fetch('/api/tags');
+      const res = await fetch('/api/tags?detailed=true');
       const data = await res.json();
-      if (data.tags) {
-        setTags(data.tags);
+      if (data.tags && Array.isArray(data.tags)) {
+        const sorted = [...data.tags].sort((a, b) => {
+          const timeA = a.last_used_at ? new Date(a.last_used_at).getTime() : 0;
+          const timeB = b.last_used_at ? new Date(b.last_used_at).getTime() : 0;
+          if (timeA !== timeB) return timeB - timeA;
+          return (b.total_count || 0) - (a.total_count || 0);
+        });
+        setTags(sorted);
       }
     } catch (err) {
       console.error('获取标签列表失败:', err);
