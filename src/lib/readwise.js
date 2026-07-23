@@ -711,9 +711,24 @@ class ReadwiseAPI {
    * @param {Object} payload - { highlight_id, action: 'keep'|'discard'|'master'|'favorite' }
    */
   async submitReviewAction(payload) {
+    const apiAction = payload.action === 'reviewed' ? 'keep' : payload.action;
     return this.fetchWithRetry('https://readwise.io/api/v2/review/action/', {
       method: 'POST',
-      body: JSON.stringify(payload),
+      body: JSON.stringify({
+        ...payload,
+        action: apiAction
+      }),
+    });
+  }
+
+  /**
+   * 标记 Readwise 官方今日 Daily Review 全部打卡完成
+   * API: POST https://readwise.io/api/v2/review/complete/
+   */
+  async markDailyReviewComplete() {
+    return this.fetchWithRetry('https://readwise.io/api/v2/review/complete/', {
+      method: 'POST',
+      body: JSON.stringify({}),
     });
   }
 

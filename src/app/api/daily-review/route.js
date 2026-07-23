@@ -94,8 +94,14 @@ export async function POST(request) {
         action: readwiseAction,
       });
       syncedToReadwise = true;
+
+      // 3. 如果今日回顾已全部完成，向 Readwise 官方服务器发送 Complete 打卡标记！
+      if (statResult.isCompleted || statResult.reviewedCount >= (targetCount || 15)) {
+        await client.markDailyReviewComplete();
+        console.log('[DailyReview Sync] 成功向 Readwise 官方 API 成功标记今日 Daily Review 已全部打卡完成！');
+      }
     } catch (syncErr) {
-      console.warn('[DailyReview Sync] 发送 Readwise 官方 Action 失败 (本地已记录):', syncErr.message);
+      console.warn('[DailyReview Sync] 发送 Readwise 官方 Action / Complete 失败 (本地已记录):', syncErr.message);
     }
 
     return NextResponse.json({

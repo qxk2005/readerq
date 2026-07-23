@@ -131,6 +131,31 @@ export default function DailyReviewView({ onBackToArticles }) {
   const [drawerHighlights, setDrawerHighlights] = useState([]);
   const [drawerLoading, setDrawerLoading] = useState(false);
 
+  // Readwise 官方 Complete 打卡完成同步状态
+  const [completeSyncing, setCompleteSyncing] = useState(false);
+  const [completeSynced, setCompleteSynced] = useState(false);
+
+  const syncReadwiseComplete = useCallback(async () => {
+    setCompleteSyncing(true);
+    try {
+      const res = await fetch('/api/daily-review/complete', { method: 'POST' });
+      const data = await res.json();
+      if (data.success) {
+        setCompleteSynced(true);
+      }
+    } catch (err) {
+      console.warn('同步 Readwise 官方 Complete 打卡失败:', err);
+    } finally {
+      setCompleteSyncing(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (showCelebration) {
+      syncReadwiseComplete();
+    }
+  }, [showCelebration, syncReadwiseComplete]);
+
   // 加载每日回顾数据
   const fetchDailyReview = useCallback(async () => {
     setLoading(true);
@@ -489,21 +514,38 @@ export default function DailyReviewView({ onBackToArticles }) {
                   </div>
                 </div>
 
-                <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
+                <div style={{ display: 'flex', gap: '12px', justifyContent: 'center', flexWrap: 'wrap' }}>
                   <button
                     className="btn btn-primary"
+                    onClick={syncReadwiseComplete}
+                    disabled={completeSyncing}
+                    style={{ 
+                      padding: '12px 24px', 
+                      borderRadius: '12px', 
+                      fontSize: '14px', 
+                      fontWeight: '600',
+                      backgroundColor: completeSynced ? '#34c759' : '#007aff',
+                      boxShadow: '0 4px 14px rgba(0,122,255,0.3)'
+                    }}
+                  >
+                    <CheckCircle2 size={16} /> {completeSyncing ? '同步官方中...' : completeSynced ? '✨ 已同步 Readwise 官方打卡完成' : '同步至 Readwise 官方'}
+                  </button>
+
+                  <button
+                    className="btn btn-secondary"
                     onClick={() => setActiveTab('stats')}
-                    style={{ padding: '12px 28px', borderRadius: '12px', fontSize: '14px', fontWeight: '600' }}
+                    style={{ padding: '12px 24px', borderRadius: '12px', fontSize: '14px', fontWeight: '600', background: 'rgba(255,255,255,0.12)', color: '#fff', border: 'none' }}
                   >
                     <BarChart3 size={16} /> 查看回顾统计
                   </button>
+
                   <button
                     className="btn btn-secondary"
                     onClick={() => {
                       setShowCelebration(false);
                       setCurrentIndex(0);
                     }}
-                    style={{ padding: '12px 24px', borderRadius: '12px', fontSize: '14px', background: 'rgba(255,255,255,0.15)', color: '#fff', border: 'none' }}
+                    style={{ padding: '12px 24px', borderRadius: '12px', fontSize: '14px', background: 'rgba(255,255,255,0.12)', color: '#fff', border: 'none' }}
                   >
                     <RotateCcw size={16} /> 再次重温卡片
                   </button>
