@@ -300,7 +300,7 @@ export default function SettingsModal() {
     <div className="modal-overlay" onClick={() => setShowSettings(false)}>
       <div 
         className="modal" 
-        style={{ width: '680px', maxHeight: '85vh', display: 'flex', flexDirection: 'column' }} 
+        style={{ width: '680px', maxHeight: '85vh', display: 'flex', flexDirection: 'column', backgroundColor: 'var(--color-bg-card)' }} 
         onClick={(e) => e.stopPropagation()}
       >
         {/* 固定头部 */}
