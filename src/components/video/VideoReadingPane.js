@@ -5,7 +5,7 @@ import { useTheme } from '@/context/ThemeContext';
 import { parseSubtitles, extractYouTubeId, parseSRT } from '@/lib/subtitleParser';
 import YouTubePlayer from './YouTubePlayer';
 import SubtitlePanel from './SubtitlePanel';
-import { Maximize2, Minimize2, Captions, LogIn } from 'lucide-react';
+import { Maximize2, Minimize2, Captions, LogIn, ExternalLink } from 'lucide-react';
 
 /**
  * 视频阅读主容器
@@ -160,17 +160,19 @@ export default function VideoReadingPane({ selectedDoc, articleRef, updateDocume
             {isPlayerCollapsed ? <Maximize2 size={14} /> : <Minimize2 size={14} />}
           </button>
           
-          <button
-            className="btn btn-ghost btn-sm"
-            onClick={() => {
-              window.open('https://accounts.google.com/ServiceLogin?service=youtube&continue=https://www.youtube.com&readerq-internal-popup=1', 'youtube-login');
-            }}
-            title="登录 YouTube (如遇机器人验证)"
-            style={{ marginLeft: '4px' }}
-          >
-            <LogIn size={14} />
-            <span style={{ marginLeft: '4px', fontSize: '12px' }}>登录以播放</span>
-          </button>
+          {selectedDoc?.source_url || selectedDoc?.url ? (
+            <button
+              className="btn btn-ghost btn-sm"
+              onClick={() => {
+                const targetUrl = selectedDoc.source_url || selectedDoc.url;
+                if (targetUrl) window.open(targetUrl, '_blank');
+              }}
+              title="在系统浏览器中打开原视频"
+              style={{ marginLeft: '4px' }}
+            >
+              <ExternalLink size={14} />
+            </button>
+          ) : null}
         </div>
         {!isPlayerCollapsed && (
           <div style={{ flex: 1, minHeight: 0 }}>
