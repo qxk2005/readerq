@@ -22,6 +22,68 @@ import {
   RefreshCw
 } from 'lucide-react';
 
+/**
+ * 渲染卡片 Markdown 正文与图文
+ * 优雅提取并展示 Markdown 图片，自动转义 **加粗** 和 [链接]，并防止超长 URL 撑爆卡片
+ */
+function renderMarkdownContent(text) {
+  if (!text) return null;
+
+  // 1. 提取 Markdown 图片 ![alt](url)
+  const imageRegex = /!\[([^\]]*)\]\(([^)]+)\)/g;
+  const images = [];
+  let match;
+  while ((match = imageRegex.exec(text)) !== null) {
+    images.push({ alt: match[1], url: match[2] });
+  }
+
+  // 清理字符串中的 Markdown 图片语法，只保留文本
+  let cleanText = text.replace(imageRegex, '').trim();
+
+  // 2. 转换 **加粗**
+  cleanText = cleanText.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+
+  // 3. 转换 [文本](url)
+  cleanText = cleanText.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" style="color: var(--color-accent); text-decoration: underline; word-break: break-all;">$1</a>');
+
+  return (
+    <div style={{ wordBreak: 'break-word', overflowWrap: 'anywhere', width: '100%' }}>
+      <div 
+        dangerouslySetInnerHTML={{ __html: cleanText }} 
+        style={{
+          fontSize: '17px',
+          lineHeight: '1.75',
+          color: 'var(--color-text-primary)',
+          wordBreak: 'break-word',
+          overflowWrap: 'anywhere',
+          fontFamily: 'SF Pro Display, -apple-system, sans-serif'
+        }}
+      />
+      {images.length > 0 && (
+        <div style={{ marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          {images.map((img, i) => (
+            <img
+              key={i}
+              src={img.url}
+              alt={img.alt || '高亮插图'}
+              style={{
+                maxWidth: '100%',
+                maxHeight: '360px',
+                borderRadius: '12px',
+                objectFit: 'contain',
+                border: '1px solid var(--color-border-light)',
+                backgroundColor: 'var(--color-bg-secondary)',
+                display: 'block'
+              }}
+              onError={(e) => e.target.style.display = 'none'}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function DailyReviewView({ onBackToArticles }) {
   const [activeTab, setActiveTab] = useState('review'); // 'review' | 'stats'
   const [loading, setLoading] = useState(true);
@@ -73,44 +135,43 @@ export default function DailyReviewView({ onBackToArticles }) {
     return highlights[currentIndex] || null;
   }, [highlights, currentIndex]);
 
-  // 提交回顾动作
-  const handleAction = async (actionType) => {
-    if (!currentHl || isSubmitting) return;
-    setIsSubmitting(true);
+  // 提交回顾动作 (乐观 UI 0 毫秒秒切，后台异步静默同步，彻底卡顿)
+  const handleAction = (actionType) => {
+    if (!currentHl) return;
 
     const targetHlId = currentHl.id;
     setActionHistory(prev => ({ ...prev, [targetHlId]: actionType }));
 
-    try {
-      const res = await fetch('/api/daily-review', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          highlightId: targetHlId,
-          action: actionType,
-          targetCount: highlights.length,
-        }),
-      });
-
-      const data = await res.json();
-      if (data.success && data.statResult) {
-        setStats(prev => ({
-          ...prev,
-          todayReviewedCount: data.statResult.reviewedCount,
-          streakDays: data.statResult.streakDays,
-        }));
-      }
-    } catch (err) {
-      console.error('提交动作失败:', err);
-    } finally {
-      setIsSubmitting(false);
-      // 下一张
-      if (currentIndex < highlights.length - 1) {
-        setCurrentIndex(prev => prev + 1);
-      } else {
-        setShowCelebration(true);
-      }
+    // 1. 0 毫秒立即秒切下一张或触发全屏打卡庆祝
+    if (currentIndex < highlights.length - 1) {
+      setCurrentIndex(prev => prev + 1);
+    } else {
+      setShowCelebration(true);
     }
+
+    // 2. 后台异步发送，不阻塞卡片流畅翻阅
+    fetch('/api/daily-review', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        highlightId: targetHlId,
+        action: actionType,
+        targetCount: highlights.length,
+      }),
+    })
+      .then(res => res.json())
+      .then(data => {
+        if (data.success && data.statResult) {
+          setStats(prev => ({
+            ...prev,
+            todayReviewedCount: data.statResult.reviewedCount,
+            streakDays: data.statResult.streakDays,
+          }));
+        }
+      })
+      .catch(err => {
+        console.warn('后台同步回顾记录异常 (不卡顿 UI):', err);
+      });
   };
 
   // 键盘快捷键响应
@@ -322,6 +383,9 @@ export default function DailyReviewView({ onBackToArticles }) {
                     padding: '36px',
                     position: 'relative',
                     borderLeft: `6px solid var(--highlight-${currentHl.color || 'yellow'})`,
+                    wordBreak: 'break-word',
+                    overflowWrap: 'anywhere',
+                    overflow: 'hidden',
                     transition: 'all 0.25s ease'
                   }}>
                     {/* 卡片所属来源文章元数据 Header */}
@@ -358,18 +422,10 @@ export default function DailyReviewView({ onBackToArticles }) {
                       )}
                     </div>
 
-                    {/* 高亮引用正文 Highlight Text */}
-                    <blockquote style={{
-                      fontSize: '18px',
-                      lineHeight: '1.7',
-                      fontWeight: '500',
-                      color: 'var(--color-text-primary)',
-                      margin: '0 0 24px',
-                      padding: 0,
-                      fontFamily: 'SF Pro Display, -apple-system, sans-serif'
-                    }}>
-                      “{currentHl.text}”
-                    </blockquote>
+                    {/* 高亮引用正文 Highlight Text (Markdown 渲染 + 防溢出) */}
+                    <div style={{ margin: '0 0 24px', wordBreak: 'break-word', overflowWrap: 'anywhere', width: '100%' }}>
+                      {renderMarkdownContent(currentHl.text)}
+                    </div>
 
                     {/* 个人笔记展示 Note */}
                     {currentHl.note && (
