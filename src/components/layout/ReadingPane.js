@@ -1343,7 +1343,7 @@ export default function ReadingPane() {
           
           {/* Info Tab */}
           {rightPanelTab === 'info' && (
-            <div style={{ padding: 'var(--space-4)' }}>
+            <div style={{ padding: 'var(--space-4)', paddingBottom: 'var(--space-8)' }}>
               {/* Metadata */}
               <div style={{ marginBottom: 'var(--space-6)' }}>
                 <h3 style={{ fontSize: '11px', fontWeight: '600', color: 'var(--color-text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 'var(--space-3)' }}>Metadata</h3>
@@ -1450,7 +1450,7 @@ export default function ReadingPane() {
                   )}
                 </div>
                 
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)', paddingBottom: 'var(--space-8)' }}>
                   {(() => {
                     const posMap = highlightPositionsRef.current;
                     const getPos = (hl) => posMap[hl.id] ?? hl.location_start ?? Infinity;
