@@ -9,7 +9,18 @@ export function extractDomain(url) {
   if (!url) return '';
   try {
     const u = new URL(url);
-    return u.hostname.replace(/^www\./, '');
+    let domain = u.hostname.replace(/^www\./, '');
+    if (domain.length > 24) {
+      const parts = domain.split('.');
+      if (parts.length >= 2) {
+        const ext = parts.pop();
+        const main = parts.join('.');
+        if (main.length > 18) {
+          domain = `${main.substring(0, 10)}...${main.slice(-4)}.${ext}`;
+        }
+      }
+    }
+    return domain;
   } catch {
     return '';
   }
