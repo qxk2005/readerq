@@ -668,13 +668,26 @@ export default function ReadingPane() {
     return !!(pos & Node.DOCUMENT_POSITION_FOLLOWING);
   };
 
-  // 根据坐标获取光标精确 Caret Range
+  // 根据坐标获取光标精确 Caret Range (支持 Desktop 鼠标与 Android 触屏 Touch 事件)
   const getCaretPointFromEvent = (e) => {
+    let clientX = e.clientX;
+    let clientY = e.clientY;
+
+    if (e.changedTouches && e.changedTouches.length > 0) {
+      clientX = e.changedTouches[0].clientX;
+      clientY = e.changedTouches[0].clientY;
+    } else if (e.touches && e.touches.length > 0) {
+      clientX = e.touches[0].clientX;
+      clientY = e.touches[0].clientY;
+    }
+
+    if (clientX === undefined || clientY === undefined) return null;
+
     let range = null;
     if (document.caretRangeFromPoint) {
-      range = document.caretRangeFromPoint(e.clientX, e.clientY);
+      range = document.caretRangeFromPoint(clientX, clientY);
     } else if (document.caretPositionFromPoint) {
-      const pos = document.caretPositionFromPoint(e.clientX, e.clientY);
+      const pos = document.caretPositionFromPoint(clientX, clientY);
       if (pos) {
         range = document.createRange();
         range.setStart(pos.offsetNode, pos.offset);
@@ -1386,7 +1399,7 @@ export default function ReadingPane() {
           />
         </div>
       ) : (
-        <div className={`reading-content ${isPickerMode ? 'picker-mode-active' : ''}`} onClick={handleArticleClickForPicker}>
+        <div className={`reading-content ${isPickerMode ? 'picker-mode-active' : ''}`} onClick={handleArticleClickForPicker} onTouchEnd={handleArticleClickForPicker}>
         <article
           className="reading-article"
           style={{
