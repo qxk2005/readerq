@@ -1339,9 +1339,37 @@ fun HtmlContentViewer(
                             }
                         }
 
+                        var touchStartX = 0;
+                        var touchStartY = 0;
+                        var isTouchMoved = false;
+
+                        document.addEventListener('touchstart', function(e) {
+                            if (!window.isPickerMode) return;
+                            if (e.touches && e.touches.length > 0) {
+                                touchStartX = e.touches[0].clientX;
+                                touchStartY = e.touches[0].clientY;
+                                isTouchMoved = false;
+                            }
+                        }, true);
+
+                        document.addEventListener('touchmove', function(e) {
+                            if (!window.isPickerMode) return;
+                            if (e.touches && e.touches.length > 0) {
+                                var moveX = Math.abs(e.touches[0].clientX - touchStartX);
+                                var moveY = Math.abs(e.touches[0].clientY - touchStartY);
+                                if (moveX > 8 || moveY > 8) {
+                                    isTouchMoved = true;
+                                }
+                            }
+                        }, true);
+
                         var lastTouchTime = 0;
                         document.addEventListener('touchend', function(e) {
+                            if (!window.isPickerMode) return;
                             lastTouchTime = Date.now();
+                            if (isTouchMoved) {
+                                return;
+                            }
                             handlePickerTrigger(e);
                         }, true);
 
@@ -1351,6 +1379,7 @@ fun HtmlContentViewer(
                                 e.stopPropagation();
                             }
                             if (Date.now() - lastTouchTime < 500) return; // 过滤触摸后的重复 click
+                            if (isTouchMoved) return;
                             handlePickerTrigger(e);
                         }, true);
                         function extractImagesFromRange(range) {
