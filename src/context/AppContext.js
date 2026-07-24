@@ -230,53 +230,57 @@ export function AppProvider({ children }) {
   }, [fetchDocuments]);
 
   // 批量移动文档
-  // 批量移动文档
+  // 批量移动文档 (支持单 string id 或 string[] 数组)
   const batchMoveDocuments = useCallback(async (ids, location) => {
     try {
+      const idArray = Array.isArray(ids) ? ids : [ids];
+      if (idArray.length === 0) return true;
+
       // 乐观更新
       setDocuments(prev => prev.filter(doc => {
-        if (ids.includes(doc.id)) {
+        if (idArray.includes(doc.id)) {
           if (currentView === 'all') return true;
           if (currentView === location) return true;
           if (['new', 'later', 'archive', 'trash', 'feed'].includes(currentView)) return false;
         }
         return true;
-      }).map(doc => ids.includes(doc.id) ? { ...doc, location } : doc));
+      }).map(doc => idArray.includes(doc.id) ? { ...doc, location } : doc));
 
       const res = await fetch('/api/readwise/documents/batch-move', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ids, location })
+        body: JSON.stringify({ ids: idArray, location })
       });
       const data = await res.json();
       if (data.error) throw new Error(data.error);
       
-      // 可以选择是否再调一次 fetchDocuments，但乐观更新通常足够
       return true;
     } catch (err) {
       console.error('批量移动文档失败:', err);
-      // 如果失败可以重刷列表恢复原状
       fetchDocuments({ page: 1 });
       throw err;
     }
   }, [currentView, fetchDocuments]);
 
-  // 批量彻底物理删除文档
+  // 批量彻底物理删除文档 (支持单 string id 或 string[] 数组)
   const batchDeleteDocuments = useCallback(async (ids) => {
     try {
-      // 乐观更新
-      setDocuments(prev => prev.filter(doc => !ids.includes(doc.id)));
+      const idArray = Array.isArray(ids) ? ids : [ids];
+      if (idArray.length === 0) return true;
+
+      // 乐观更新：过滤掉要彻底删除的文档
+      setDocuments(prev => prev.filter(doc => !idArray.includes(doc.id)));
       
       const res = await fetch('/api/readwise/documents/batch-delete', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ids })
+        body: JSON.stringify({ ids: idArray })
       });
       const data = await res.json();
       if (data.error) throw new Error(data.error);
 
       // 如果当前选中的文档被物理删除了，重置 selectedDoc 为 null
-      setSelectedDoc(prev => prev && ids.includes(prev.id) ? null : prev);
+      setSelectedDoc(prev => (prev && idArray.includes(prev.id) ? null : prev));
       
       return true;
     } catch (err) {
