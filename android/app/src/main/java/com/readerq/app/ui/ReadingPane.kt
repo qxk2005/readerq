@@ -68,6 +68,8 @@ fun ReadingPane(
     var selectedTextForHighlight by remember { mutableStateOf<String?>(null) }
     var selectedImagesForHighlight by remember { mutableStateOf<List<HighlightImage>>(emptyList()) }
     var showHighlightCreator by remember { mutableStateOf(false) }
+    var isPickerMode by remember { mutableStateOf(false) }
+    var webViewRefState by remember { mutableStateOf<WebView?>(null) }
 
     var showAaSheet by remember { mutableStateOf(false) }
     var showNotebookSheet by remember { mutableStateOf(false) }
@@ -125,6 +127,25 @@ fun ReadingPane(
                     }
                 },
                 actions = {
+                    // 🎯 点选高亮 Target 开关按钮
+                    IconButton(
+                        onClick = {
+                            isPickerMode = !isPickerMode
+                            val modeStr = if (isPickerMode) "true" else "false"
+                            webViewRefState?.evaluateJavascript("if (window.setPickerMode) window.setPickerMode($modeStr);", null)
+                            Toast.makeText(context, if (isPickerMode) "点选高亮已开启：请依次点击【起点】和【终点】" else "已退出点选模式", Toast.LENGTH_SHORT).show()
+                        },
+                        modifier = Modifier
+                            .padding(end = 4.dp)
+                            .size(34.dp)
+                            .background(
+                                if (isPickerMode) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
+                                shape = RoundedCornerShape(8.dp)
+                            )
+                    ) {
+                        Text("🎯", fontSize = 16.sp)
+                    }
+
                     // Aa Typesetting Setting Icon
                     IconButton(onClick = {
                         if (onBack == null) {
@@ -338,6 +359,7 @@ fun ReadingPane(
                     contentWidth = contentWidth,
                     docId = currentDoc.id,
                     viewModel = viewModel,
+                    onWebViewCreated = { webViewRefState = it },
                     onTextSelected = { text, images ->
                         selectedTextForHighlight = text
                         selectedImagesForHighlight = images
@@ -351,6 +373,25 @@ fun ReadingPane(
                     initialProgress = currentDoc.reading_progress,
                     isVideo = currentDoc.category == "video"
                 )
+
+                // 🎯 右下角常驻点选高亮 FAB 悬浮球
+                FloatingActionButton(
+                    onClick = {
+                        isPickerMode = !isPickerMode
+                        val modeStr = if (isPickerMode) "true" else "false"
+                        webViewRefState?.evaluateJavascript("if (window.setPickerMode) window.setPickerMode($modeStr);", null)
+                        Toast.makeText(context, if (isPickerMode) "点选高亮已开启：请依次点击【起点】和【终点】" else "已退出点选模式", Toast.LENGTH_SHORT).show()
+                    },
+                    containerColor = if (isPickerMode) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+                    contentColor = if (isPickerMode) Color.White else MaterialTheme.colorScheme.primary,
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(end = 16.dp, bottom = 80.dp)
+                        .size(48.dp),
+                    shape = RoundedCornerShape(24.dp)
+                ) {
+                    Text("🎯", fontSize = 20.sp)
+                }
 
                 // 阅读进度条 - 覆盖在 WebView 顶部
                 if (currentDoc.html_content != null && currentDoc.html_content != "加载中...") {
@@ -918,7 +959,8 @@ fun HtmlContentViewer(
     onTextSelected: (String, List<HighlightImage>) -> Unit,
     onProgressChanged: (Float) -> Unit = {},
     initialProgress: Float = 0f,
-    isVideo: Boolean = false
+    isVideo: Boolean = false,
+    onWebViewCreated: (WebView) -> Unit = {}
 ) {
     // 防抖定时器用于延迟持久化进度
     val progressSaveJob = remember { mutableStateOf<Job?>(null) }
@@ -993,6 +1035,7 @@ fun HtmlContentViewer(
         factory = { context ->
             WebView(context).apply {
                 webViewRef.value = this
+                onWebViewCreated(this)
                 
                 webViewClient = object : android.webkit.WebViewClient() {
                     override fun onPageFinished(view: WebView?, url: String?) {
@@ -1134,19 +1177,140 @@ fun HtmlContentViewer(
                     /* TTS 朗读高亮样式 */
                     .tts-active-chunk {
                         background-color: ${if (theme == "dark") "rgba(99, 102, 241, 0.2)" else if (theme == "sepia") "rgba(139, 94, 60, 0.12)" else "rgba(99, 102, 241, 0.1)"} !important;
-                        border-left: 3px solid ${if (theme == "dark") "#818CF8" else if (theme == "sepia") "#8B5E3C" else "#6366F1"} !important;
-                        padding-left: 12px !important;
-                        border-radius: 4px;
-                        transition: background-color 0.3s ease, border-left 0.3s ease;
+                    /* 点选高亮模式 HUD 横幅与浮标 */
+                    #picker-hud-banner {
+                        position: fixed;
+                        top: 12px;
+                        left: 50%;
+                        transform: translateX(-50%);
+                        z-index: 9999;
+                        background: ${if (theme == "dark") "#1E293B" else "#FFFFFF"};
+                        color: ${if (theme == "dark") "#F8FAFC" else "#0F172A"};
+                        border: 1.5px solid #6366F1;
+                        border-radius: 20px;
+                        padding: 8px 16px;
+                        font-size: 13px;
+                        box-shadow: 0 8px 24px rgba(99, 102, 241, 0.3);
+                        display: none;
+                        align-items: center;
+                        gap: 12px;
+                    }
+                    #picker-start-marker {
+                        position: fixed;
+                        z-index: 9998;
+                        background-color: #6366F1;
+                        color: #ffffff;
+                        padding: 2px 8px;
+                        border-radius: 12px;
+                        font-size: 11px;
+                        font-weight: bold;
+                        box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4);
+                        display: none;
+                        pointer-events: none;
                     }
                 </style>
                 </head>
                 <body>
-                    <!-- 顶部留出进度条空间 -->
+                    <!-- 顶部留出进度条空间与 HUD 横幅 -->
+                    <div id="picker-hud-banner">
+                        <span id="picker-hud-text">🎯 <strong>点选模式已开启</strong>：请点击【起点】</span>
+                    </div>
+                    <div id="picker-start-marker">📍 起点</div>
                     <div style="height: 32px;"></div>
                     $cleanHtml
                     
                     <script>
+                        window.isPickerMode = false;
+                        window.pickerStart = null;
+
+                        window.setPickerMode = function(enabled) {
+                            window.isPickerMode = enabled;
+                            window.pickerStart = null;
+                            var banner = document.getElementById('picker-hud-banner');
+                            if (banner) banner.style.display = enabled ? 'flex' : 'none';
+                            var marker = document.getElementById('picker-start-marker');
+                            if (marker) marker.style.display = 'none';
+                        };
+
+                        function getCaretPointFromEvent(e) {
+                            var clientX = e.clientX;
+                            var clientY = e.clientY;
+                            if (e.changedTouches && e.changedTouches.length > 0) {
+                                clientX = e.changedTouches[0].clientX;
+                                clientY = e.changedTouches[0].clientY;
+                            } else if (e.touches && e.touches.length > 0) {
+                                clientX = e.touches[0].clientX;
+                                clientY = e.touches[0].clientY;
+                            }
+                            if (clientX === undefined || clientY === undefined) return null;
+                            var range = null;
+                            if (document.caretRangeFromPoint) {
+                                range = document.caretRangeFromPoint(clientX, clientY);
+                            } else if (document.caretPositionFromPoint) {
+                                var pos = document.caretPositionFromPoint(clientX, clientY);
+                                if (pos) {
+                                    range = document.createRange();
+                                    range.setStart(pos.offsetNode, pos.offset);
+                                    range.collapse(true);
+                                }
+                            }
+                            return range;
+                        }
+
+                        document.addEventListener('touchend', function(e) {
+                            if (!window.isPickerMode) return;
+                            if (e.target.closest('#picker-hud-banner')) return;
+
+                            var caretRange = getCaretPointFromEvent(e);
+                            if (!caretRange) return;
+
+                            if (!window.pickerStart) {
+                                var text = (caretRange.startContainer.textContent || '').substring(caretRange.startOffset, caretRange.startOffset + 12) || '起点';
+                                window.pickerStart = {
+                                    node: caretRange.startContainer,
+                                    offset: caretRange.startOffset
+                                };
+                                var hudText = document.getElementById('picker-hud-text');
+                                if (hudText) hudText.innerHTML = '📍 <strong>起点已锁定</strong> (“' + text.trim() + '”)：请点击【终点】';
+                                var marker = document.getElementById('picker-start-marker');
+                                if (marker) {
+                                    var rect = caretRange.getBoundingClientRect();
+                                    marker.style.top = Math.max(10, rect.top - 28) + 'px';
+                                    marker.style.left = Math.max(10, rect.left - 10) + 'px';
+                                    marker.style.display = 'block';
+                                }
+                            } else {
+                                var startNode = window.pickerStart.node;
+                                var startOffset = window.pickerStart.offset;
+                                var endNode = caretRange.startContainer;
+                                var endOffset = caretRange.startOffset;
+
+                                var finalRange = document.createRange();
+                                var pos = startNode.compareDocumentPosition(endNode);
+                                var isStartBefore = (startNode === endNode && startOffset <= endOffset) || (pos & Node.DOCUMENT_POSITION_FOLLOWING);
+
+                                if (isStartBefore) {
+                                    finalRange.setStart(startNode, startOffset);
+                                    finalRange.setEnd(endNode, endOffset);
+                                } else {
+                                    finalRange.setStart(endNode, endOffset);
+                                    finalRange.setEnd(startNode, startOffset);
+                                }
+
+                                var selText = extractSelectionText(finalRange);
+                                var selImages = extractImagesFromRange(finalRange);
+
+                                if (selText.trim().length > 0 || selImages.length > 0) {
+                                    AndroidBridge.onTextSelected(selText, JSON.stringify(selImages));
+                                }
+
+                                window.pickerStart = null;
+                                var hudText = document.getElementById('picker-hud-text');
+                                if (hudText) hudText.innerHTML = '🎯 <strong>点选模式已开启</strong>：请点击选区【起点】';
+                                var marker = document.getElementById('picker-start-marker');
+                                if (marker) marker.style.display = 'none';
+                            }
+                        });
                         function extractImagesFromRange(range) {
                           const fragment = range.cloneContents();
                           const images = [];
