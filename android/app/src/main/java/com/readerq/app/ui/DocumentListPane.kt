@@ -67,8 +67,11 @@ fun DocumentListPane(
                 Text(
                     text = if (isFeedTab) "订阅" else "我的库",
                     fontWeight = FontWeight.Bold,
-                    fontSize = 18.sp,
-                    color = MaterialTheme.colorScheme.onBackground
+                    fontSize = 17.sp,
+                    color = MaterialTheme.colorScheme.onBackground,
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = TextOverflow.Clip
                 )
             },
             actions = {

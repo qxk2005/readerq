@@ -198,42 +198,84 @@ fun AdaptiveMainScreen(
                         }
                     }
                 } else {
-                    NavigationBar(
-                        containerColor = MaterialTheme.colorScheme.surface,
-                        tonalElevation = 0.dp
-                    ) {
-                        val tabs = listOf(
-                            Triple("library", "库", R.drawable.ic_tab_library),
-                            Triple("feed", "订阅", R.drawable.ic_tab_feed),
-                            Triple("notebook", "浏览", R.drawable.ic_tab_notebook),
-                            Triple("settings", "设置", R.drawable.ic_tab_settings)
-                        )
-                        tabs.forEach { (tabId, label, icon) ->
+                    BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+                        val isNarrow = maxWidth < 380.dp
+                        NavigationBar(
+                            containerColor = MaterialTheme.colorScheme.surface,
+                            tonalElevation = 0.dp
+                        ) {
+                            val tabs = listOf(
+                                Triple("library", "库", R.drawable.ic_tab_library),
+                                Triple("feed", "订阅", R.drawable.ic_tab_feed),
+                                Triple("notebook", "浏览", R.drawable.ic_tab_notebook),
+                                Triple("settings", "设置", R.drawable.ic_tab_settings)
+                            )
+                            tabs.forEach { (tabId, label, icon) ->
+                                NavigationBarItem(
+                                    selected = currentTab == tabId,
+                                    onClick = {
+                                        if ((tabId == "library" || tabId == "feed") && selectedDoc != null && detailPaneType != null && !isDetailPaneCollapsed) {
+                                            viewModel.showSidebarAndCloseDetail()
+                                        }
+                                        viewModel.changeTab(tabId)
+                                    },
+                                    icon = {
+                                        Column(
+                                            horizontalAlignment = Alignment.CenterHorizontally,
+                                            verticalArrangement = Arrangement.Center,
+                                            modifier = Modifier.padding(horizontal = if (isNarrow) 2.dp else 6.dp, vertical = 2.dp)
+                                        ) {
+                                            Icon(
+                                                painter = painterResource(id = icon),
+                                                contentDescription = label,
+                                                modifier = Modifier.size(if (isNarrow) 18.dp else 20.dp)
+                                            )
+                                            if (!isNarrow) {
+                                                Spacer(modifier = Modifier.height(2.dp))
+                                                Text(
+                                                    text = label, 
+                                                    fontSize = 10.sp, 
+                                                    fontWeight = if (currentTab == tabId) FontWeight.Bold else FontWeight.Normal,
+                                                    maxLines = 1,
+                                                    softWrap = false,
+                                                    overflow = TextOverflow.Clip
+                                                )
+                                            }
+                                        }
+                                    },
+                                    label = null,
+                                    colors = NavigationBarItemDefaults.colors(
+                                        selectedIconColor = tabSelectedColor,
+                                        unselectedIconColor = tabUnselectedColor,
+                                        indicatorColor = tabIndicatorColor
+                                    )
+                                )
+                            }
+                            
                             NavigationBarItem(
-                                selected = currentTab == tabId,
-                                onClick = {
-                                    if ((tabId == "library" || tabId == "feed") && selectedDoc != null && detailPaneType != null && !isDetailPaneCollapsed) {
-                                        viewModel.showSidebarAndCloseDetail()
-                                    }
-                                    viewModel.changeTab(tabId)
-                                },
+                                selected = false,
+                                onClick = { viewModel.setNavBarCollapsed(true) },
                                 icon = {
                                     Column(
                                         horizontalAlignment = Alignment.CenterHorizontally,
                                         verticalArrangement = Arrangement.Center,
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                        modifier = Modifier.padding(horizontal = if (isNarrow) 2.dp else 6.dp, vertical = 2.dp)
                                     ) {
                                         Icon(
-                                            painter = painterResource(id = icon),
-                                            contentDescription = label,
-                                            modifier = Modifier.size(20.dp)
+                                            painter = painterResource(id = R.drawable.ic_tab_collapse),
+                                            contentDescription = "收窄",
+                                            modifier = Modifier.size(if (isNarrow) 18.dp else 20.dp)
                                         )
-                                        Spacer(modifier = Modifier.height(2.dp))
-                                        Text(
-                                            text = label, 
-                                            fontSize = 10.sp, 
-                                            fontWeight = if (currentTab == tabId) FontWeight.Bold else FontWeight.Normal
-                                        )
+                                        if (!isNarrow) {
+                                            Spacer(modifier = Modifier.height(2.dp))
+                                            Text(
+                                                text = "收窄", 
+                                                fontSize = 10.sp,
+                                                maxLines = 1,
+                                                softWrap = false,
+                                                overflow = TextOverflow.Clip
+                                            )
+                                        }
                                     }
                                 },
                                 label = null,
@@ -244,36 +286,6 @@ fun AdaptiveMainScreen(
                                 )
                             )
                         }
-                        
-                        NavigationBarItem(
-                            selected = false,
-                            onClick = { viewModel.setNavBarCollapsed(true) },
-                            icon = {
-                                Column(
-                                    horizontalAlignment = Alignment.CenterHorizontally,
-                                    verticalArrangement = Arrangement.Center,
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
-                                ) {
-                                    Icon(
-                                        painter = painterResource(id = R.drawable.ic_tab_collapse),
-                                        contentDescription = "收窄",
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                    Spacer(modifier = Modifier.height(2.dp))
-                                    Text(
-                                        text = "收窄", 
-                                        fontSize = 10.sp, 
-                                        fontWeight = FontWeight.Normal
-                                    )
-                                }
-                            },
-                            label = null,
-                            colors = NavigationBarItemDefaults.colors(
-                                selectedIconColor = tabSelectedColor,
-                                unselectedIconColor = tabUnselectedColor,
-                                indicatorColor = tabIndicatorColor
-                            )
-                        )
                     }
                 }
             }
