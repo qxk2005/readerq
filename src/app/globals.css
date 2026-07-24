@@ -2077,21 +2077,74 @@ textarea:focus {
   }
 }
 
-/* 🎯 文章标签 Popover 防滑出隐形无缝热区桥梁 */
-.doc-card-tags-popover-up::before {
-  content: '';
-  position: absolute;
-  bottom: -8px;
-  left: 0;
-  right: 0;
-  height: 8px;
+/* 🎯 文章标签 Popover 防滑出隐形无缝热区桥梁与纯 CSS 稳固驱动 */
+.doc-card-tags-container {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  position: relative;
 }
 
-.doc-card-tags-popover-down::before {
+.doc-card-tags-popover {
+  position: absolute;
+  right: 0;
+  background-color: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  box-shadow: var(--shadow-xl);
+  padding: 10px 12px;
+  z-index: 9999;
+  width: max-content;
+  max-width: 240px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transform: scale(0.95);
+  transition: opacity 0.18s ease, transform 0.18s ease, visibility 0.18s ease;
+}
+
+.doc-card-tags-popover.popover-down {
+  top: 100%;
+  margin-top: 2px;
+  transform-origin: top right;
+}
+
+.doc-card-tags-popover.popover-up {
+  bottom: 100%;
+  margin-bottom: 2px;
+  transform-origin: bottom right;
+}
+
+.doc-card-tags-container:hover .doc-card-tags-popover,
+.doc-card-tags-popover:hover {
+  opacity: 1 !important;
+  visibility: visible !important;
+  pointer-events: auto !important;
+  transform: scale(1) !important;
+}
+
+/* 隐形无缝热区桥梁：连接触发按钮与 Popover 浮层 */
+.doc-card-tags-popover.popover-down::before {
   content: '';
   position: absolute;
-  top: -8px;
-  left: 0;
-  right: 0;
-  height: 8px;
+  top: -14px;
+  left: -12px;
+  right: -12px;
+  height: 16px;
+}
+
+.doc-card-tags-popover.popover-up::before {
+  content: '';
+  position: absolute;
+  bottom: -14px;
+  left: -12px;
+  right: -12px;
+  height: 16px;
 }

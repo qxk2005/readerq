@@ -10,32 +10,6 @@ import { Search, Inbox, Clock, Archive, RefreshCw, FileText, Tag, Trash2, Rotate
 function DocumentCard({ doc, index, isActive, onClick, isSelectionMode, isSelected, onToggleSelect, onMoveDoc, onDeleteDoc, currentView }) {
   const { docListElements } = useTheme();
   const { switchTag } = useApp();
-  const [showTagsPopover, setShowTagsPopover] = useState(false);
-  const popoverTimerRef = useRef(null);
-
-  // 鼠标移入：立刻显示并清除隐藏定时器
-  const handleMouseEnterTags = () => {
-    if (popoverTimerRef.current) {
-      clearTimeout(popoverTimerRef.current);
-      popoverTimerRef.current = null;
-    }
-    setShowTagsPopover(true);
-  };
-
-  // 鼠标移出：延迟 220ms 隐藏，给鼠标滑入 Popover 提供充裕的平滑缓冲
-  const handleMouseLeaveTags = () => {
-    if (popoverTimerRef.current) clearTimeout(popoverTimerRef.current);
-    popoverTimerRef.current = setTimeout(() => {
-      setShowTagsPopover(false);
-    }, 220);
-  };
-
-  // 组件卸载时清理定时器
-  useEffect(() => {
-    return () => {
-      if (popoverTimerRef.current) clearTimeout(popoverTimerRef.current);
-    };
-  }, []);
 
   // 前 2 篇文档距离顶部较近，Popover 智能向下弹出；其余篇目向上弹出
   const isTopItem = index !== undefined && index <= 1;
@@ -130,18 +104,10 @@ function DocumentCard({ doc, index, isActive, onClick, isSelectionMode, isSelect
           </div>
         )}
 
-        {/* 文章标签列表展示 (不增加卡片高度，单行截断 + Hover Popover 悬浮查看全部) */}
+        {/* 文章标签列表展示 (纯 CSS :hover 驱动 + 拓展隐形桥梁，零闪退 100% 稳固) */}
         {docListElements?.tags !== false && tagList.length > 0 && (
           <div 
-            style={{ 
-              display: 'inline-flex', 
-              alignItems: 'center', 
-              gap: '4px', 
-              marginLeft: 'auto',
-              position: 'relative'
-            }}
-            onMouseEnter={handleMouseEnterTags}
-            onMouseLeave={handleMouseLeaveTags}
+            className="doc-card-tags-container"
             onClick={(e) => e.stopPropagation()}
           >
             {visibleTags.map(tag => (
@@ -189,58 +155,36 @@ function DocumentCard({ doc, index, isActive, onClick, isSelectionMode, isSelect
               </span>
             )}
 
-            {/* Hover 悬浮全部标签 Popover 浮层 (智能防遮挡方向 + 隐形热区桥梁) */}
-            {showTagsPopover && (
-              <div 
-                className={isTopItem ? 'doc-card-tags-popover-down' : 'doc-card-tags-popover-up'}
-                onMouseEnter={handleMouseEnterTags}
-                onMouseLeave={handleMouseLeaveTags}
-                style={{
-                  position: 'absolute',
-                  ...(isTopItem
-                    ? { top: '100%', marginTop: '4px' }
-                    : { bottom: '100%', marginBottom: '4px' }
-                  ),
-                  right: 0,
-                  backgroundColor: 'var(--color-bg-card)',
-                  border: '1px solid var(--color-border)',
-                  borderRadius: '10px',
-                  boxShadow: 'var(--shadow-lg)',
-                  padding: '8px 10px',
-                  zIndex: 9999,
-                  maxWidth: '220px',
-                  display: 'flex',
-                  flexWrap: 'wrap',
-                  gap: '6px',
-                  backdropFilter: 'blur(10px)',
-                  animation: 'fadeIn 0.15s ease'
-                }}
-              >
-                <div style={{ width: '100%', fontSize: '10px', fontWeight: '700', color: 'var(--color-text-tertiary)', marginBottom: '2px' }}>
-                  🏷️ 本文所有标签 ({tagList.length})
-                </div>
-                {tagList.map(tag => (
-                  <span
-                    key={tag}
-                    onClick={(e) => { e.stopPropagation(); switchTag(tag); }}
-                    style={{
-                      fontSize: '11px',
-                      padding: '3px 8px',
-                      borderRadius: '6px',
-                      backgroundColor: 'rgba(0, 122, 255, 0.1)',
-                      color: 'var(--color-accent)',
-                      fontWeight: '500',
-                      cursor: 'pointer',
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '3px'
-                    }}
-                  >
-                    <Tag size={10} /> #{tag}
-                  </span>
-                ))}
+            {/* 全量标签 Popover 浮层 (CSS :hover 保持恒定) */}
+            <div 
+              className={`doc-card-tags-popover ${isTopItem ? 'popover-down' : 'popover-up'}`}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div style={{ width: '100%', fontSize: '10px', fontWeight: '700', color: 'var(--color-text-tertiary)', marginBottom: '2px' }}>
+                🏷️ 本文所有标签 ({tagList.length})
               </div>
-            )}
+              {tagList.map(tag => (
+                <span
+                  key={tag}
+                  onClick={(e) => { e.stopPropagation(); switchTag(tag); }}
+                  style={{
+                    fontSize: '11px',
+                    padding: '3px 8px',
+                    borderRadius: '6px',
+                    backgroundColor: 'rgba(0, 122, 255, 0.1)',
+                    color: 'var(--color-accent)',
+                    fontWeight: '500',
+                    cursor: 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '3px',
+                    transition: 'all 0.15s ease'
+                  }}
+                >
+                  <Tag size={10} /> #{tag}
+                </span>
+              ))}
+            </div>
           </div>
         )}
       </div>
