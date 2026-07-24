@@ -794,12 +794,13 @@ export default function ReadingPane() {
 
   useEffect(() => {
     const handleSelectionChange = () => {
+      if (isPickerMode) return;
       const sel = window.getSelection();
       if (sel && sel.isCollapsed) setSelection(null);
     };
     document.addEventListener('selectionchange', handleSelectionChange);
     return () => document.removeEventListener('selectionchange', handleSelectionChange);
-  }, []);
+  }, [isPickerMode]);
 
   const handleCreateHighlight = async (color) => {
     if (!selection || !selectedDoc) return;

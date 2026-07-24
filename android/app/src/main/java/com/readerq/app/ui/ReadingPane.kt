@@ -127,23 +127,19 @@ fun ReadingPane(
                     }
                 },
                 actions = {
-                    // 🎯 点选高亮 Target 开关按钮
-                    IconButton(
-                        onClick = {
-                            isPickerMode = !isPickerMode
-                            val modeStr = if (isPickerMode) "true" else "false"
-                            webViewRefState?.evaluateJavascript("if (window.setPickerMode) window.setPickerMode($modeStr);", null)
-                            Toast.makeText(context, if (isPickerMode) "点选高亮已开启：请依次点击【起点】和【终点】" else "已退出点选模式", Toast.LENGTH_SHORT).show()
-                        },
-                        modifier = Modifier
-                            .padding(end = 4.dp)
-                            .size(34.dp)
-                            .background(
-                                if (isPickerMode) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
-                                shape = RoundedCornerShape(8.dp)
-                            )
-                    ) {
-                        Text("🎯", fontSize = 16.sp)
+                    // 🎯 点选高亮 Target 开关按钮 (单色 Vector Icon，风格与 Aa/Notebook 100% 保持一致)
+                    IconButton(onClick = {
+                        isPickerMode = !isPickerMode
+                        val modeStr = if (isPickerMode) "true" else "false"
+                        webViewRefState?.evaluateJavascript("if (window.setPickerMode) window.setPickerMode($modeStr);", null)
+                        Toast.makeText(context, if (isPickerMode) "点选高亮已开启：请依次点击【起点】和【终点】" else "已退出点选模式", Toast.LENGTH_SHORT).show()
+                    }) {
+                        Icon(
+                            painter = painterResource(id = R.drawable.ic_target),
+                            contentDescription = "点选高亮",
+                            tint = if (isPickerMode) MaterialTheme.colorScheme.primary else textColor,
+                            modifier = Modifier.size(20.dp)
+                        )
                     }
 
                     // Aa Typesetting Setting Icon
@@ -1051,6 +1047,7 @@ fun HtmlContentViewer(
                         view?.loadUrl(
                             "javascript:(function() { " +
                                     "document.addEventListener('selectionchange', () => { " +
+                                    "  if (window.isPickerMode) return; " +
                                     "  var sel = window.getSelection(); " +
                                     "  if (!sel.isCollapsed && sel.rangeCount > 0) { " +
                                     "    var range = sel.getRangeAt(0); " +
