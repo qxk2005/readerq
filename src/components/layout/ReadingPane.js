@@ -1230,22 +1230,15 @@ export default function ReadingPane() {
               setIsPickerMode(!isPickerMode);
               setPickerStart(null);
             }}
-            data-tooltip={isPickerMode ? "退出点选高亮模式" : "开启点选高亮模式 (点击起点 ➔ 点击终点)"}
+            data-tooltip={isPickerMode ? "退出点选高亮模式" : "点选高亮模式 (点击起点 ➔ 点击终点)"}
             style={{
               color: isPickerMode ? '#fff' : 'inherit',
               backgroundColor: isPickerMode ? 'var(--color-accent)' : 'transparent',
-              borderRadius: '8px',
-              padding: '4px 10px',
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '4px',
-              fontSize: '12px',
-              fontWeight: '600',
+              borderRadius: 'var(--radius-md)',
               transition: 'all 0.15s ease'
             }}
           >
-            <Target size={15} />
-            <span style={{ fontSize: '12px' }}>{isPickerMode ? '点选开启中' : '点选高亮'}</span>
+            <Target size={16} />
           </button>
 
           <div style={{ width: '1px', height: '16px', backgroundColor: 'var(--color-border)', margin: '0 6px' }} />
