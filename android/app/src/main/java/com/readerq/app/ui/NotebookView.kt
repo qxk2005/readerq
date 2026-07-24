@@ -379,15 +379,11 @@ fun NotebookHighlightCard(
             )
     ) {
         Column(modifier = Modifier.padding(12.dp)) {
-            // Parse markdown image syntax: ![description](url)
+            // Parse markdown image syntax: ![description](url) for all embedded images
             val imageRegex = Regex("""!\[[^]]*]\((https?://[^)]+)\)""")
-            val matchResult = imageRegex.find(hl.text)
-            val displayImageUrl = matchResult?.groups?.get(1)?.value
-            val cleanText = if (displayImageUrl != null) {
-                hl.text.replace(imageRegex, "").trim()
-            } else {
-                hl.text
-            }
+            val matches = imageRegex.findAll(hl.text).toList()
+            val displayImageUrls = matches.mapNotNull { it.groups[1]?.value }
+            val cleanText = hl.text.replace(imageRegex, "").trim()
 
             Column(
                 modifier = Modifier
@@ -397,17 +393,20 @@ fun NotebookHighlightCard(
                         viewModel.triggerScrollToHighlight(hl.id)
                     }
             ) {
-                if (displayImageUrl != null) {
-                    AsyncImage(
-                        model = displayImageUrl,
-                        contentDescription = "Highlight Image",
-                        contentScale = ContentScale.Fit,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(max = 200.dp)
-                            .clip(RoundedCornerShape(8.dp))
-                            .border(1.dp, tagBg, RoundedCornerShape(8.dp))
-                    )
+                if (displayImageUrls.isNotEmpty()) {
+                    displayImageUrls.forEach { imageUrl ->
+                        AsyncImage(
+                            model = imageUrl,
+                            contentDescription = "Highlight Image",
+                            contentScale = ContentScale.Fit,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(max = 220.dp)
+                                .padding(vertical = 4.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .border(1.dp, tagBg, RoundedCornerShape(8.dp))
+                        )
+                    }
                     Spacer(modifier = Modifier.height(8.dp))
                 }
 

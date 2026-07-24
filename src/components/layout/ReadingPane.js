@@ -483,11 +483,15 @@ export default function ReadingPane() {
           parts.push('\n');
           return;
         }
-        // 处理 <img> 标签：提取为占位文本
+        // 处理 <img> 标签：直接提取为标准原位 Markdown 图片语法 ![alt](src)
         if (tagName === 'IMG') {
           const alt = node.getAttribute('alt') || '图片';
           const src = node.getAttribute('src') || '';
-          parts.push(`[图片: ${alt}]`);
+          if (src && (src.startsWith('http://') || src.startsWith('https://') || src.startsWith('data:'))) {
+            parts.push(`\n\n![${alt}](${src})\n\n`);
+          } else {
+            parts.push(`[图片: ${alt}]`);
+          }
           return;
         }
         const isBlock = BLOCK_ELEMENTS.has(tagName);

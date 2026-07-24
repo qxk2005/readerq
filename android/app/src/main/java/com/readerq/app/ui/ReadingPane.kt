@@ -1388,7 +1388,7 @@ fun HtmlContentViewer(
                           const imgElements = fragment.querySelectorAll('img');
                           imgElements.forEach(img => {
                             const src = img.getAttribute('src');
-                            if (src && (src.startsWith('http://') || src.startsWith('https://'))) {
+                            if (src && (src.startsWith('http://') || src.startsWith('https://') || src.startsWith('data:'))) {
                               images.push({
                                 src: src,
                                 alt: img.getAttribute('alt') || '图片'
@@ -1419,7 +1419,12 @@ fun HtmlContentViewer(
                               }
                               if (tagName === 'IMG') {
                                 const alt = node.getAttribute('alt') || '图片';
-                                parts.push('[图片: ' + alt + ']');
+                                const src = node.getAttribute('src') || '';
+                                if (src && (src.startsWith('http://') || src.startsWith('https://') || src.startsWith('data:'))) {
+                                  parts.push('\n\n![' + alt + '](' + src + ')\n\n');
+                                } else {
+                                  parts.push('[图片: ' + alt + ']');
+                                }
                                 return;
                               }
                               const isBlock = BLOCK_ELEMENTS.has(tagName);
