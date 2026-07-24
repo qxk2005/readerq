@@ -527,11 +527,13 @@ textarea:focus {
   box-shadow: var(--shadow-sm);
 }
 
-.doc-card:hover {
+.doc-card:hover,
+.doc-card:focus-within {
   background: var(--color-bg-hover);
   border-color: var(--color-border);
   transform: translateY(-1px);
   box-shadow: var(--shadow-md);
+  z-index: 50 !important;
 }
 
 .doc-card:active {

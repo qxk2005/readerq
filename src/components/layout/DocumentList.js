@@ -179,7 +179,7 @@ function DocumentCard({ doc, index, isActive, onClick, isSelectionMode, isSelect
                   borderRadius: '10px',
                   boxShadow: 'var(--shadow-lg)',
                   padding: '8px 10px',
-                  zIndex: 99,
+                  zIndex: 9999,
                   maxWidth: '220px',
                   display: 'flex',
                   flexWrap: 'wrap',
