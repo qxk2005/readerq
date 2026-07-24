@@ -484,7 +484,7 @@ export default function DailyReviewView({ onBackToArticles }) {
                   </div>
 
                   <div style={{ background: 'rgba(255,255,255,0.08)', padding: '16px 28px', borderRadius: '16px', backdropFilter: 'blur(10px)' }}>
-                    <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.5)', marginBottom: '4px' }}>累计已复习高亮</div>
+                    <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.5)', marginBottom: '4px' }}>全库高亮总数</div>
                     <div style={{ fontSize: '28px', fontWeight: '800', color: '#007aff', display: 'flex', alignItems: 'center', gap: '6px' }}>
                       <Award size={24} /> {Number(stats?.totalReviewed || highlights.length).toLocaleString()} 条
                     </div>
@@ -1105,9 +1105,9 @@ export default function DailyReviewView({ onBackToArticles }) {
                   <Award size={24} />
                 </div>
                 <div>
-                  <div style={{ fontSize: '12px', color: 'var(--color-text-tertiary)' }}>累计复习高亮</div>
+                  <div style={{ fontSize: '12px', color: 'var(--color-text-tertiary)' }}>全库高亮总数</div>
                   <div style={{ fontSize: '24px', fontWeight: '800', color: 'var(--color-text-primary)' }}>
-                    {stats?.totalReviewed || 0} <span style={{ fontSize: '13px', fontWeight: '400' }}>条</span>
+                    {Number(stats?.totalReviewed || 0).toLocaleString()} <span style={{ fontSize: '13px', fontWeight: '400' }}>条</span>
                   </div>
                 </div>
               </div>

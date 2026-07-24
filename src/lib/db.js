@@ -904,15 +904,16 @@ export function getReviewStatsData() {
     ORDER BY review_date ASC
   `).all(thirtyDaysAgo);
 
-  // 3. 获取全库的高亮总数作为基础统计
+  // 3. 获取全库的高亮总数 (Total Highlights Count)
   const dbTotalHlRow = db.prepare('SELECT COUNT(*) as total FROM highlights').get();
   const dbTotalHls = dbTotalHlRow?.total || 0;
 
+  // 获取在 ReaderQ 中复习打卡的去重条数
   const totalReviewedRow = db.prepare('SELECT COUNT(DISTINCT highlight_id) as total FROM daily_reviews').get();
   const totalReviewedInApp = totalReviewedRow?.total || 0;
   
-  // 综合得到呈现给用户的总高亮数：如果有设置官方基数，累加应用内已复习的增量
-  const displayTotalReviewed = baseTotalHl > 0 ? (baseTotalHl + totalReviewedInApp) : (dbTotalHls + totalReviewedInApp);
+  // 综合得到全库高亮总条数：若手动设置了官方高亮基数，以官方基数为基准（可根据本地与 Readwise 动态取最大存量），无官方基数时取全库实际高亮数
+  const displayTotalReviewed = baseTotalHl > 0 ? Math.max(baseTotalHl, dbTotalHls) : dbTotalHls;
 
   // 4. 获取今天已完成的计数
   const todayStat = db.prepare('SELECT * FROM review_stats WHERE review_date = ?').get(todayDate);
