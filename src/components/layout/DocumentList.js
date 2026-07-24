@@ -7,10 +7,13 @@ import { LOCATION_LABELS, formatDate, truncateText, extractDomain } from '@/lib/
 import { CATEGORY_ICONS_SVG, getCategoryIcon } from '@/components/ui/icons';
 import { Search, Inbox, Clock, Archive, RefreshCw, FileText, Tag, Trash2, RotateCcw } from 'lucide-react';
 
-function DocumentCard({ doc, isActive, onClick, isSelectionMode, isSelected, onToggleSelect, onMoveDoc, onDeleteDoc, currentView }) {
+function DocumentCard({ doc, index, isActive, onClick, isSelectionMode, isSelected, onToggleSelect, onMoveDoc, onDeleteDoc, currentView }) {
   const { docListElements } = useTheme();
   const { switchTag } = useApp();
   const [showTagsPopover, setShowTagsPopover] = useState(false);
+
+  // 前 2 篇文档距离顶部较近，Popover 智能向下弹出；其余篇目向上弹出
+  const isTopItem = index !== undefined && index <= 1;
 
   // 解析文章的标签列表
   const tagList = Array.isArray(doc.tags)
@@ -161,18 +164,20 @@ function DocumentCard({ doc, isActive, onClick, isSelectionMode, isSelected, onT
               </span>
             )}
 
-            {/* Hover 悬浮全部标签 Popover 浮层 */}
+            {/* Hover 悬浮全部标签 Popover 浮层 (智能防遮挡方向) */}
             {showTagsPopover && (
               <div 
                 style={{
                   position: 'absolute',
-                  bottom: '100%',
+                  ...(isTopItem
+                    ? { top: '100%', marginTop: '6px' }
+                    : { bottom: '100%', marginBottom: '6px' }
+                  ),
                   right: 0,
-                  marginBottom: '6px',
                   backgroundColor: 'var(--color-bg-card)',
                   border: '1px solid var(--color-border)',
                   borderRadius: '10px',
-                  boxShadow: 'var(--shadow-md)',
+                  boxShadow: 'var(--shadow-lg)',
                   padding: '8px 10px',
                   zIndex: 99,
                   maxWidth: '220px',
@@ -387,10 +392,11 @@ export default function DocumentList({ width }) {
           </div>
         ) : sortedDocs.length > 0 ? (
           <>
-            {sortedDocs.map(doc => (
+            {sortedDocs.map((doc, idx) => (
               <DocumentCard
                 key={doc.id}
                 doc={doc}
+                index={idx}
                 isActive={selectedDoc?.id === doc.id}
                 onClick={() => setSelectedDoc(doc)}
                 isSelectionMode={isSelectionMode}
