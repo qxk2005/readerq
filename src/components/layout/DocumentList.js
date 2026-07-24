@@ -11,6 +11,31 @@ function DocumentCard({ doc, index, isActive, onClick, isSelectionMode, isSelect
   const { docListElements } = useTheme();
   const { switchTag } = useApp();
   const [showTagsPopover, setShowTagsPopover] = useState(false);
+  const popoverTimerRef = useRef(null);
+
+  // 鼠标移入：立刻显示并清除隐藏定时器
+  const handleMouseEnterTags = () => {
+    if (popoverTimerRef.current) {
+      clearTimeout(popoverTimerRef.current);
+      popoverTimerRef.current = null;
+    }
+    setShowTagsPopover(true);
+  };
+
+  // 鼠标移出：延迟 220ms 隐藏，给鼠标滑入 Popover 提供充裕的平滑缓冲
+  const handleMouseLeaveTags = () => {
+    if (popoverTimerRef.current) clearTimeout(popoverTimerRef.current);
+    popoverTimerRef.current = setTimeout(() => {
+      setShowTagsPopover(false);
+    }, 220);
+  };
+
+  // 组件卸载时清理定时器
+  useEffect(() => {
+    return () => {
+      if (popoverTimerRef.current) clearTimeout(popoverTimerRef.current);
+    };
+  }, []);
 
   // 前 2 篇文档距离顶部较近，Popover 智能向下弹出；其余篇目向上弹出
   const isTopItem = index !== undefined && index <= 1;
@@ -115,8 +140,8 @@ function DocumentCard({ doc, index, isActive, onClick, isSelectionMode, isSelect
               marginLeft: 'auto',
               position: 'relative'
             }}
-            onMouseEnter={() => setShowTagsPopover(true)}
-            onMouseLeave={() => setShowTagsPopover(false)}
+            onMouseEnter={handleMouseEnterTags}
+            onMouseLeave={handleMouseLeaveTags}
             onClick={(e) => e.stopPropagation()}
           >
             {visibleTags.map(tag => (
@@ -164,14 +189,17 @@ function DocumentCard({ doc, index, isActive, onClick, isSelectionMode, isSelect
               </span>
             )}
 
-            {/* Hover 悬浮全部标签 Popover 浮层 (智能防遮挡方向) */}
+            {/* Hover 悬浮全部标签 Popover 浮层 (智能防遮挡方向 + 隐形热区桥梁) */}
             {showTagsPopover && (
               <div 
+                className={isTopItem ? 'doc-card-tags-popover-down' : 'doc-card-tags-popover-up'}
+                onMouseEnter={handleMouseEnterTags}
+                onMouseLeave={handleMouseLeaveTags}
                 style={{
                   position: 'absolute',
                   ...(isTopItem
-                    ? { top: '100%', marginTop: '6px' }
-                    : { bottom: '100%', marginBottom: '6px' }
+                    ? { top: '100%', marginTop: '4px' }
+                    : { bottom: '100%', marginBottom: '4px' }
                   ),
                   right: 0,
                   backgroundColor: 'var(--color-bg-card)',

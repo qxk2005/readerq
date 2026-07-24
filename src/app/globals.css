@@ -2076,3 +2076,22 @@ textarea:focus {
     box-shadow: 0 4px 12px rgba(0, 122, 255, 0.4);
   }
 }
+
+/* 🎯 文章标签 Popover 防滑出隐形无缝热区桥梁 */
+.doc-card-tags-popover-up::before {
+  content: '';
+  position: absolute;
+  bottom: -8px;
+  left: 0;
+  right: 0;
+  height: 8px;
+}
+
+.doc-card-tags-popover-down::before {
+  content: '';
+  position: absolute;
+  top: -8px;
+  left: 0;
+  right: 0;
+  height: 8px;
+}
