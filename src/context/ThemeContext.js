@@ -21,6 +21,7 @@ export function ThemeProvider({ children }) {
     createdAt: true,
     readingProgress: true,
     summary: true,
+    tags: true,
   });
   const [videoSettings, setVideoSettings] = useState({
     subtitleLang: 'auto',

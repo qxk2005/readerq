@@ -9,6 +9,13 @@ import { Search, Inbox, Clock, Archive, RefreshCw, FileText, Tag, Trash2, Rotate
 
 function DocumentCard({ doc, isActive, onClick, isSelectionMode, isSelected, onToggleSelect, onMoveDoc, onDeleteDoc, currentView }) {
   const { docListElements } = useTheme();
+  const { switchTag } = useApp();
+  const [showTagsPopover, setShowTagsPopover] = useState(false);
+
+  // 解析文章的标签列表
+  const tagList = Array.isArray(doc.tags)
+    ? doc.tags.map(t => typeof t === 'string' ? t : t.name || '').filter(Boolean)
+    : (doc.tags && typeof doc.tags === 'object' ? Object.keys(doc.tags).filter(Boolean) : []);
 
   // 聚合 header meta 信息并使用中点安全连接
   const headerMetaItems = [];
@@ -39,6 +46,9 @@ function DocumentCard({ doc, isActive, onClick, isSelectionMode, isSelected, onT
       onClick();
     }
   };
+
+  const visibleTags = tagList.slice(0, 2);
+  const extraTagsCount = tagList.length - visibleTags.length;
 
   return (
     <div className={`doc-card ${isActive ? 'active' : ''} ${isSelected ? 'selected' : ''}`} onClick={handleClick}>
@@ -78,16 +88,130 @@ function DocumentCard({ doc, isActive, onClick, isSelectionMode, isSelected, onT
       {doc.summary && docListElements?.summary !== false && (
         <div className="doc-card-summary">{truncateText(doc.summary, 120)}</div>
       )}
-      {footerMetaItems.length > 0 && (
-        <div className="doc-card-meta" style={{ marginTop: '6px' }}>
-          {footerMetaItems.map((item, idx) => (
-            <span key={idx}>
-              {idx > 0 && ' · '}
-              {item}
-            </span>
-          ))}
-        </div>
-      )}
+      
+      {/* 底部信息与标签排版区 */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '6px', gap: '8px', position: 'relative' }}>
+        {footerMetaItems.length > 0 && (
+          <div className="doc-card-meta" style={{ marginTop: 0, flexShrink: 0 }}>
+            {footerMetaItems.map((item, idx) => (
+              <span key={idx}>
+                {idx > 0 && ' · '}
+                {item}
+              </span>
+            ))}
+          </div>
+        )}
+
+        {/* 文章标签列表展示 (不增加卡片高度，单行截断 + Hover Popover 悬浮查看全部) */}
+        {docListElements?.tags !== false && tagList.length > 0 && (
+          <div 
+            style={{ 
+              display: 'inline-flex', 
+              alignItems: 'center', 
+              gap: '4px', 
+              marginLeft: 'auto',
+              position: 'relative'
+            }}
+            onMouseEnter={() => setShowTagsPopover(true)}
+            onMouseLeave={() => setShowTagsPopover(false)}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {visibleTags.map(tag => (
+              <span 
+                key={tag}
+                onClick={(e) => { e.stopPropagation(); switchTag(tag); }}
+                title={`点击筛选标签: ${tag}`}
+                style={{
+                  fontSize: '10px',
+                  lineHeight: '1.2',
+                  padding: '2px 6px',
+                  borderRadius: '4px',
+                  backgroundColor: 'rgba(0, 122, 255, 0.08)',
+                  color: 'var(--color-accent)',
+                  fontWeight: '500',
+                  whiteSpace: 'nowrap',
+                  maxWidth: '80px',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  cursor: 'pointer',
+                  border: '1px solid rgba(0, 122, 255, 0.15)',
+                  transition: 'all 0.15s ease'
+                }}
+              >
+                #{tag}
+              </span>
+            ))}
+
+            {extraTagsCount > 0 && (
+              <span 
+                style={{
+                  fontSize: '10px',
+                  lineHeight: '1.2',
+                  padding: '2px 5px',
+                  borderRadius: '4px',
+                  backgroundColor: 'var(--color-bg-tertiary)',
+                  color: 'var(--color-text-secondary)',
+                  fontWeight: '600',
+                  whiteSpace: 'nowrap',
+                  cursor: 'pointer',
+                  border: '1px solid var(--color-border)'
+                }}
+              >
+                +{extraTagsCount}
+              </span>
+            )}
+
+            {/* Hover 悬浮全部标签 Popover 浮层 */}
+            {showTagsPopover && (
+              <div 
+                style={{
+                  position: 'absolute',
+                  bottom: '100%',
+                  right: 0,
+                  marginBottom: '6px',
+                  backgroundColor: 'var(--color-bg-card)',
+                  border: '1px solid var(--color-border)',
+                  borderRadius: '10px',
+                  boxShadow: 'var(--shadow-md)',
+                  padding: '8px 10px',
+                  zIndex: 99,
+                  maxWidth: '220px',
+                  display: 'flex',
+                  flexWrap: 'wrap',
+                  gap: '6px',
+                  backdropFilter: 'blur(10px)',
+                  animation: 'fadeIn 0.15s ease'
+                }}
+              >
+                <div style={{ width: '100%', fontSize: '10px', fontWeight: '700', color: 'var(--color-text-tertiary)', marginBottom: '2px' }}>
+                  🏷️ 本文所有标签 ({tagList.length})
+                </div>
+                {tagList.map(tag => (
+                  <span
+                    key={tag}
+                    onClick={(e) => { e.stopPropagation(); switchTag(tag); }}
+                    style={{
+                      fontSize: '11px',
+                      padding: '3px 8px',
+                      borderRadius: '6px',
+                      backgroundColor: 'rgba(0, 122, 255, 0.1)',
+                      color: 'var(--color-accent)',
+                      fontWeight: '500',
+                      cursor: 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '3px'
+                    }}
+                  >
+                    <Tag size={10} /> #{tag}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
       {doc.reading_progress > 0 && doc.reading_progress < 1 && docListElements?.readingProgress !== false && (
         <div className="doc-card-progress">
           <div

@@ -1088,6 +1088,16 @@ function TabAppearance({
             />
             <span>正文摘要</span>
           </label>
+          {/* 文章标签 */}
+          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13px' }}>
+            <input 
+              type="checkbox" 
+              checked={docListElements?.tags !== false} 
+              onChange={(e) => setDocListElements(prev => ({ ...prev, tags: e.target.checked }))} 
+              style={{ width: '15px', height: '15px', accentColor: 'var(--color-primary)' }}
+            />
+            <span>文章标签</span>
+          </label>
         </div>
       </div>
 
