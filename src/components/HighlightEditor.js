@@ -5,9 +5,19 @@ export default function HighlightEditor({ highlight, onUpdate, onDelete, onClose
   const [note, setNote] = useState(highlight.note || '');
   const [tags, setTags] = useState(highlight.tags ? Object.keys(highlight.tags) : []);
   
-  const [position, setPosition] = useState({
-    top: highlight.rect.bottom,
-    left: highlight.rect.left + highlight.rect.width / 2
+  const [position, setPosition] = useState(() => {
+    if (!highlight || !highlight.rect) {
+      return { top: 120, left: typeof window !== 'undefined' ? window.innerWidth / 2 - 125 : 300 };
+    }
+    const rect = highlight.rect;
+    let computedLeft = (rect.left || 0) + (rect.width || 0) / 2;
+    let computedTop = (rect.bottom || 0) + 8;
+
+    if (typeof window !== 'undefined') {
+      computedLeft = Math.max(20, Math.min(window.innerWidth - 270, computedLeft - 125));
+      computedTop = Math.max(70, Math.min(window.innerHeight - 220, computedTop));
+    }
+    return { top: computedTop, left: computedLeft };
   });
   const [isDragging, setIsDragging] = useState(false);
   const dragStartRef = useRef({ x: 0, y: 0, top: 0, left: 0 });

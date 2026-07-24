@@ -1039,7 +1039,10 @@ export default function ReadingPane() {
       {selection && (
         <div 
           className="highlight-toolbar selection-toolbar" 
-          style={{ top: selection.rect.top, left: selection.rect.left + selection.rect.width / 2 }}
+          style={{ 
+            top: Math.max(70, (selection.rect?.top || 0) - 48), 
+            left: Math.max(100, Math.min(typeof window !== 'undefined' ? window.innerWidth - 120 : 600, (selection.rect?.left || 0) + (selection.rect?.width || 0) / 2)) 
+          }}
           onMouseUp={(e) => e.stopPropagation()}
         >
           <button className="highlight-color-btn" style={{backgroundColor: '#fef08a'}} onClick={() => handleCreateHighlight('yellow')} />
@@ -1060,6 +1063,87 @@ export default function ReadingPane() {
           onClose={() => setEditingHighlight(null)}
           allTags={allTags}
         />
+      )}
+
+      {/* 🎯 点选模式 HUD 操作指示横幅 Banner (Fixed 视口绝对悬浮，避免挤压 Flex 文章布局) */}
+      {isPickerMode && (
+        <div className="picker-hud-banner" style={{
+          position: 'fixed',
+          top: '64px',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          zIndex: 9999,
+          backgroundColor: 'var(--color-bg-card)',
+          border: '1.5px solid var(--color-accent)',
+          boxShadow: '0 10px 30px rgba(0, 122, 255, 0.25)',
+          borderRadius: '16px',
+          padding: '8px 18px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '16px',
+          animation: 'slide-down 0.25s ease'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: 'var(--color-text-primary)' }}>
+            <div style={{ width: '26px', height: '26px', borderRadius: '50%', backgroundColor: 'rgba(0, 122, 255, 0.15)', color: 'var(--color-accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <Target size={15} />
+            </div>
+            <div>
+              {!pickerStart ? (
+                <span><strong>🎯 点选模式已开启</strong>：请点击文章选区的【起点】</span>
+              ) : (
+                <span>📍 <strong>起点已锁定</strong> (“{pickerStart.snippet}”)：请点击【终点】</span>
+              )}
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+            {pickerStart && (
+              <button 
+                className="btn btn-ghost btn-sm"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setPickerStart(null);
+                }}
+                style={{ fontSize: '11px', padding: '2px 8px' }}
+              >
+                重置
+              </button>
+            )}
+            <button 
+              className="btn btn-secondary btn-sm"
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsPickerMode(false);
+                setPickerStart(null);
+              }}
+              style={{ fontSize: '11px', padding: '3px 8px', borderRadius: '6px' }}
+            >
+              ✕ 退出
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 锁定起点的 HUD 动态浮动标识 (Fixed 定位) */}
+      {pickerStart && (
+        <div 
+          className="picker-start-marker"
+          style={{
+            position: 'fixed',
+            top: `${Math.max(10, pickerStart.rect.top - 28)}px`,
+            left: `${Math.max(10, pickerStart.rect.left - 10)}px`,
+            zIndex: 9998,
+            pointerEvents: 'none',
+            backgroundColor: 'var(--color-accent)',
+            color: '#fff',
+            padding: '2px 8px',
+            borderRadius: '12px',
+            fontSize: '11px',
+            fontWeight: '700',
+            boxShadow: '0 4px 12px rgba(0, 122, 255, 0.4)'
+          }}
+        >
+          📍 起点
+        </div>
       )}
 
       <div 
@@ -1303,87 +1387,6 @@ export default function ReadingPane() {
         </div>
       ) : (
         <div className={`reading-content ${isPickerMode ? 'picker-mode-active' : ''}`} onClick={handleArticleClickForPicker}>
-          
-          {/* 点选模式 HUD 操作指示横幅 Banner */}
-          {isPickerMode && (
-            <div className="picker-hud-banner" style={{
-              position: 'sticky',
-              top: '12px',
-              zIndex: 100,
-              backgroundColor: 'var(--color-bg-card)',
-              border: '1px solid var(--color-accent)',
-              boxShadow: '0 8px 24px rgba(0, 122, 255, 0.25)',
-              borderRadius: '16px',
-              padding: '10px 18px',
-              margin: '0 auto 16px',
-              maxWidth: '560px',
-              display: 'flex',
-              alignItems: 'center',
-              justify: 'space-between',
-              animation: 'slide-down 0.25s ease'
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '13px', color: 'var(--color-text-primary)' }}>
-                <div style={{ width: '28px', height: '28px', borderRadius: '50%', backgroundColor: 'rgba(0, 122, 255, 0.15)', color: 'var(--color-accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                  <Target size={16} />
-                </div>
-                <div>
-                  {!pickerStart ? (
-                    <span><strong>🎯 点选模式已开启</strong>：请点击文章选区的【高亮起点】</span>
-                  ) : (
-                    <span>📍 <strong>起点已锁定</strong> (“{pickerStart.snippet}”)：请点击【高亮终点】</span>
-                  )}
-                </div>
-              </div>
-              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                {pickerStart && (
-                  <button 
-                    className="btn btn-ghost btn-sm"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setPickerStart(null);
-                    }}
-                    style={{ fontSize: '11px', padding: '2px 8px' }}
-                  >
-                    重置起点
-                  </button>
-                )}
-                <button 
-                  className="btn btn-secondary btn-sm"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setIsPickerMode(false);
-                    setPickerStart(null);
-                  }}
-                  style={{ fontSize: '11px', padding: '4px 10px', borderRadius: '8px' }}
-                >
-                  ✕ 退出点选
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* 锁定起点的 HUD 动态浮动标识 */}
-          {pickerStart && (
-            <div 
-              className="picker-start-marker"
-              style={{
-                position: 'fixed',
-                top: `${Math.max(10, pickerStart.rect.top - 28)}px`,
-                left: `${Math.max(10, pickerStart.rect.left - 10)}px`,
-                zIndex: 99,
-                pointerEvents: 'none',
-                backgroundColor: 'var(--color-accent)',
-                color: '#fff',
-                padding: '2px 8px',
-                borderRadius: '12px',
-                fontSize: '11px',
-                fontWeight: '700',
-                boxShadow: '0 4px 12px rgba(0, 122, 255, 0.4)'
-              }}
-            >
-              📍 起点
-            </div>
-          )}
         <article
           className="reading-article"
           style={{
