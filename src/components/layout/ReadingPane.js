@@ -701,7 +701,11 @@ export default function ReadingPane() {
   const handleArticleClickForPicker = (e) => {
     if (!isPickerMode) return;
 
-    // 跳过按钮、调色盘、弹窗点击
+    // 🎯 当点选高亮模式开启时，强制阻止页面元素与 a 标签的默认跳转行为
+    e.preventDefault();
+    e.stopPropagation();
+
+    // 跳过按钮、调色盘、弹窗点击 (允许点击 a 标签选字，阻止跳转)
     if (e.target.closest('.highlight-popup') || e.target.closest('.picker-hud-banner') || e.target.closest('button')) {
       return;
     }

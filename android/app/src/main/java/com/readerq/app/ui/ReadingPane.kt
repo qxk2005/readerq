@@ -429,7 +429,7 @@ fun ReadingPane(
 
                 // Highlight Floating dialog
                 if (showHighlightCreator && !selectedTextForHighlight.isNullOrBlank()) {
-                    var isCollapsed by remember { mutableStateOf(false) }
+                    var isCollapsed by remember { mutableStateOf(true) }
                     
                     Card(
                         shape = RoundedCornerShape(12.dp),
@@ -1194,14 +1194,28 @@ fun HtmlContentViewer(
                         display: none !important;
                         pointer-events: none;
                     }
+                    #picker-end-marker {
+                        position: fixed;
+                        z-index: 9998;
+                        background-color: #10B981;
+                        color: #ffffff;
+                        padding: 2px 8px;
+                        border-radius: 12px;
+                        font-size: 11px;
+                        font-weight: bold;
+                        box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4);
+                        display: none !important;
+                        pointer-events: none;
+                    }
                 </style>
                 </head>
                 <body>
-                    <!-- 顶部 HUD 横幅与起点标识 (默认隐藏) -->
+                    <!-- 顶部 HUD 横幅与起点/终点标识 (默认隐藏) -->
                     <div id="picker-hud-banner">
                         <span id="picker-hud-text">🎯 <strong>点选模式已开启</strong>：请点击【起点】</span>
                     </div>
                     <div id="picker-start-marker">📍 起点</div>
+                    <div id="picker-end-marker">📍 终点</div>
                     <div style="height: 32px;"></div>
                     $cleanHtml
                     
@@ -1214,8 +1228,10 @@ fun HtmlContentViewer(
                             window.pickerStart = null;
                             var banner = document.getElementById('picker-hud-banner');
                             if (banner) banner.style.setProperty('display', enabled ? 'flex' : 'none', 'important');
-                            var marker = document.getElementById('picker-start-marker');
-                            if (marker) marker.style.setProperty('display', 'none', 'important');
+                            var startMarker = document.getElementById('picker-start-marker');
+                            if (startMarker) startMarker.style.setProperty('display', 'none', 'important');
+                            var endMarker = document.getElementById('picker-end-marker');
+                            if (endMarker) endMarker.style.setProperty('display', 'none', 'important');
                             if (!enabled && window.getSelection) {
                                 window.getSelection().removeAllRanges();
                             }
@@ -1248,6 +1264,10 @@ fun HtmlContentViewer(
 
                         function handlePickerTrigger(e) {
                             if (!window.isPickerMode) return;
+                            if (e) {
+                                e.preventDefault();
+                                e.stopPropagation();
+                            }
                             if (e.target.closest('#picker-hud-banner')) return;
 
                             var caretRange = getCaretPointFromEvent(e);
@@ -1261,13 +1281,15 @@ fun HtmlContentViewer(
                                 };
                                 var hudText = document.getElementById('picker-hud-text');
                                 if (hudText) hudText.innerHTML = '📍 <strong>起点已锁定</strong> (“' + text.trim() + '”)：请点击【终点】';
-                                var marker = document.getElementById('picker-start-marker');
-                                if (marker) {
+                                var startMarker = document.getElementById('picker-start-marker');
+                                if (startMarker) {
                                     var rect = caretRange.getBoundingClientRect();
-                                    marker.style.top = Math.max(10, rect.top - 28) + 'px';
-                                    marker.style.left = Math.max(10, rect.left - 10) + 'px';
-                                    marker.style.setProperty('display', 'block', 'important');
+                                    startMarker.style.top = Math.max(10, rect.top - 28) + 'px';
+                                    startMarker.style.left = Math.max(10, rect.left - 10) + 'px';
+                                    startMarker.style.setProperty('display', 'block', 'important');
                                 }
+                                var endMarker = document.getElementById('picker-end-marker');
+                                if (endMarker) endMarker.style.setProperty('display', 'none', 'important');
                                 setTimeout(function() {
                                     if (window.getSelection) window.getSelection().removeAllRanges();
                                 }, 50);
@@ -1289,6 +1311,21 @@ fun HtmlContentViewer(
                                     finalRange.setEnd(startNode, startOffset);
                                 }
 
+                                var endMarker = document.getElementById('picker-end-marker');
+                                if (endMarker) {
+                                    var endRect = caretRange.getBoundingClientRect();
+                                    endMarker.style.top = Math.max(10, endRect.top - 28) + 'px';
+                                    endMarker.style.left = Math.max(10, endRect.left - 10) + 'px';
+                                    endMarker.style.setProperty('display', 'block', 'important');
+                                }
+
+                                // 🎯 高亮视觉选区呈现：在选区范围内呈现标准亮蓝高亮选区背景！
+                                if (window.getSelection) {
+                                    var sel = window.getSelection();
+                                    sel.removeAllRanges();
+                                    sel.addRange(finalRange);
+                                }
+
                                 var selText = extractSelectionText(finalRange);
                                 var selImages = extractImagesFromRange(finalRange);
 
@@ -1298,13 +1335,7 @@ fun HtmlContentViewer(
 
                                 window.pickerStart = null;
                                 var hudText = document.getElementById('picker-hud-text');
-                                if (hudText) hudText.innerHTML = '🎯 <strong>点选模式已开启</strong>：请点击选区【起点】';
-                                var marker = document.getElementById('picker-start-marker');
-                                if (marker) marker.style.setProperty('display', 'none', 'important');
-
-                                setTimeout(function() {
-                                    if (window.getSelection) window.getSelection().removeAllRanges();
-                                }, 50);
+                                if (hudText) hudText.innerHTML = '🎯 <strong>点选选区已生效</strong>：请选择颜色或划线功能';
                             }
                         }
 
@@ -1315,6 +1346,10 @@ fun HtmlContentViewer(
                         }, true);
 
                         document.addEventListener('click', function(e) {
+                            if (window.isPickerMode) {
+                                e.preventDefault();
+                                e.stopPropagation();
+                            }
                             if (Date.now() - lastTouchTime < 500) return; // 过滤触摸后的重复 click
                             handlePickerTrigger(e);
                         }, true);
