@@ -1058,6 +1058,29 @@ export default function ReadingPane() {
           }}
           onMouseUp={(e) => e.stopPropagation()}
         >
+          <button 
+            className={`highlight-color-btn ${isPickerMode ? 'active' : ''}`}
+            style={{
+              backgroundColor: isPickerMode ? 'var(--color-accent)' : 'rgba(0, 122, 255, 0.1)',
+              color: isPickerMode ? '#fff' : 'var(--color-accent)',
+              display: 'flex',
+              alignItems: 'center',
+              justify: 'center',
+              width: '26px',
+              height: '26px',
+              borderRadius: '50%',
+              marginRight: '4px',
+              border: '1.5px solid var(--color-accent)'
+            }}
+            onClick={() => {
+              setIsPickerMode(!isPickerMode);
+              setPickerStart(null);
+            }}
+            title="开启两点高亮选区模式"
+          >
+            <Target size={14} />
+          </button>
+          <div style={{ width: '1px', height: '16px', backgroundColor: 'var(--color-border)', margin: '0 4px' }} />
           <button className="highlight-color-btn" style={{backgroundColor: '#fef08a'}} onClick={() => handleCreateHighlight('yellow')} />
           <button className="highlight-color-btn" style={{backgroundColor: '#bbf7d0'}} onClick={() => handleCreateHighlight('green')} />
           <button className="highlight-color-btn" style={{backgroundColor: '#bfdbfe'}} onClick={() => handleCreateHighlight('blue')} />
@@ -1065,6 +1088,36 @@ export default function ReadingPane() {
           <button className="highlight-color-btn" style={{backgroundColor: '#fecaca'}} onClick={() => handleCreateHighlight('red')} />
         </div>
       )}
+
+      {/* 🎯 Android / 移动端专用常驻点选高亮悬浮球 (Mobile Floating Action Button) */}
+      <button
+        className="mobile-picker-fab"
+        onClick={() => {
+          setIsPickerMode(!isPickerMode);
+          setPickerStart(null);
+        }}
+        style={{
+          position: 'fixed',
+          bottom: '80px',
+          right: '20px',
+          zIndex: 9999,
+          width: '48px',
+          height: '48px',
+          borderRadius: '50%',
+          backgroundColor: isPickerMode ? 'var(--color-accent)' : 'var(--color-bg-card)',
+          color: isPickerMode ? '#fff' : 'var(--color-accent)',
+          border: '2px solid var(--color-accent)',
+          boxShadow: isPickerMode ? '0 6px 20px rgba(0, 122, 255, 0.5)' : '0 4px 16px rgba(0,0,0,0.15)',
+          display: 'flex',
+          alignItems: 'center',
+          justify: 'center',
+          transition: 'all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1)',
+          transform: isPickerMode ? 'scale(1.1)' : 'scale(1)'
+        }}
+        data-tooltip={isPickerMode ? "退出点选模式" : "开启点选高亮模式"}
+      >
+        <Target size={22} />
+      </button>
 
       {/* 编辑已有高亮工具栏 */}
       {editingHighlight && (
