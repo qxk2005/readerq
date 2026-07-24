@@ -1157,6 +1157,12 @@ fun HtmlContentViewer(
                     /* TTS 朗读高亮样式 */
                     .tts-active-chunk {
                         background-color: ${if (theme == "dark") "rgba(99, 102, 241, 0.2)" else if (theme == "sepia") "rgba(139, 94, 60, 0.12)" else "rgba(99, 102, 241, 0.1)"} !important;
+                        border-left: 3px solid ${if (theme == "dark") "#818CF8" else if (theme == "sepia") "#8B5E3C" else "#6366F1"} !important;
+                        padding-left: 12px !important;
+                        border-radius: 4px;
+                        transition: background-color 0.3s ease, border-left 0.3s ease;
+                    }
+
                     /* 点选高亮模式 HUD 横幅与浮标 */
                     #picker-hud-banner {
                         position: fixed;
@@ -1171,7 +1177,7 @@ fun HtmlContentViewer(
                         padding: 8px 16px;
                         font-size: 13px;
                         box-shadow: 0 8px 24px rgba(99, 102, 241, 0.3);
-                        display: none;
+                        display: none !important;
                         align-items: center;
                         gap: 12px;
                     }
@@ -1185,13 +1191,13 @@ fun HtmlContentViewer(
                         font-size: 11px;
                         font-weight: bold;
                         box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4);
-                        display: none;
+                        display: none !important;
                         pointer-events: none;
                     }
                 </style>
                 </head>
                 <body>
-                    <!-- 顶部留出进度条空间与 HUD 横幅 -->
+                    <!-- 顶部 HUD 横幅与起点标识 (默认隐藏) -->
                     <div id="picker-hud-banner">
                         <span id="picker-hud-text">🎯 <strong>点选模式已开启</strong>：请点击【起点】</span>
                     </div>
@@ -1207,9 +1213,12 @@ fun HtmlContentViewer(
                             window.isPickerMode = enabled;
                             window.pickerStart = null;
                             var banner = document.getElementById('picker-hud-banner');
-                            if (banner) banner.style.display = enabled ? 'flex' : 'none';
+                            if (banner) banner.style.setProperty('display', enabled ? 'flex' : 'none', 'important');
                             var marker = document.getElementById('picker-start-marker');
-                            if (marker) marker.style.display = 'none';
+                            if (marker) marker.style.setProperty('display', 'none', 'important');
+                            if (!enabled && window.getSelection) {
+                                window.getSelection().removeAllRanges();
+                            }
                         };
 
                         function getCaretPointFromEvent(e) {
@@ -1237,7 +1246,7 @@ fun HtmlContentViewer(
                             return range;
                         }
 
-                        document.addEventListener('touchend', function(e) {
+                        function handlePickerTrigger(e) {
                             if (!window.isPickerMode) return;
                             if (e.target.closest('#picker-hud-banner')) return;
 
@@ -1257,8 +1266,11 @@ fun HtmlContentViewer(
                                     var rect = caretRange.getBoundingClientRect();
                                     marker.style.top = Math.max(10, rect.top - 28) + 'px';
                                     marker.style.left = Math.max(10, rect.left - 10) + 'px';
-                                    marker.style.display = 'block';
+                                    marker.style.setProperty('display', 'block', 'important');
                                 }
+                                setTimeout(function() {
+                                    if (window.getSelection) window.getSelection().removeAllRanges();
+                                }, 50);
                             } else {
                                 var startNode = window.pickerStart.node;
                                 var startOffset = window.pickerStart.offset;
@@ -1288,9 +1300,24 @@ fun HtmlContentViewer(
                                 var hudText = document.getElementById('picker-hud-text');
                                 if (hudText) hudText.innerHTML = '🎯 <strong>点选模式已开启</strong>：请点击选区【起点】';
                                 var marker = document.getElementById('picker-start-marker');
-                                if (marker) marker.style.display = 'none';
+                                if (marker) marker.style.setProperty('display', 'none', 'important');
+
+                                setTimeout(function() {
+                                    if (window.getSelection) window.getSelection().removeAllRanges();
+                                }, 50);
                             }
-                        });
+                        }
+
+                        var lastTouchTime = 0;
+                        document.addEventListener('touchend', function(e) {
+                            lastTouchTime = Date.now();
+                            handlePickerTrigger(e);
+                        }, true);
+
+                        document.addEventListener('click', function(e) {
+                            if (Date.now() - lastTouchTime < 500) return; // 过滤触摸后的重复 click
+                            handlePickerTrigger(e);
+                        }, true);
                         function extractImagesFromRange(range) {
                           const fragment = range.cloneContents();
                           const images = [];
