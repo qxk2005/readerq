@@ -10,7 +10,7 @@ import GhostReader from '@/components/ai/GhostReader';
 import HighlightEditor from '@/components/HighlightEditor';
 import TagInput from '@/components/TagInput';
 import VideoReadingPane from '@/components/video/VideoReadingPane';
-import { BookOpen, Link, Info, Edit3, Bot, Loader2, ClipboardList, AlertTriangle, RefreshCw, CheckCircle2, XCircle, ImageIcon, Upload, Trash2, RotateCcw, Inbox, Clock, Archive, Volume2, Share2, Play, Pause, SkipBack, SkipForward, X, Copy, Check, ArrowUpDown } from 'lucide-react';
+import { BookOpen, Link, Info, Edit3, Bot, Loader2, ClipboardList, AlertTriangle, RefreshCw, CheckCircle2, XCircle, ImageIcon, Upload, Trash2, RotateCcw, Inbox, Clock, Archive, Volume2, Share2, Play, Pause, SkipBack, SkipForward, X, Copy, Check, ArrowUpDown, Target } from 'lucide-react';
 
 const scrollToElement = (container, element) => {
   if (!container || !element) return;
@@ -88,8 +88,14 @@ export default function ReadingPane() {
   const [videoTabMode, setVideoTabMode] = useState('subtitle'); // 'subtitle' | 'blog'
   const [highlightSortMode, setHighlightSortMode] = useState('position_asc'); // 'position_asc' | 'position_desc' | 'time_asc' | 'time_desc'
 
+  // 🎯 点选高亮选择器 (Point-to-Point Highlight Picker) 状态
+  const [isPickerMode, setIsPickerMode] = useState(false);
+  const [pickerStart, setPickerStart] = useState(null); // { node, offset, rect, snippet }
+
   useEffect(() => {
     setVideoTabMode('subtitle');
+    setIsPickerMode(false);
+    setPickerStart(null);
   }, [selectedDoc?.id]);
 
   // 阅读进度
@@ -655,6 +661,124 @@ export default function ReadingPane() {
     }
   };
 
+  // 判定 DOM 节点前后位置顺序
+  const isNodeBefore = (nodeA, offsetA, nodeB, offsetB) => {
+    if (nodeA === nodeB) return offsetA <= offsetB;
+    const pos = nodeA.compareDocumentPosition(nodeB);
+    return !!(pos & Node.DOCUMENT_POSITION_FOLLOWING);
+  };
+
+  // 根据坐标获取光标精确 Caret Range
+  const getCaretPointFromEvent = (e) => {
+    let range = null;
+    if (document.caretRangeFromPoint) {
+      range = document.caretRangeFromPoint(e.clientX, e.clientY);
+    } else if (document.caretPositionFromPoint) {
+      const pos = document.caretPositionFromPoint(e.clientX, e.clientY);
+      if (pos) {
+        range = document.createRange();
+        range.setStart(pos.offsetNode, pos.offset);
+        range.collapse(true);
+      }
+    }
+    return range;
+  };
+
+  // 点选高亮选择器 (Point Picker) 点击事件处理器
+  const handleArticleClickForPicker = (e) => {
+    if (!isPickerMode) return;
+
+    // 跳过按钮、调色盘、弹窗点击
+    if (e.target.closest('.highlight-popup') || e.target.closest('.picker-hud-banner') || e.target.closest('button')) {
+      return;
+    }
+
+    const articleContainer = selectedDoc?.category === 'video'
+      ? document.querySelector('.blog-article')
+      : articleRef.current;
+
+    if (!articleContainer || !articleContainer.contains(e.target)) return;
+
+    const caretRange = getCaretPointFromEvent(e);
+    if (!caretRange) return;
+
+    const node = caretRange.startContainer;
+    const offset = caretRange.startOffset;
+
+    if (!pickerStart) {
+      // 点击第 1 下：锁定高亮【起点】
+      const rect = caretRange.getBoundingClientRect();
+      const nodeText = node.textContent || '';
+      const snippet = nodeText.substring(Math.max(0, offset - 4), Math.min(nodeText.length, offset + 12));
+
+      setPickerStart({
+        node,
+        offset,
+        rect: { top: rect.top, left: rect.left },
+        snippet: snippet.trim() || '起点文本'
+      });
+    } else {
+      // 点击第 2 下：锁定高亮【终点】，秒级全选起点与终点之间的元素
+      const startNode = pickerStart.node;
+      const startOffset = pickerStart.offset;
+      const endNode = node;
+      const endOffset = offset;
+
+      const finalRange = document.createRange();
+      try {
+        if (isNodeBefore(startNode, startOffset, endNode, endOffset)) {
+          finalRange.setStart(startNode, startOffset);
+          finalRange.setEnd(endNode, endOffset);
+        } else {
+          finalRange.setStart(endNode, endOffset);
+          finalRange.setEnd(startNode, startOffset);
+        }
+
+        const sel = window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(finalRange);
+
+        const rect = finalRange.getBoundingClientRect();
+        const text = extractSelectionText(finalRange);
+        const images = extractImagesFromRange(finalRange);
+
+        let location_start = getTextOffset(articleContainer, finalRange.startContainer, finalRange.startOffset);
+        let location_end = getTextOffset(articleContainer, finalRange.endContainer, finalRange.endOffset);
+        if (location_start < 0) location_start = null;
+        if (location_end < 0) location_end = null;
+
+        if (text || images.length > 0) {
+          setSelection({
+            text: text || (images.length > 0 ? images.map(i => `[图片: ${i.alt}]`).join('\n') : ''),
+            location_start,
+            location_end,
+            images,
+            rect: { top: rect.top, bottom: rect.bottom, left: rect.left, width: rect.width }
+          });
+        }
+      } catch (err) {
+        console.warn('点选高亮 Range 构建异常:', err);
+      } finally {
+        setPickerStart(null);
+      }
+    }
+  };
+
+  // 监听 ESC 快捷键退出点选模式
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape' && isPickerMode) {
+        if (pickerStart) {
+          setPickerStart(null);
+        } else {
+          setIsPickerMode(false);
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isPickerMode, pickerStart]);
+
   useEffect(() => {
     const handleSelectionChange = () => {
       const sel = window.getSelection();
@@ -1101,6 +1225,32 @@ export default function ReadingPane() {
           <div style={{ width: '1px', height: '16px', backgroundColor: 'var(--color-border)', margin: '0 8px' }} />
 
           <button
+            className={`btn-icon ${isPickerMode ? 'active' : ''}`}
+            onClick={() => {
+              setIsPickerMode(!isPickerMode);
+              setPickerStart(null);
+            }}
+            data-tooltip={isPickerMode ? "退出点选高亮模式" : "开启点选高亮模式 (点击起点 ➔ 点击终点)"}
+            style={{
+              color: isPickerMode ? '#fff' : 'inherit',
+              backgroundColor: isPickerMode ? 'var(--color-accent)' : 'transparent',
+              borderRadius: '8px',
+              padding: '4px 10px',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '4px',
+              fontSize: '12px',
+              fontWeight: '600',
+              transition: 'all 0.15s ease'
+            }}
+          >
+            <Target size={15} />
+            <span style={{ fontSize: '12px' }}>{isPickerMode ? '点选开启中' : '点选高亮'}</span>
+          </button>
+
+          <div style={{ width: '1px', height: '16px', backgroundColor: 'var(--color-border)', margin: '0 6px' }} />
+
+          <button
             className="btn-icon"
             onClick={() => setRightPanelTab(rightPanelTab === 'info' ? null : 'info')}
             data-tooltip="文档信息"
@@ -1159,7 +1309,88 @@ export default function ReadingPane() {
           />
         </div>
       ) : (
-        <div className="reading-content">
+        <div className={`reading-content ${isPickerMode ? 'picker-mode-active' : ''}`} onClick={handleArticleClickForPicker}>
+          
+          {/* 点选模式 HUD 操作指示横幅 Banner */}
+          {isPickerMode && (
+            <div className="picker-hud-banner" style={{
+              position: 'sticky',
+              top: '12px',
+              zIndex: 100,
+              backgroundColor: 'var(--color-bg-card)',
+              border: '1px solid var(--color-accent)',
+              boxShadow: '0 8px 24px rgba(0, 122, 255, 0.25)',
+              borderRadius: '16px',
+              padding: '10px 18px',
+              margin: '0 auto 16px',
+              maxWidth: '560px',
+              display: 'flex',
+              alignItems: 'center',
+              justify: 'space-between',
+              animation: 'slide-down 0.25s ease'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '13px', color: 'var(--color-text-primary)' }}>
+                <div style={{ width: '28px', height: '28px', borderRadius: '50%', backgroundColor: 'rgba(0, 122, 255, 0.15)', color: 'var(--color-accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <Target size={16} />
+                </div>
+                <div>
+                  {!pickerStart ? (
+                    <span><strong>🎯 点选模式已开启</strong>：请点击文章选区的【高亮起点】</span>
+                  ) : (
+                    <span>📍 <strong>起点已锁定</strong> (“{pickerStart.snippet}”)：请点击【高亮终点】</span>
+                  )}
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                {pickerStart && (
+                  <button 
+                    className="btn btn-ghost btn-sm"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setPickerStart(null);
+                    }}
+                    style={{ fontSize: '11px', padding: '2px 8px' }}
+                  >
+                    重置起点
+                  </button>
+                )}
+                <button 
+                  className="btn btn-secondary btn-sm"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIsPickerMode(false);
+                    setPickerStart(null);
+                  }}
+                  style={{ fontSize: '11px', padding: '4px 10px', borderRadius: '8px' }}
+                >
+                  ✕ 退出点选
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* 锁定起点的 HUD 动态浮动标识 */}
+          {pickerStart && (
+            <div 
+              className="picker-start-marker"
+              style={{
+                position: 'fixed',
+                top: `${Math.max(10, pickerStart.rect.top - 28)}px`,
+                left: `${Math.max(10, pickerStart.rect.left - 10)}px`,
+                zIndex: 99,
+                pointerEvents: 'none',
+                backgroundColor: 'var(--color-accent)',
+                color: '#fff',
+                padding: '2px 8px',
+                borderRadius: '12px',
+                fontSize: '11px',
+                fontWeight: '700',
+                boxShadow: '0 4px 12px rgba(0, 122, 255, 0.4)'
+              }}
+            >
+              📍 起点
+            </div>
+          )}
         <article
           className="reading-article"
           style={{
