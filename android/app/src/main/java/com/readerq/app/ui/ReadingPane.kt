@@ -374,24 +374,7 @@ fun ReadingPane(
                     isVideo = currentDoc.category == "video"
                 )
 
-                // 🎯 右下角常驻点选高亮 FAB 悬浮球
-                FloatingActionButton(
-                    onClick = {
-                        isPickerMode = !isPickerMode
-                        val modeStr = if (isPickerMode) "true" else "false"
-                        webViewRefState?.evaluateJavascript("if (window.setPickerMode) window.setPickerMode($modeStr);", null)
-                        Toast.makeText(context, if (isPickerMode) "点选高亮已开启：请依次点击【起点】和【终点】" else "已退出点选模式", Toast.LENGTH_SHORT).show()
-                    },
-                    containerColor = if (isPickerMode) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
-                    contentColor = if (isPickerMode) Color.White else MaterialTheme.colorScheme.primary,
-                    modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .padding(end = 16.dp, bottom = 80.dp)
-                        .size(48.dp),
-                    shape = RoundedCornerShape(24.dp)
-                ) {
-                    Text("🎯", fontSize = 20.sp)
-                }
+
 
                 // 阅读进度条 - 覆盖在 WebView 顶部
                 if (currentDoc.html_content != null && currentDoc.html_content != "加载中...") {

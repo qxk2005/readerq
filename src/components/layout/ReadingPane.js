@@ -1089,35 +1089,7 @@ export default function ReadingPane() {
         </div>
       )}
 
-      {/* 🎯 Android / 移动端专用常驻点选高亮悬浮球 (Mobile Floating Action Button) */}
-      <button
-        className="mobile-picker-fab"
-        onClick={() => {
-          setIsPickerMode(!isPickerMode);
-          setPickerStart(null);
-        }}
-        style={{
-          position: 'fixed',
-          bottom: '80px',
-          right: '20px',
-          zIndex: 9999,
-          width: '48px',
-          height: '48px',
-          borderRadius: '50%',
-          backgroundColor: isPickerMode ? 'var(--color-accent)' : 'var(--color-bg-card)',
-          color: isPickerMode ? '#fff' : 'var(--color-accent)',
-          border: '2px solid var(--color-accent)',
-          boxShadow: isPickerMode ? '0 6px 20px rgba(0, 122, 255, 0.5)' : '0 4px 16px rgba(0,0,0,0.15)',
-          display: 'flex',
-          alignItems: 'center',
-          justify: 'center',
-          transition: 'all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1)',
-          transform: isPickerMode ? 'scale(1.1)' : 'scale(1)'
-        }}
-        data-tooltip={isPickerMode ? "退出点选模式" : "开启点选高亮模式"}
-      >
-        <Target size={22} />
-      </button>
+
 
       {/* 编辑已有高亮工具栏 */}
       {editingHighlight && (
