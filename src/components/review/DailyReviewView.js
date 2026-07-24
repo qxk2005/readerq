@@ -325,7 +325,9 @@ export default function DailyReviewView({ onBackToArticles }) {
           setStats(prev => ({
             ...prev,
             todayReviewedCount: data.statResult.reviewedCount,
-            streakDays: data.statResult.streakDays,
+            streakDays: data.statResult.streakDays || prev?.streakDays,
+            bestStreak: data.statResult.bestStreak || prev?.bestStreak,
+            totalReviewed: data.statResult.totalReviewed || prev?.totalReviewed,
           }));
         }
       })
@@ -484,7 +486,7 @@ export default function DailyReviewView({ onBackToArticles }) {
                   <div style={{ background: 'rgba(255,255,255,0.08)', padding: '16px 28px', borderRadius: '16px', backdropFilter: 'blur(10px)' }}>
                     <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.5)', marginBottom: '4px' }}>累计已复习高亮</div>
                     <div style={{ fontSize: '28px', fontWeight: '800', color: '#007aff', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <Award size={24} /> {stats?.totalReviewed || highlights.length} 条
+                      <Award size={24} /> {Number(stats?.totalReviewed || highlights.length).toLocaleString()} 条
                     </div>
                   </div>
                 </div>
