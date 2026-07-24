@@ -1200,6 +1200,26 @@ export default function ReadingPane() {
           )}
         </div>
         <div className="reading-header-right">
+          {/* 🎯 点选高亮模式按钮 (置顶第一优先级，凸显视觉) */}
+          <button
+            className={`btn-icon ${isPickerMode ? 'active' : ''}`}
+            onClick={() => {
+              setIsPickerMode(!isPickerMode);
+              setPickerStart(null);
+            }}
+            data-tooltip={isPickerMode ? "退出点选高亮模式" : "点选高亮模式 (点击起点 ➔ 点击终点)"}
+            style={{
+              color: isPickerMode ? '#fff' : 'var(--color-accent)',
+              backgroundColor: isPickerMode ? 'var(--color-accent)' : 'rgba(0, 122, 255, 0.1)',
+              borderRadius: 'var(--radius-md)',
+              border: isPickerMode ? 'none' : '1px solid rgba(0, 122, 255, 0.25)',
+              transition: 'all 0.15s ease'
+            }}
+          >
+            <Target size={16} />
+          </button>
+
+          <div style={{ width: '1px', height: '16px', backgroundColor: 'var(--color-border)', margin: '0 4px' }} />
           {selectedDoc.location === 'trash' ? (
             <>
               <button
@@ -1321,24 +1341,7 @@ export default function ReadingPane() {
 
           <div style={{ width: '1px', height: '16px', backgroundColor: 'var(--color-border)', margin: '0 8px' }} />
 
-          <button
-            className={`btn-icon ${isPickerMode ? 'active' : ''}`}
-            onClick={() => {
-              setIsPickerMode(!isPickerMode);
-              setPickerStart(null);
-            }}
-            data-tooltip={isPickerMode ? "退出点选高亮模式" : "点选高亮模式 (点击起点 ➔ 点击终点)"}
-            style={{
-              color: isPickerMode ? '#fff' : 'inherit',
-              backgroundColor: isPickerMode ? 'var(--color-accent)' : 'transparent',
-              borderRadius: 'var(--radius-md)',
-              transition: 'all 0.15s ease'
-            }}
-          >
-            <Target size={16} />
-          </button>
 
-          <div style={{ width: '1px', height: '16px', backgroundColor: 'var(--color-border)', margin: '0 6px' }} />
 
           <button
             className="btn-icon"
