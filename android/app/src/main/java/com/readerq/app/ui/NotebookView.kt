@@ -383,7 +383,7 @@ fun NotebookHighlightCard(
             val imageRegex = Regex("""!\[[^]]*]\((https?://[^)]+)\)""")
             val matches = imageRegex.findAll(hl.text).toList()
             val displayImageUrls = matches.mapNotNull { it.groups[1]?.value }
-            val cleanText = hl.text.replace(imageRegex, "").trim()
+            val cleanText = hl.text.replace(imageRegex, "").replace(Regex("""\n{3,}"""), "\n\n").trim()
 
             Column(
                 modifier = Modifier

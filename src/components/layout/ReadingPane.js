@@ -1753,8 +1753,11 @@ export default function ReadingPane() {
                     while ((match = mdImageRegex.exec(hl.text)) !== null) {
                       mdImages.push({ alt: match[1], url: match[2] });
                     }
-                    // 去掉 Markdown 图片语法后的纯文本显示
-                    const textWithoutImages = hl.text.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '').trim();
+                    // 去掉 Markdown 图片语法后的纯文本显示，并压缩清理多余的连续空行
+                    const textWithoutImages = hl.text
+                      .replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '')
+                      .replace(/\n{3,}/g, '\n\n')
+                      .trim();
                     const uploadStatus = imageUploadStatus[hl.id];
                     const isEditing = sidebarEditingId === hl.id;
 
