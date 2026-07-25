@@ -428,7 +428,24 @@ export function getDetailedTagsStats() {
     } catch { /* 忽略解析错误 */ }
   });
 
-  return Object.values(tagStatsMap);
+  // 按照标签显示名称 (displayName) 进行二次合并去重
+  const uniqueNameMap = {};
+  Object.values(tagStatsMap).forEach(t => {
+    const displayName = t.name || t.key;
+    if (!displayName) return;
+    if (!uniqueNameMap[displayName]) {
+      uniqueNameMap[displayName] = { ...t, name: displayName, key: displayName };
+    } else {
+      uniqueNameMap[displayName].document_count += t.document_count;
+      uniqueNameMap[displayName].highlight_count += t.highlight_count;
+      uniqueNameMap[displayName].total_count += t.total_count;
+      if (t.last_used_at && (!uniqueNameMap[displayName].last_used_at || new Date(t.last_used_at) > new Date(uniqueNameMap[displayName].last_used_at))) {
+        uniqueNameMap[displayName].last_used_at = t.last_used_at;
+      }
+    }
+  });
+
+  return Object.values(uniqueNameMap);
 }
 
 /**

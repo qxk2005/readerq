@@ -1475,7 +1475,16 @@ function TabHome({
     setHomeFeedFilterTags(homeFeedFilterTags.filter(t => t !== tToRemove));
   };
 
-  const filteredSuggestions = (tags || []).filter(t => {
+  // 标签全量去重列表
+  const uniqueTags = (tags || []).reduce((acc, t) => {
+    const name = t.name || t.key;
+    if (name && !acc.some(existing => (existing.name || existing.key) === name)) {
+      acc.push(t);
+    }
+    return acc;
+  }, []);
+
+  const filteredSuggestions = uniqueTags.filter(t => {
     const name = t.name || t.key;
     return name && name.toLowerCase().includes(inputTag.toLowerCase()) && !homeFeedFilterTags.includes(name);
   });
@@ -1610,8 +1619,8 @@ function TabHome({
 
         {/* 已选标签列表 Chip Pills */}
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: 'var(--space-3)' }}>
-          {homeFeedFilterTags.map(t => (
-            <span key={t} style={{
+          {homeFeedFilterTags.map((t, idx) => (
+            <span key={`filter-tag-${t}-${idx}`} style={{
               display: 'inline-flex',
               alignItems: 'center',
               gap: '6px',
@@ -1666,7 +1675,7 @@ function TabHome({
               }}
               style={{ flex: 1 }}
             />
-            {tags && tags.length > 0 && (
+            {uniqueTags.length > 0 && (
               <select
                 className="form-input"
                 style={{ width: '160px' }}
@@ -1676,11 +1685,14 @@ function TabHome({
                 }}
               >
                 <option value="">+ 从已有选择...</option>
-                {tags.filter(t => !homeFeedFilterTags.includes(t.name || t.key)).map(t => (
-                  <option key={t.key || t.name} value={t.name || t.key}>
-                    🏷️ {t.name || t.key}
-                  </option>
-                ))}
+                {uniqueTags.filter(t => !homeFeedFilterTags.includes(t.name || t.key)).map((t, idx) => {
+                  const tagName = t.name || t.key;
+                  return (
+                    <option key={`opt-tag-${tagName}-${idx}`} value={tagName}>
+                      🏷️ {tagName}
+                    </option>
+                  );
+                })}
               </select>
             )}
           </div>
@@ -1701,11 +1713,11 @@ function TabHome({
               overflowY: 'auto',
               marginTop: '4px'
             }}>
-              {filteredSuggestions.map(t => {
+              {filteredSuggestions.map((t, idx) => {
                 const tagName = t.name || t.key;
                 return (
                   <div
-                    key={tagName}
+                    key={`sug-tag-${tagName}-${idx}`}
                     onMouseDown={() => addTag(tagName)}
                     style={{
                       padding: '8px 12px',

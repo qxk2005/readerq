@@ -122,7 +122,19 @@ function FallbackCover({ title, category, siteName }) {
 
 export default function HomeFeedView() {
   const { setSelectedDoc } = useApp();
-  const [activeTab, setActiveTab] = useState('latest'); // 'latest' | 'tag'
+  const [activeTab, setActiveTabState] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('readerq_home_feed_active_tab') || 'latest';
+    }
+    return 'latest';
+  });
+
+  const setActiveTab = useCallback((tab) => {
+    setActiveTabState(tab);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('readerq_home_feed_active_tab', tab);
+    }
+  }, []);
   const [documents, setDocuments] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isFetchingMore, setIsFetchingMore] = useState(false);
@@ -386,8 +398,9 @@ export default function HomeFeedView() {
 
           <button
             onClick={() => setActiveTab('tag')}
+            title={filterTags.length > 0 ? `当前筛选标签 (${filterTags.length}个):\n${filterTags.join(', ')}` : '精选标签'}
             style={{
-              padding: '6px 16px',
+              padding: '6px 14px',
               borderRadius: 'var(--radius-full)',
               border: 'none',
               background: activeTab === 'tag' ? 'var(--color-bg-card)' : 'transparent',
@@ -399,11 +412,21 @@ export default function HomeFeedView() {
               transition: 'all 0.2s ease',
               display: 'flex',
               alignItems: 'center',
-              gap: '6px'
+              gap: '6px',
+              maxWidth: '220px',
+              overflow: 'hidden'
             }}
           >
-            <Tag size={14} />
-            {filterTags.length > 0 ? `标签: ${filterTags.join(', ')}` : '精选标签'}
+            <Tag size={14} style={{ flexShrink: 0 }} />
+            <span style={{
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              display: 'inline-block',
+              maxWidth: '170px'
+            }}>
+              {filterTags.length > 0 ? `标签: ${filterTags.join(', ')}` : '精选标签'}
+            </span>
           </button>
         </div>
       </div>
