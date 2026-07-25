@@ -4,7 +4,7 @@ import { useApp } from '@/context/AppContext';
 import { useTheme } from '@/context/ThemeContext';
 import { LOCATION_LABELS, CATEGORY_LABELS } from '@/lib/utils';
 import { CATEGORY_ICONS_SVG, LOCATION_ICONS_SVG } from '@/components/ui/icons';
-import { Home, Tag, Plus, RefreshCw, Sun, Moon, Settings, SlidersHorizontal, Sparkles } from 'lucide-react';
+import { Home, Compass, Layers, Tag, Plus, RefreshCw, Sun, Moon, Settings, SlidersHorizontal, Sparkles } from 'lucide-react';
 
 // 折叠左侧栏的矩形图标 (同 Readwise 官方)
 const SidebarCloseIcon = () => (
@@ -164,11 +164,22 @@ export default function Sidebar({ width }) {
         {/* 主导航 */}
         <div className="sidebar-section">
           {!sidebarCollapsed && <div className="sidebar-section-title">导航</div>}
+          {/* 首页瀑布流按钮 */}
+          <button
+            className={`sidebar-item ${currentView === 'home' ? 'active' : ''}`}
+            onClick={() => switchView('home')}
+          >
+            <span className="sidebar-item-icon"><Compass size={16} /></span>
+            {!sidebarCollapsed && (
+              <span className="sidebar-item-label">首页</span>
+            )}
+          </button>
+          {/* 全部文章库按钮 */}
           <button
             className={`sidebar-item ${currentView === 'all' && !currentCategory && !currentTag ? 'active' : ''}`}
             onClick={() => switchView('all')}
           >
-            <span className="sidebar-item-icon"><Home size={16} /></span>
+            <span className="sidebar-item-icon"><Layers size={16} /></span>
             {!sidebarCollapsed && (
               <>
                 <span className="sidebar-item-label">全部</span>

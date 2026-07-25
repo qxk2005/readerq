@@ -7,7 +7,7 @@ const AppContext = createContext(null);
 export function AppProvider({ children }) {
   const [documents, setDocuments] = useState([]);
   const [selectedDoc, _setSelectedDoc] = useState(null);
-  const [currentView, setCurrentView] = useState('new'); // location filter
+  const [currentView, setCurrentView] = useState('home'); // location or home view
   const [currentCategory, setCurrentCategory] = useState(null);
   const [currentTag, setCurrentTag] = useState(null);
   const [tags, setTags] = useState([]);

@@ -28,6 +28,10 @@ const SETTING_KEYS = [
   'ui_doclist_width',
   'ui_rightpanel_width',
   'ui_sidebar_collapsed',
+  'home_feed_settings',
+  'home_feed_filter_tag',
+  'home_feed_summary_max_lines',
+  'home_feed_filter_tags',
 ];
 
 export async function GET() {

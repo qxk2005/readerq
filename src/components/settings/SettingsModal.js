@@ -3,12 +3,13 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useApp } from '@/context/AppContext';
 import { useTheme } from '@/context/ThemeContext';
-import { Settings, Key, Palette, Keyboard, Info, RefreshCw, Lightbulb, Save, Zap, CheckCircle2, XCircle, Wrench, PartyPopper, Sun, Moon, Check, X, Image, CloudUpload, History, Video } from 'lucide-react';
+import { Settings, Key, Palette, Keyboard, Info, RefreshCw, Lightbulb, Save, Zap, CheckCircle2, XCircle, Wrench, PartyPopper, Sun, Moon, Check, X, Image, CloudUpload, History, Video, LayoutGrid } from 'lucide-react';
 import ChangelogPanel from './ChangelogPanel';
 
 const TABS = [
   { id: 'api', label: 'API 配置', icon: Key },
   { id: 'oss', label: '图床配置', icon: Image },
+  { id: 'home', label: '首页设置', icon: LayoutGrid },
   { id: 'appearance', label: '外观设置', icon: Palette },
   { id: 'video', label: '视频设置', icon: Video },
   { id: 'sync', label: '数据同步', icon: RefreshCw },
@@ -17,7 +18,7 @@ const TABS = [
 ];
 
 export default function SettingsModal() {
-  const { showSettings, setShowSettings, syncData, isSyncing, syncStatus: globalSyncStatus, syncProgress, syncCounts, syncError, cancelSync } = useApp();
+  const { showSettings, setShowSettings, syncData, isSyncing, syncStatus: globalSyncStatus, syncProgress, syncCounts, syncError, cancelSync, tags } = useApp();
   const { 
     theme, setTheme, fontSize, setFontSize, 
     lineHeight, setLineHeight, contentWidth, setContentWidth, 
@@ -63,6 +64,20 @@ export default function SettingsModal() {
   const [ossTestLoading, setOssTestLoading] = useState(false);
   const [ossTestResult, setOssTestResult] = useState(null);
 
+  // 首页瀑布流配置状态
+  const [homeFeedSettings, setHomeFeedSettings] = useState({
+    showCover: true,
+    showAuthor: true,
+    showDate: true,
+    showReadingTime: true,
+    showSummary: true,
+    showTags: true,
+    showHighlightCount: true,
+    summaryMaxLines: 3,
+    gridColumnCount: 0,
+  });
+  const [homeFeedFilterTags, setHomeFeedFilterTags] = useState(['readerq']);
+
   // 加载当前配置
   const loadSettings = useCallback(async () => {
     try {
@@ -85,6 +100,14 @@ export default function SettingsModal() {
       setOssAccessKeySecret(data.oss_access_key_secret || '');
       setOssCustomDomain(data.oss_custom_domain || '');
       setOssPathPrefix(data.oss_path_prefix || 'readerq');
+      if (data.home_feed_settings) {
+        try { setHomeFeedSettings(JSON.parse(data.home_feed_settings)); } catch (e) {}
+      }
+      if (data.home_feed_filter_tags) {
+        try { setHomeFeedFilterTags(JSON.parse(data.home_feed_filter_tags)); } catch (e) {}
+      } else if (data.home_feed_filter_tag) {
+        setHomeFeedFilterTags([data.home_feed_filter_tag]);
+      }
       setEnvInfo({
         readwiseFromEnv: data.env_readwise_token,
         openaiFromEnv: data.env_openai_api_key,
@@ -132,6 +155,8 @@ export default function SettingsModal() {
           oss_access_key_secret: ossAccessKeySecret,
           oss_custom_domain: ossCustomDomain,
           oss_path_prefix: ossPathPrefix,
+          home_feed_settings: JSON.stringify(homeFeedSettings),
+          home_feed_filter_tags: JSON.stringify(homeFeedFilterTags),
         }),
       });
       const data = await res.json();
@@ -276,6 +301,12 @@ export default function SettingsModal() {
           ossAccessKeyId, setOssAccessKeyId, ossAccessKeySecret, setOssAccessKeySecret,
           ossCustomDomain, setOssCustomDomain, ossPathPrefix, setOssPathPrefix,
           testOssConfig, ossTestLoading, ossTestResult,
+        }} />;
+      case 'home':
+        return <TabHome {...{
+          homeFeedSettings, setHomeFeedSettings,
+          homeFeedFilterTags, setHomeFeedFilterTags,
+          tags
         }} />;
       case 'appearance':
         return <TabAppearance {...{
@@ -1417,3 +1448,286 @@ function TabVideo({ videoSettings, setVideoSettings }) {
     </div>
   );
 }
+
+// ===== Tab: 首页设置 =====
+function TabHome({
+  homeFeedSettings, setHomeFeedSettings,
+  homeFeedFilterTags, setHomeFeedFilterTags,
+  tags
+}) {
+  const [inputTag, setInputTag] = useState('');
+  const [showSuggestions, setShowSuggestions] = useState(false);
+
+  const toggleElement = (key) => {
+    setHomeFeedSettings(prev => ({ ...prev, [key]: prev[key] === false ? true : false }));
+  };
+
+  const addTag = (tagName) => {
+    const clean = tagName.trim();
+    if (clean && !homeFeedFilterTags.includes(clean)) {
+      setHomeFeedFilterTags([...homeFeedFilterTags, clean]);
+    }
+    setInputTag('');
+    setShowSuggestions(false);
+  };
+
+  const removeTag = (tToRemove) => {
+    setHomeFeedFilterTags(homeFeedFilterTags.filter(t => t !== tToRemove));
+  };
+
+  const filteredSuggestions = (tags || []).filter(t => {
+    const name = t.name || t.key;
+    return name && name.toLowerCase().includes(inputTag.toLowerCase()) && !homeFeedFilterTags.includes(name);
+  });
+
+  const elementsList = [
+    { key: 'showCover', label: '封面图片', desc: '在瀑布流卡片顶部展示文章封面（无封面图时展示高质感艺术代用图）' },
+    { key: 'showAuthor', label: '作者与来源', desc: '显示文章的作者或来源网站信息' },
+    { key: 'showDate', label: '加入时间', desc: '显示文章加入 ReaderQ 的日期或相对时间' },
+    { key: 'showReadingTime', label: '阅读时间与字数', desc: '显示估算的预计阅读时长及总字数' },
+    { key: 'showSummary', label: '文章摘要与简介', desc: '显示文章提取的摘要正文预览' },
+    { key: 'showTags', label: '文章标签', desc: '在卡片下方展示文章包含的标签 Badge' },
+    { key: 'showHighlightCount', label: '划线高亮数', desc: '显示该文章已划线高亮的数量标记' },
+  ];
+
+  return (
+    <div>
+      <div style={{
+        padding: 'var(--space-3)',
+        background: 'var(--color-bg-tertiary)',
+        borderRadius: 'var(--radius-md)',
+        fontSize: 'var(--text-xs)',
+        color: 'var(--color-text-tertiary)',
+        marginBottom: 'var(--space-5)',
+        lineHeight: '1.6',
+      }}>
+        自定义首页瀑布流卡片的显示元素、摘要显示行数，以及 Tab 2 标签筛选瀑布流的多标签规则。
+      </div>
+
+      <h3 style={{ fontSize: 'var(--text-base)', fontWeight: '600', marginBottom: 'var(--space-3)', color: 'var(--color-text-primary)' }}>
+        瀑布流卡片显示元素与格式
+      </h3>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)', marginBottom: 'var(--space-6)' }}>
+        {elementsList.map(item => (
+          <div key={item.key} style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: 'var(--space-3)',
+            background: 'var(--color-bg-secondary)',
+            borderRadius: 'var(--radius-md)',
+            border: '1px solid var(--color-border-light)'
+          }}>
+            <div>
+              <div style={{ fontSize: 'var(--text-sm)', fontWeight: '500', color: 'var(--color-text-primary)' }}>{item.label}</div>
+              <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-tertiary)', marginTop: '2px' }}>{item.desc}</div>
+            </div>
+            <label className="switch" style={{ margin: 0, flexShrink: 0 }}>
+              <input 
+                type="checkbox" 
+                checked={homeFeedSettings[item.key] !== false} 
+                onChange={() => toggleElement(item.key)} 
+              />
+              <span className="slider round" />
+            </label>
+          </div>
+        ))}
+
+        {/* 摘要截断行数设置 */}
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: 'var(--space-3)',
+          background: 'var(--color-bg-secondary)',
+          borderRadius: 'var(--radius-md)',
+          border: '1px solid var(--color-border-light)'
+        }}>
+          <div>
+            <div style={{ fontSize: 'var(--text-sm)', fontWeight: '500', color: 'var(--color-text-primary)' }}>文章摘要预览截断行数</div>
+            <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-tertiary)', marginTop: '2px' }}>设置瀑布流卡片中文章摘要最多显示的行数</div>
+          </div>
+          <select
+            className="form-input"
+            style={{ width: '130px' }}
+            value={homeFeedSettings.summaryMaxLines !== undefined ? homeFeedSettings.summaryMaxLines : 3}
+            onChange={(e) => setHomeFeedSettings(prev => ({ ...prev, summaryMaxLines: parseInt(e.target.value, 10) }))}
+          >
+            <option value={1}>最多 1 行</option>
+            <option value={2}>最多 2 行</option>
+            <option value={3}>最多 3 行（默认）</option>
+            <option value={4}>最多 4 行</option>
+            <option value={5}>最多 5 行</option>
+            <option value={0}>不限制行数</option>
+          </select>
+        </div>
+
+        {/* 瀑布流列数设置 (宽屏适配) */}
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: 'var(--space-3)',
+          background: 'var(--color-bg-secondary)',
+          borderRadius: 'var(--radius-md)',
+          border: '1px solid var(--color-border-light)'
+        }}>
+          <div>
+            <div style={{ fontSize: 'var(--text-sm)', fontWeight: '500', color: 'var(--color-text-primary)' }}>瀑布流列数 (宽屏适配)</div>
+            <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-tertiary)', marginTop: '2px' }}>设置在大屏/宽屏设备上首页瀑布流展示的最大列数</div>
+          </div>
+          <select
+            className="form-input"
+            style={{ width: '160px' }}
+            value={homeFeedSettings.gridColumnCount !== undefined ? homeFeedSettings.gridColumnCount : 0}
+            onChange={(e) => setHomeFeedSettings(prev => ({ ...prev, gridColumnCount: parseInt(e.target.value, 10) }))}
+          >
+            <option value={0}>⚡ 自动响应式 (2~5列)</option>
+            <option value={2}>2 列 (双栏展示)</option>
+            <option value={3}>3 列 (标准三栏)</option>
+            <option value={4}>4 列 (宽屏推荐)</option>
+            <option value={5}>5 列 (超宽屏推荐)</option>
+            <option value={6}>6 列 (极宽屏全景)</option>
+          </select>
+        </div>
+      </div>
+
+      <h3 style={{ fontSize: 'var(--text-base)', fontWeight: '600', marginBottom: 'var(--space-3)', color: 'var(--color-text-primary)' }}>
+        Tab 2 瀑布流标签筛选规则 (多标签模式)
+      </h3>
+      <div style={{
+        padding: 'var(--space-4)',
+        background: 'var(--color-bg-secondary)',
+        borderRadius: 'var(--radius-md)',
+        border: '1px solid var(--color-border-light)'
+      }}>
+        <label className="form-label" style={{ fontWeight: '500' }}>
+          用于 Tab 2 筛选展示的包含标签 (支持多选)
+        </label>
+        <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-tertiary)', marginBottom: 'var(--space-3)' }}>
+          包含下列任意标签的文章都会展示在首页 Tab 2 瀑布流中。可以在下方输入框输入，或从下拉菜单中快速点选添加。
+        </div>
+
+        {/* 已选标签列表 Chip Pills */}
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: 'var(--space-3)' }}>
+          {homeFeedFilterTags.map(t => (
+            <span key={t} style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '4px 10px',
+              borderRadius: '16px',
+              background: 'var(--color-accent-light)',
+              color: 'var(--color-accent)',
+              fontSize: '12px',
+              fontWeight: '500'
+            }}>
+              🏷️ {t}
+              <button
+                onClick={() => removeTag(t)}
+                title="移除标签"
+                style={{
+                  border: 'none',
+                  background: 'transparent',
+                  color: 'inherit',
+                  cursor: 'pointer',
+                  padding: 0,
+                  fontSize: '12px',
+                  lineHeight: 1
+                }}
+              >
+                ✕
+              </button>
+            </span>
+          ))}
+          {homeFeedFilterTags.length === 0 && (
+            <span style={{ fontSize: '12px', color: 'var(--color-text-tertiary)', fontStyle: 'italic' }}>
+              未添加任何筛选标签（当前将显示空列表）
+            </span>
+          )}
+        </div>
+        
+        {/* 输入框与自动补全下拉菜单 */}
+        <div style={{ position: 'relative' }}>
+          <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+            <input
+              type="text"
+              className="form-input"
+              placeholder="输入标签名称按 Enter 或逗号添加..."
+              value={inputTag}
+              onFocus={() => setShowSuggestions(true)}
+              onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
+              onChange={(e) => { setInputTag(e.target.value); setShowSuggestions(true); }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ',' || e.key === ' ') {
+                  e.preventDefault();
+                  if (inputTag) addTag(inputTag);
+                }
+              }}
+              style={{ flex: 1 }}
+            />
+            {tags && tags.length > 0 && (
+              <select
+                className="form-input"
+                style={{ width: '160px' }}
+                value=""
+                onChange={(e) => {
+                  if (e.target.value) addTag(e.target.value);
+                }}
+              >
+                <option value="">+ 从已有选择...</option>
+                {tags.filter(t => !homeFeedFilterTags.includes(t.name || t.key)).map(t => (
+                  <option key={t.key || t.name} value={t.name || t.key}>
+                    🏷️ {t.name || t.key}
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
+
+          {/* 自动补全浮层 Suggestions Dropdown */}
+          {showSuggestions && inputTag.trim() && filteredSuggestions.length > 0 && (
+            <div style={{
+              position: 'absolute',
+              top: '100%',
+              left: 0,
+              right: 0,
+              zIndex: 20,
+              background: 'var(--color-bg-card)',
+              border: '1px solid var(--color-border)',
+              borderRadius: 'var(--radius-md)',
+              boxShadow: 'var(--shadow-lg)',
+              maxHeight: '160px',
+              overflowY: 'auto',
+              marginTop: '4px'
+            }}>
+              {filteredSuggestions.map(t => {
+                const tagName = t.name || t.key;
+                return (
+                  <div
+                    key={tagName}
+                    onMouseDown={() => addTag(tagName)}
+                    style={{
+                      padding: '8px 12px',
+                      cursor: 'pointer',
+                      fontSize: '13px',
+                      color: 'var(--color-text-primary)',
+                      borderBottom: '1px solid var(--color-border-light)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px'
+                    }}
+                  >
+                    <span>🏷️</span>
+                    <span>{tagName}</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+

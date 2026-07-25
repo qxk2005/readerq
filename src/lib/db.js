@@ -249,7 +249,7 @@ export function upsertDocuments(docs) {
 /**
  * 获取缓存的文档列表
  */
-export function getCachedDocuments({ location, category, tag, search, limit = 100, offset = 0 } = {}) {
+export function getCachedDocuments({ location, category, tag, tags, search, limit = 100, offset = 0 } = {}) {
   const db = getDatabase();
   let query = `
     SELECT *, 
@@ -274,7 +274,16 @@ export function getCachedDocuments({ location, category, tag, search, limit = 10
     query += ' AND category = @category';
     params.category = category;
   }
-  if (tag) {
+  if (tags) {
+    const tagList = Array.isArray(tags) ? tags : String(tags).split(',').map(t => t.trim()).filter(Boolean);
+    if (tagList.length > 0) {
+      const tagConditions = tagList.map((t, idx) => {
+        params[`tag_${idx}`] = `%"${t}"%`;
+        return `tags_json LIKE @tag_${idx}`;
+      });
+      query += ` AND (${tagConditions.join(' OR ')})`;
+    }
+  } else if (tag) {
     query += ' AND tags_json LIKE @tag';
     params.tag = `%"${tag}"%`;
   }

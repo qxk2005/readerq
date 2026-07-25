@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { ArrowLeft } from 'lucide-react';
 import { useApp } from '@/context/AppContext';
 import { useTheme } from '@/context/ThemeContext';
 import Sidebar from '@/components/layout/Sidebar';
@@ -12,11 +13,14 @@ import SettingsModal from '@/components/settings/SettingsModal';
 import AddUrlModal from '@/components/ui/AddUrlModal';
 import TagsManagerModal from '@/components/tags/TagsManagerModal';
 import DailyReviewView from '@/components/review/DailyReviewView';
+import HomeFeedView from '@/components/home/HomeFeedView';
 
 export default function HomePage() {
   const {
     currentView,
     switchView,
+    selectedDoc,
+    setSelectedDoc,
     setShowCommandPalette,
     setShowAiPanel,
     showAiPanel,
@@ -204,6 +208,40 @@ export default function HomePage() {
           <div style={{ flex: 1, minWidth: 0, height: '100%', overflow: 'hidden' }}>
             <DailyReviewView onBackToArticles={() => switchView('all')} />
           </div>
+        ) : currentView === 'home' ? (
+          selectedDoc ? (
+            <div style={{ flex: 1, minWidth: 0, height: '100%', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+              {/* 首页直达正文阅读顶部返回栏 */}
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '8px 16px',
+                background: 'var(--color-bg-secondary)',
+                borderBottom: '1px solid var(--color-border)',
+                zIndex: 10,
+                flexShrink: 0
+              }}>
+                <button
+                  className="btn btn-ghost btn-sm"
+                  onClick={() => setSelectedDoc(null)}
+                  style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', fontWeight: '500', color: 'var(--color-accent)' }}
+                >
+                  <ArrowLeft size={16} /> 返回首页瀑布流
+                </button>
+                <span style={{ fontSize: '12px', color: 'var(--color-text-tertiary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '400px' }}>
+                  {selectedDoc.title}
+                </span>
+              </div>
+              <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
+                <ReadingPane />
+              </div>
+            </div>
+          ) : (
+            <div style={{ flex: 1, minWidth: 0, height: '100%', overflow: 'hidden' }}>
+              <HomeFeedView />
+            </div>
+          )
         ) : (
           <>
             <DocumentList width={docListWidth} />

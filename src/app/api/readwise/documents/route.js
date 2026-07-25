@@ -13,6 +13,7 @@ export async function GET(request) {
     const location = searchParams.get('location');
     const category = searchParams.get('category');
     const tag = searchParams.get('tag');
+    const tags = searchParams.get('tags');
     const search = searchParams.get('search');
     const forceSync = searchParams.get('sync') === 'true';
     const page = parseInt(searchParams.get('page') || '1', 10);
@@ -60,7 +61,7 @@ export async function GET(request) {
 
     // 从缓存获取
     const offset = (page - 1) * limit;
-    const documents = getCachedDocuments({ location, category, tag, search, limit, offset });
+    const documents = getCachedDocuments({ location, category, tag, tags, search, limit, offset });
     const stats = getDocumentStats();
 
     return NextResponse.json({
