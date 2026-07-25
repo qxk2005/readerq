@@ -563,7 +563,7 @@ export default function DailyReviewView({ onBackToArticles }) {
                     boxShadow: '0 12px 32px rgba(0,0,0,0.06)',
                     padding: '36px',
                     position: 'relative',
-                    borderLeft: `6px solid var(--highlight-${currentHl.color || 'yellow'})`,
+                    borderLeft: `6px solid var(--highlight-${currentHl.color || 'yellow'}-accent, var(--highlight-${currentHl.color || 'yellow'}))`,
                     wordBreak: 'break-word',
                     overflowWrap: 'anywhere',
                     overflow: 'hidden',
@@ -1234,7 +1234,7 @@ export default function DailyReviewView({ onBackToArticles }) {
                       padding: '16px',
                       borderRadius: '14px',
                       border: '1px solid var(--color-border-light)',
-                      borderLeft: `4px solid var(--highlight-${hl.color || 'yellow'})`,
+                      borderLeft: `4px solid var(--highlight-${hl.color || 'yellow'}-accent, var(--highlight-${hl.color || 'yellow'}))`,
                       position: 'relative'
                     }}>
                       <div style={{ fontSize: '11px', color: 'var(--color-text-tertiary)', marginBottom: '8px', fontWeight: '600' }}>

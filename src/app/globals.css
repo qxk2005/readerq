@@ -43,6 +43,16 @@
   --highlight-purple: #ddd6fe;
   --highlight-red: #fecaca;
 
+  /* 高亮 Accent 颜色 (用于按钮与卡片边框) */
+  --highlight-yellow-accent: #eab308;
+  --highlight-green-accent: #22c55e;
+  --highlight-blue-accent: #3b82f6;
+  --highlight-purple-accent: #a855f7;
+  --highlight-red-accent: #ef4444;
+
+  /* 高亮正文文字颜色 */
+  --highlight-text-color: #09090b;
+
   /* 字体 (Apple SF Pro 原生字体优先) */
   --font-ui: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", 'Inter', sans-serif;
   --font-reading: 'Noto Serif SC', 'Georgia', 'Times New Roman', serif;
@@ -130,11 +140,22 @@
   --color-warning: #ffd60a;
   --color-danger: #ff453a;
 
-  --highlight-yellow: #854d0e40;
-  --highlight-green: #14532d40;
-  --highlight-blue: #1e3a5f40;
-  --highlight-purple: #3b185940;
-  --highlight-red: #7f1d1d40;
+  /* 高亮背景颜色 (Dark Mode 优化调优: 高透明度半透明发光感，大幅提升阅读舒适度) */
+  --highlight-yellow: rgba(234, 179, 8, 0.28);
+  --highlight-green: rgba(34, 197, 94, 0.26);
+  --highlight-blue: rgba(59, 130, 246, 0.28);
+  --highlight-purple: rgba(168, 85, 247, 0.28);
+  --highlight-red: rgba(239, 68, 68, 0.26);
+
+  /* 高亮 Accent 颜色 (Dark Mode 选色按钮与边框) */
+  --highlight-yellow-accent: #facc15;
+  --highlight-green-accent: #4ade80;
+  --highlight-blue-accent: #60a5fa;
+  --highlight-purple-accent: #c084fc;
+  --highlight-red-accent: #f87171;
+
+  /* 高亮正文文字颜色 (Dark Mode 显式白字，保证高对比度) */
+  --highlight-text-color: #ffffff;
 
   --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.4);
   --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.5);
@@ -1399,6 +1420,44 @@ textarea:focus {
 
 .highlight-color.active {
   border-color: var(--color-accent);
+}
+
+/* ---- 正文高亮 (<mark>) 阅读体验增强 ---- */
+mark,
+mark.highlight-color {
+  padding: 1px 3px;
+  border-radius: 4px;
+  color: var(--highlight-text-color, inherit);
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+mark.highlight-color.yellow {
+  background-color: var(--highlight-yellow, #fef08a);
+  color: var(--highlight-text-color, inherit);
+}
+mark.highlight-color.green {
+  background-color: var(--highlight-green, #bbf7d0);
+  color: var(--highlight-text-color, inherit);
+}
+mark.highlight-color.blue {
+  background-color: var(--highlight-blue, #bfdbfe);
+  color: var(--highlight-text-color, inherit);
+}
+mark.highlight-color.purple {
+  background-color: var(--highlight-purple, #ddd6fe);
+  color: var(--highlight-text-color, inherit);
+}
+mark.highlight-color.red {
+  background-color: var(--highlight-red, #fecaca);
+  color: var(--highlight-text-color, inherit);
+}
+
+[data-theme='dark'] mark,
+[data-theme='dark'] mark.highlight-color {
+  color: #ffffff !important;
+  text-shadow: 0 0 1px rgba(0, 0, 0, 0.4);
 }
 
 /* ---- 移动端 / Android 客户端高级 HIG 美化 ---- */

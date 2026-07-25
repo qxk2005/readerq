@@ -92,7 +92,7 @@ export default function HighlightEditor({ highlight, onUpdate, onDelete, onClose
             key={c}
             className="highlight-color-btn" 
             style={{
-              backgroundColor: `var(--highlight-${c})`, 
+              backgroundColor: `var(--highlight-${c}-accent, var(--highlight-${c}))`, 
               border: highlight.color === c ? '2px solid var(--color-text-primary)' : '1px solid rgba(0,0,0,0.1)'
             }} 
             onClick={() => onUpdate(highlight.id, { color: c })} 

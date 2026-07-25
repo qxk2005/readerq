@@ -1033,11 +1033,11 @@ export default function ReadingPane() {
         .highlight-color-btn:hover {
           transform: scale(1.1);
         }
-        mark.highlight-color.yellow { background-color: var(--highlight-yellow, #fef08a); }
-        mark.highlight-color.green { background-color: var(--highlight-green, #bbf7d0); }
-        mark.highlight-color.blue { background-color: var(--highlight-blue, #bfdbfe); }
-        mark.highlight-color.purple { background-color: var(--highlight-purple, #ddd6fe); }
-        mark.highlight-color.red { background-color: var(--highlight-red, #fecaca); }
+        mark.highlight-color.yellow { background-color: var(--highlight-yellow, #fef08a); color: var(--highlight-text-color); }
+        mark.highlight-color.green { background-color: var(--highlight-green, #bbf7d0); color: var(--highlight-text-color); }
+        mark.highlight-color.blue { background-color: var(--highlight-blue, #bfdbfe); color: var(--highlight-text-color); }
+        mark.highlight-color.purple { background-color: var(--highlight-purple, #ddd6fe); color: var(--highlight-text-color); }
+        mark.highlight-color.red { background-color: var(--highlight-red, #fecaca); color: var(--highlight-text-color); }
         
         .tag-input-container {
           display: flex;
@@ -1090,11 +1090,11 @@ export default function ReadingPane() {
             <Target size={14} />
           </button>
           <div style={{ width: '1px', height: '16px', backgroundColor: 'var(--color-border)', margin: '0 4px' }} />
-          <button className="highlight-color-btn" style={{backgroundColor: '#fef08a'}} onClick={() => handleCreateHighlight('yellow')} />
-          <button className="highlight-color-btn" style={{backgroundColor: '#bbf7d0'}} onClick={() => handleCreateHighlight('green')} />
-          <button className="highlight-color-btn" style={{backgroundColor: '#bfdbfe'}} onClick={() => handleCreateHighlight('blue')} />
-          <button className="highlight-color-btn" style={{backgroundColor: '#ddd6fe'}} onClick={() => handleCreateHighlight('purple')} />
-          <button className="highlight-color-btn" style={{backgroundColor: '#fecaca'}} onClick={() => handleCreateHighlight('red')} />
+          <button className="highlight-color-btn" style={{backgroundColor: 'var(--highlight-yellow-accent, #fef08a)'}} onClick={() => handleCreateHighlight('yellow')} />
+          <button className="highlight-color-btn" style={{backgroundColor: 'var(--highlight-green-accent, #bbf7d0)'}} onClick={() => handleCreateHighlight('green')} />
+          <button className="highlight-color-btn" style={{backgroundColor: 'var(--highlight-blue-accent, #bfdbfe)'}} onClick={() => handleCreateHighlight('blue')} />
+          <button className="highlight-color-btn" style={{backgroundColor: 'var(--highlight-purple-accent, #ddd6fe)'}} onClick={() => handleCreateHighlight('purple')} />
+          <button className="highlight-color-btn" style={{backgroundColor: 'var(--highlight-red-accent, #fecaca)'}} onClick={() => handleCreateHighlight('red')} />
         </div>
       )}
 
@@ -1806,7 +1806,7 @@ export default function ReadingPane() {
                       {/* 高亮文本 */}
                       {textWithoutImages && (
                         <div style={{ 
-                          borderLeft: `4px solid var(--highlight-${hl.color || 'yellow'})`, 
+                          borderLeft: `4px solid var(--highlight-${hl.color || 'yellow'}-accent, var(--highlight-${hl.color || 'yellow'}))`, 
                           paddingLeft: 'var(--space-2)',
                           fontSize: '13px',
                           lineHeight: '1.5',
@@ -1933,7 +1933,7 @@ export default function ReadingPane() {
                                 key={c}
                                 style={{
                                   width: '20px', height: '20px', borderRadius: '50%',
-                                  backgroundColor: `var(--highlight-${c})`,
+                                  backgroundColor: `var(--highlight-${c}-accent, var(--highlight-${c}))`,
                                   border: hl.color === c ? '2px solid var(--color-text-primary)' : '1px solid rgba(0,0,0,0.1)',
                                   cursor: 'pointer', padding: 0
                                 }}
