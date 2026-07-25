@@ -129,6 +129,7 @@ export default function HomeFeedView() {
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
   const [failedImages, setFailedImages] = useState(new Set());
+  const [loadedCovers, setLoadedCovers] = useState(new Set());
   const containerRef = useRef(null);
 
   // 首页瀑布流显示开关设置
@@ -161,13 +162,6 @@ export default function HomeFeedView() {
       })
       .catch(() => {});
   }, []);
-
-  // 重置分页并加载第一页
-  useEffect(() => {
-    setPage(1);
-    setHasMore(true);
-    fetchDocuments(1, true);
-  }, [activeTab, filterTags]);
 
   // 加载特定页面的文档列表数据
   const fetchDocuments = useCallback(async (pageNum, isReset = false) => {
@@ -207,6 +201,13 @@ export default function HomeFeedView() {
     }
   }, [activeTab, filterTags]);
 
+  // 重置分页并加载第一页
+  useEffect(() => {
+    setPage(1);
+    setHasMore(true);
+    fetchDocuments(1, true);
+  }, [activeTab, filterTags, fetchDocuments]);
+
   // 页码变化时加载下一页
   useEffect(() => {
     if (page > 1) {
@@ -224,9 +225,47 @@ export default function HomeFeedView() {
     }
   };
 
-  const handleImageError = (docId) => {
-    setFailedImages(prev => new Set(prev).add(docId));
-  };
+  // 预检 URL 是否为明显的图标、favicon 或极小尺寸缩略图
+  const isUrlTooSmall = useCallback((url) => {
+    if (!url) return true;
+    const lower = url.toLowerCase();
+    if (lower.includes('favicon') || lower.includes('apple-touch-icon')) return true;
+    if (lower.includes('16x16') || lower.includes('32x32') || lower.includes('48x48') || lower.includes('64x64') || lower.includes('100x100') || lower.includes('128x128')) return true;
+    return false;
+  }, []);
+
+  const handleImageError = useCallback((docId) => {
+    setFailedImages(prev => {
+      const next = new Set(prev);
+      next.add(docId);
+      return next;
+    });
+  }, []);
+
+  // 校验图片加载后的真实宽高尺寸
+  const handleImageLoad = useCallback((docId, e) => {
+    const img = e.target;
+    if (img) {
+      const { naturalWidth, naturalHeight } = img;
+      // 判定条件：宽度 < 300px 或 高度 < 150px 或 像素乘积 < 48000（过小图片放置于瀑布流卡片封面不好看，替换为内置精美图）
+      const isTooSmall = (naturalWidth > 0 && naturalWidth < 300) ||
+                         (naturalHeight > 0 && naturalHeight < 150) ||
+                         (naturalWidth * naturalHeight < 48000);
+      if (isTooSmall) {
+        setFailedImages(prev => {
+          const next = new Set(prev);
+          next.add(docId);
+          return next;
+        });
+      } else {
+        setLoadedCovers(prev => {
+          const next = new Set(prev);
+          next.add(docId);
+          return next;
+        });
+      }
+    }
+  }, []);
 
   // 格式化日期
   const formatDate = (dateStr) => {
@@ -449,7 +488,7 @@ export default function HomeFeedView() {
             ` }} />
 
             {documents.map(doc => {
-              const hasCover = settings.showCover !== false && doc.image_url && !failedImages.has(doc.id);
+              const hasCover = settings.showCover !== false && doc.image_url && !failedImages.has(doc.id) && !isUrlTooSmall(doc.image_url);
               const tagsList = doc.tags ? Object.keys(doc.tags) : [];
 
               return (
@@ -463,12 +502,39 @@ export default function HomeFeedView() {
                   {/* 封面图片 / 备用艺术图案 */}
                   {settings.showCover !== false && (
                     hasCover ? (
-                      <div style={{ width: '100%', maxHeight: '240px', overflow: 'hidden', position: 'relative' }}>
+                      <div style={{
+                        width: '100%',
+                        height: '180px',
+                        overflow: 'hidden',
+                        position: 'relative',
+                        background: 'var(--color-bg-secondary)',
+                        borderTopLeftRadius: 'var(--radius-lg)',
+                        borderTopRightRadius: 'var(--radius-lg)'
+                      }}>
+                        {/* 加载完成前以艺术封面垫底作平滑过渡 */}
+                        {!loadedCovers.has(doc.id) && (
+                          <FallbackCover
+                            title={doc.title}
+                            category={doc.category}
+                            siteName={doc.site_name || doc.source}
+                          />
+                        )}
                         <img
                           src={doc.image_url}
                           alt={doc.title}
                           onError={() => handleImageError(doc.id)}
-                          style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                          onLoad={(e) => handleImageLoad(doc.id, e)}
+                          style={{
+                            width: '100%',
+                            height: '100%',
+                            objectFit: 'cover',
+                            display: 'block',
+                            position: 'absolute',
+                            top: 0,
+                            left: 0,
+                            opacity: loadedCovers.has(doc.id) ? 1 : 0,
+                            transition: 'opacity 0.25s ease'
+                          }}
                         />
                       </div>
                     ) : (
