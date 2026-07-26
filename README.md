@@ -38,27 +38,27 @@ ReaderQ 采用了前后端分离但高度内聚的轻量化架构体系，兼顾
 ```mermaid
 graph TD
     subgraph Frontend["前端展示与交互层 (React 19 / Next.js App Router)"]
-        UI[三栏式主工作区 Sidebar + DocumentList + ReadingPane]
-        Zen[禅阅读 ZenReadView (3D Gacha / 3+2 扁平一屏/ 固顶 Header)]
-        Review[每日回顾 DailyReviewView (记忆曲线卡片)]
-        Video[视频与字幕阅读器 VideoReadingPane]
-        Ctx[全局状态中心 AppContext (内存乐观更新)]
+        UI["三栏式主工作区 Sidebar + DocumentList + ReadingPane"]
+        Zen["禅阅读 ZenReadView (3D Gacha / 3+2 扁平一屏 / 固顶 Header)"]
+        Review["每日回顾 DailyReviewView (记忆曲线卡片)"]
+        Video["视频与字幕阅读器 VideoReadingPane"]
+        Ctx["全局状态中心 AppContext (内存乐观更新)"]
     end
 
     subgraph Gateway["后端 API 网关 (Next.js 15 App Router Routes)"]
-        API_Readwise[/api/readwise/...]
-        API_Doc[/api/documents/...]
-        API_Zen[/api/zen-read/...]
-        API_Review[/api/daily-review/...]
-        API_OSS[/api/oss/...]
-        API_AI[/api/ai/...]
+        API_Readwise["/api/readwise/..."]
+        API_Doc["/api/documents/..."]
+        API_Zen["/api/zen-read/..."]
+        API_Review["/api/daily-review/..."]
+        API_OSS["/api/oss/..."]
+        API_AI["/api/ai/..."]
     end
 
     subgraph Data["数据持久化与远端服务 (Storage & External Cloud)"]
-        DB[(本地 SQLite 数据库 better-sqlite3 WAL 模式)]
-        RW[Readwise V3 Cloud API]
-        OSS[阿里云 OSS 图床 & zen_read_profile.json 多端同步]
-        LLM[OpenAI / DeepSeek / 兼容大模型 API]
+        DB[("本地 SQLite 数据库 better-sqlite3 WAL 模式")]
+        RW["Readwise V3 Cloud API"]
+        OSS["阿里云 OSS 图床 & zen_read_profile.json 多端同步"]
+        LLM["OpenAI / DeepSeek / 兼容大模型 API"]
     end
 
     UI --> Ctx
@@ -77,9 +77,9 @@ graph TD
 ### 💡 核心设计理念
 
 1. **零等待离线优先 (Offline-First Speed)**
-   使用 `better-sqlite3`（WAL 模式）在本地完成元数据的高速索引与检索。页面秒级秒开，并在后台静默进行增量增量拉取与同步。
+   使用 `better-sqlite3`（WAL 模式）在本地完成元数据的高速索引与检索。页面秒级秒开，并在后台静默进行增量拉取与同步。
 2. **三步走乐观更新 (Optimistic UI Pattern)**
-   由于云端 API 存在“最终一致性”缓存延迟，用户打标签、加高亮或沉浸反馈时，系统同步执行：`(1) 远端 API 提交 -> (2) 本地 SQLite 写入 -> (3) 前台内存乐观更新`，彻底消灭 UI 闪烁和数据覆盖的Race Condition。
+   由于云端 API 存在“最终一致性”缓存延迟，用户打标签、加高亮或沉浸反馈时，系统同步执行：`(1) 远端 API 提交 -> (2) 本地 SQLite 写入 -> (3) 前台内存乐观更新`，彻底消灭 UI 闪烁和数据覆盖的 Race Condition。
 3. **沉浸式禅意与游戏化抽卡**
    独创“禅阅读”AI 智能抽卡系统，结合心境问答与 SSR / SR / R 3D 抽卡仪式，将长文阅读转化为富有趣味的知识探索。
 
@@ -93,11 +93,11 @@ graph TD
 
 ```mermaid
 flowchart LR
-    A[AI 探针问答] --> B[3D 星芒抽卡仪式]
-    B --> C[3+2 扁平一屏卡池展列]
-    C --> D[核心要点拆解与禅定计时]
-    D --> E[星级打分与成就打卡]
-    E --> F[翡翠高尊已读转化 + OSS 跨端同步]
+    A["AI 探针问答"] --> B["3D 星芒抽卡仪式"]
+    B --> C["3+2 扁平一屏卡池展列"]
+    C --> D["核心要点拆解与禅定计时"]
+    D --> E["星级打分与成就打卡"]
+    E --> F["翡翠高尊已读转化 + OSS 跨端同步"]
 ```
 
 - **AI 心境感应提问 (AI Probe Questions)**：基于用户当前阅读偏好与存量库，AI 动态生成 3 道探针提问，感应用户当下心境。
