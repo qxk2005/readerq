@@ -249,7 +249,7 @@ export function upsertDocuments(docs) {
 /**
  * 获取缓存的文档列表
  */
-export function getCachedDocuments({ location, category, tag, tags, search, limit = 100, offset = 0 } = {}) {
+export function getCachedDocuments({ location, category, tag, tags, search, prioritizeInbox = false, limit = 100, offset = 0 } = {}) {
   const db = getDatabase();
   let query = `
     SELECT *, 
@@ -292,8 +292,12 @@ export function getCachedDocuments({ location, category, tag, tags, search, limi
     params.search = `%${search}%`;
   }
 
-  // 排序规则：全部默认以最后标记/更新时间（last_highlighted_at）降序排列
-  query += ' ORDER BY last_highlighted_at DESC LIMIT @limit OFFSET @offset';
+  // 排序规则：若开启优先收件箱，优先按 location = 'new' 置顶，随后以最后标记/更新时间（last_highlighted_at）降序排列
+  if (prioritizeInbox) {
+    query += " ORDER BY (CASE WHEN location = 'new' THEN 0 ELSE 1 END) ASC, last_highlighted_at DESC LIMIT @limit OFFSET @offset";
+  } else {
+    query += ' ORDER BY last_highlighted_at DESC LIMIT @limit OFFSET @offset';
+  }
   params.limit = limit;
   params.offset = offset;
 

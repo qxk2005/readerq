@@ -41,6 +41,23 @@ export function AppProvider({ children }) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [isContentLoading, setIsContentLoading] = useState(false);
   const [contentError, setContentError] = useState(null);
+  const [toast, setToast] = useState(null); // { message, type: 'info' | 'success' | 'warning' | 'error', id }
+
+  const showToast = useCallback((message, type = 'info', duration = 3000) => {
+    const id = Date.now();
+    setToast({ message, type, id });
+    if (duration > 0) {
+      setTimeout(() => {
+        setToast(prev => (prev && prev.id === id ? null : prev));
+      }, duration);
+    }
+  }, []);
+
+  const notifyArticlesUpdated = useCallback(() => {
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('readerq:articles-updated'));
+    }
+  }, []);
 
   // 单篇文档正文按需同步
   const fetchDocumentDetails = useCallback(async (id) => {
@@ -148,16 +165,17 @@ export function AppProvider({ children }) {
         setIsSyncing(true);
       } else {
         if (isSyncing) {
-          // 如果刚从 syncing 变为 idle/canceled/error，触发文档刷新
+          // 如果刚从 syncing 变为 idle/canceled/error，触发文档刷新与广播通知
           fetchDocuments();
           fetchTags();
+          notifyArticlesUpdated();
         }
         setIsSyncing(false);
       }
     } catch (e) {
       console.error('获取同步状态失败:', e);
     }
-  }, [isSyncing, fetchDocuments]);
+  }, [isSyncing, fetchDocuments, notifyArticlesUpdated]);
 
   // 定期轮询同步状态
   useEffect(() => {
@@ -222,21 +240,26 @@ export function AppProvider({ children }) {
       const data = await res.json();
       if (data.error) throw new Error(data.error);
       await fetchDocuments();
+      notifyArticlesUpdated();
+      showToast('文章保存成功', 'success');
       return data;
     } catch (err) {
       console.error('保存文档失败:', err);
+      showToast(err.message || '保存文档失败', 'error');
       throw err;
     }
-  }, [fetchDocuments]);
+  }, [fetchDocuments, notifyArticlesUpdated, showToast]);
 
-  // 批量移动文档
   // 批量移动文档 (支持单 string id 或 string[] 数组)
   const batchMoveDocuments = useCallback(async (ids, location) => {
     try {
       const idArray = Array.isArray(ids) ? ids : [ids];
       if (idArray.length === 0) return true;
 
-      // 乐观更新
+      // 乐观更新 selectedDoc 的 location
+      _setSelectedDoc(prev => (prev && idArray.includes(prev.id) ? { ...prev, location } : prev));
+
+      // 乐观更新列表
       setDocuments(prev => prev.filter(doc => {
         if (idArray.includes(doc.id)) {
           if (currentView === 'all') return true;
@@ -254,11 +277,19 @@ export function AppProvider({ children }) {
       const data = await res.json();
       if (data.error) throw new Error(data.error);
       
+      // Toast 提醒
+      let msg = '操作成功';
+      if (location === 'archive') msg = '已将文章移至归档';
+      else if (location === 'later') msg = '已移至稍后阅读';
+      else if (location === 'new') msg = '已移至收件箱';
+      else if (location === 'trash') msg = '已移入垃圾箱';
+      showToast(msg, 'success');
+
+      notifyArticlesUpdated();
+      await fetchDocuments();
       return true;
     } catch (err) {
       console.error('批量移动文档失败:', err);
-      fetchDocuments({ page: 1 });
-      throw err;
     }
   }, [currentView, fetchDocuments]);
 
@@ -423,6 +454,9 @@ export function AppProvider({ children }) {
     setSidebarCollapsed,
     isContentLoading,
     contentError,
+    toast,
+    showToast,
+    notifyArticlesUpdated,
     fetchDocuments,
     fetchDocumentDetails,
     syncData,

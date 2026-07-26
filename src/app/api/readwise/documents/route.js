@@ -15,6 +15,7 @@ export async function GET(request) {
     const tag = searchParams.get('tag');
     const tags = searchParams.get('tags');
     const search = searchParams.get('search');
+    const prioritizeInbox = searchParams.get('prioritize_inbox') === 'true';
     const forceSync = searchParams.get('sync') === 'true';
     const page = parseInt(searchParams.get('page') || '1', 10);
     const limit = parseInt(searchParams.get('limit') || '50', 10);
@@ -61,7 +62,7 @@ export async function GET(request) {
 
     // 从缓存获取
     const offset = (page - 1) * limit;
-    const documents = getCachedDocuments({ location, category, tag, tags, search, limit, offset });
+    const documents = getCachedDocuments({ location, category, tag, tags, search, prioritizeInbox, limit, offset });
     const stats = getDocumentStats();
 
     return NextResponse.json({

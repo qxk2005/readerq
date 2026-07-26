@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useApp } from '@/context/AppContext';
-import { Sparkles, Clock, BookOpen, User, Tag, Highlighter, Calendar, ArrowRight, RefreshCw, FileText, Video, Rss, Mail, Bookmark, Layers } from 'lucide-react';
+import { Sparkles, Clock, BookOpen, User, Tag, Highlighter, Calendar, ArrowRight, RefreshCw, FileText, Video, Rss, Mail, Bookmark, Layers, Inbox } from 'lucide-react';
 
 /**
  * 艺术感备用封面生成组件（当文章没有封面图或加载失败时使用）
@@ -121,7 +121,10 @@ function FallbackCover({ title, category, siteName }) {
 }
 
 export default function HomeFeedView() {
-  const { setSelectedDoc } = useApp();
+  const { setSelectedDoc, selectedDoc, isSyncing } = useApp();
+  const prevSelectedDocRef = useRef(selectedDoc);
+  const prevIsSyncingRef = useRef(isSyncing);
+
   const [activeTab, setActiveTabState] = useState(() => {
     if (typeof window !== 'undefined') {
       return localStorage.getItem('readerq_home_feed_active_tab') || 'latest';
@@ -135,6 +138,25 @@ export default function HomeFeedView() {
       localStorage.setItem('readerq_home_feed_active_tab', tab);
     }
   }, []);
+
+  const [prioritizeInbox, setPrioritizeInboxState] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('readerq_home_feed_prioritize_inbox');
+      return saved !== null ? saved === 'true' : true;
+    }
+    return true;
+  });
+
+  const togglePrioritizeInbox = useCallback(() => {
+    setPrioritizeInboxState(prev => {
+      const next = !prev;
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('readerq_home_feed_prioritize_inbox', String(next));
+      }
+      return next;
+    });
+  }, []);
+
   const [documents, setDocuments] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isFetchingMore, setIsFetchingMore] = useState(false);
@@ -185,7 +207,7 @@ export default function HomeFeedView() {
 
     try {
       const limit = 24;
-      let url = `/api/readwise/documents?page=${pageNum}&limit=${limit}`;
+      let url = `/api/readwise/documents?page=${pageNum}&limit=${limit}&prioritize_inbox=${prioritizeInbox}`;
       if (activeTab === 'tag' && filterTags.length > 0) {
         url += `&tags=${encodeURIComponent(filterTags.join(','))}`;
       }
@@ -211,14 +233,45 @@ export default function HomeFeedView() {
       setIsLoading(false);
       setIsFetchingMore(false);
     }
-  }, [activeTab, filterTags]);
+  }, [activeTab, filterTags, prioritizeInbox]);
 
-  // 重置分页并加载第一页
-  useEffect(() => {
+  const refreshFeed = useCallback(() => {
     setPage(1);
     setHasMore(true);
     fetchDocuments(1, true);
-  }, [activeTab, filterTags, fetchDocuments]);
+  }, [fetchDocuments]);
+
+  // 1. 监听全局文章更新事件广播
+  useEffect(() => {
+    const handleArticlesUpdated = () => {
+      refreshFeed();
+    };
+    window.addEventListener('readerq:articles-updated', handleArticlesUpdated);
+    return () => {
+      window.removeEventListener('readerq:articles-updated', handleArticlesUpdated);
+    };
+  }, [refreshFeed]);
+
+  // 2. 当从文章正文返回瀑布流 (selectedDoc 从有值变 null) 时自动刷新
+  useEffect(() => {
+    if (prevSelectedDocRef.current && !selectedDoc) {
+      refreshFeed();
+    }
+    prevSelectedDocRef.current = selectedDoc;
+  }, [selectedDoc, refreshFeed]);
+
+  // 3. 当同步状态由正在同步变为空闲时自动刷新
+  useEffect(() => {
+    if (prevIsSyncingRef.current && !isSyncing) {
+      refreshFeed();
+    }
+    prevIsSyncingRef.current = isSyncing;
+  }, [isSyncing, refreshFeed]);
+
+  // 重置分页并加载第一页
+  useEffect(() => {
+    refreshFeed();
+  }, [activeTab, filterTags, refreshFeed]);
 
   // 页码变化时加载下一页
   useEffect(() => {
@@ -365,37 +418,132 @@ export default function HomeFeedView() {
           </div>
         </div>
 
-        {/* 2 种瀑布流内容切换 Tab */}
+        {/* 顶部 Tab 极简胶囊容器 */}
         <div style={{
           display: 'flex',
           alignItems: 'center',
           background: 'var(--color-bg-secondary)',
           padding: '4px',
           borderRadius: 'var(--radius-full)',
-          border: '1px solid var(--color-border)'
+          border: '1px solid var(--color-border)',
+          gap: '2px'
         }}>
-          <button
-            onClick={() => setActiveTab('latest')}
+          {/* 局部动画 CSS 规则 */}
+          <style dangerouslySetInnerHTML={{ __html: `
+            .inbox-hover-toggle-btn {
+              display: flex;
+              align-items: center;
+              gap: 6px;
+              padding: 6px 10px;
+              border-radius: var(--radius-full);
+              border: none;
+              background: transparent;
+              color: var(--color-text-tertiary);
+              font-size: 12px;
+              font-weight: 500;
+              cursor: pointer;
+              transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+              white-space: nowrap;
+              position: relative;
+            }
+            .inbox-hover-toggle-btn.active {
+              color: var(--color-accent);
+              background: rgba(59, 130, 246, 0.12);
+            }
+            .inbox-hover-toggle-btn .inbox-dot-badge {
+              position: absolute;
+              top: -2px;
+              right: -3px;
+              width: 6px;
+              height: 6px;
+              border-radius: 50%;
+              background: var(--color-accent);
+              box-shadow: 0 0 4px var(--color-accent);
+            }
+            .inbox-hover-toggle-btn .inbox-toggle-label {
+              max-width: 0px;
+              opacity: 0;
+              overflow: hidden;
+              transition: max-width 0.25s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.2s ease;
+              white-space: nowrap;
+              display: inline-block;
+            }
+            .inbox-hover-toggle-btn:hover {
+              background: var(--color-bg-card);
+              color: var(--color-accent);
+              box-shadow: var(--shadow-sm);
+              padding-right: 12px;
+            }
+            .inbox-hover-toggle-btn:hover .inbox-toggle-label {
+              max-width: 80px;
+              opacity: 1;
+            }
+          ` }} />
+
+          {/* Tab 1: 最新加入 + 优先收件箱 (一体化 Segmented Pill 组合按钮) */}
+          <div
             style={{
-              padding: '6px 16px',
-              borderRadius: 'var(--radius-full)',
-              border: 'none',
-              background: activeTab === 'latest' ? 'var(--color-bg-card)' : 'transparent',
-              color: activeTab === 'latest' ? 'var(--color-accent)' : 'var(--color-text-secondary)',
-              fontSize: '13px',
-              fontWeight: activeTab === 'latest' ? '600' : '400',
-              cursor: 'pointer',
-              boxShadow: activeTab === 'latest' ? 'var(--shadow-sm)' : 'none',
-              transition: 'all 0.2s ease',
               display: 'flex',
               alignItems: 'center',
-              gap: '6px'
+              borderRadius: 'var(--radius-full)',
+              background: activeTab === 'latest' ? 'var(--color-bg-card)' : 'transparent',
+              boxShadow: activeTab === 'latest' ? 'var(--shadow-sm)' : 'none',
+              padding: '2px',
+              transition: 'all 0.2s ease',
             }}
           >
-            <Clock size={14} />
-            最新加入
-          </button>
+            {/* 主切 Tab 触发区 */}
+            <button
+              onClick={() => setActiveTab('latest')}
+              style={{
+                padding: '5px 10px 5px 12px',
+                borderRadius: 'var(--radius-full)',
+                border: 'none',
+                background: 'transparent',
+                color: activeTab === 'latest' ? 'var(--color-accent)' : 'var(--color-text-secondary)',
+                fontSize: '13px',
+                fontWeight: activeTab === 'latest' ? '600' : '400',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px'
+              }}
+            >
+              <Clock size={14} />
+              最新加入
+            </button>
 
+            {/* 内部分隔线 */}
+            <div style={{
+              width: '1px',
+              height: '12px',
+              background: 'var(--color-border)',
+              margin: '0 2px',
+              opacity: activeTab === 'latest' ? 0.6 : 0.3
+            }} />
+
+            {/* 内嵌优先收件箱 Toggle */}
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                if (activeTab !== 'latest') setActiveTab('latest');
+                togglePrioritizeInbox();
+              }}
+              className={`inbox-hover-toggle-btn ${prioritizeInbox ? 'active' : ''}`}
+              title={prioritizeInbox ? '当前已开启：优先置顶显示收件箱文章 (点击关闭)' : '当前已关闭：按绝对时间降序混排 (点击开启置顶)'}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', position: 'relative' }}>
+                <Inbox size={13} />
+                {prioritizeInbox && <span className="inbox-dot-badge" />}
+              </div>
+              <span className="inbox-toggle-label">优先收件箱</span>
+            </button>
+          </div>
+
+          {/* 细分隔线 */}
+          <div style={{ width: '1px', height: '14px', background: 'var(--color-border)', margin: '0 4px' }} />
+
+          {/* Tab 2: 精选标签 */}
           <button
             onClick={() => setActiveTab('tag')}
             title={filterTags.length > 0 ? `当前筛选标签 (${filterTags.length}个):\n${filterTags.join(', ')}` : '精选标签'}
@@ -571,21 +719,41 @@ export default function HomeFeedView() {
 
                   {/* 卡片正文主体 */}
                   <div style={{ padding: 'var(--space-4)' }}>
-                    {/* 作者与来源信息 */}
-                    {settings.showAuthor !== false && (doc.author || doc.site_name || doc.source) && (
-                      <div style={{
-                        display: 'flex', alignItems: 'center', gap: '6px',
-                        fontSize: '12px', color: 'var(--color-text-tertiary)',
-                        marginBottom: '8px', fontWeight: '500'
-                      }}>
-                        <User size={13} style={{ opacity: 0.7 }} />
-                        <span style={{
-                          whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'
-                        }}>
-                          {doc.author || doc.site_name || doc.source}
-                        </span>
+                    {/* 作者与来源信息 & INBOX Badge */}
+                    <div style={{
+                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                      gap: '6px', fontSize: '12px', color: 'var(--color-text-tertiary)',
+                      marginBottom: '8px', fontWeight: '500'
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', overflow: 'hidden' }}>
+                        {settings.showAuthor !== false && (doc.author || doc.site_name || doc.source) && (
+                          <>
+                            <User size={13} style={{ opacity: 0.7 }} />
+                            <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                              {doc.author || doc.site_name || doc.source}
+                            </span>
+                          </>
+                        )}
                       </div>
-                    )}
+                      {doc.location === 'new' && (
+                        <span style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '3px',
+                          padding: '2px 7px',
+                          borderRadius: '10px',
+                          background: 'rgba(59, 130, 246, 0.12)',
+                          color: 'var(--color-accent)',
+                          fontSize: '10px',
+                          fontWeight: '700',
+                          letterSpacing: '0.04em',
+                          flexShrink: 0
+                        }}>
+                          <Inbox size={10} />
+                          INBOX
+                        </span>
+                      )}
+                    </div>
 
                     {/* 文章标题 */}
                     <h2 style={{

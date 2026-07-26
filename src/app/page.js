@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, AlertCircle, Info, XCircle } from 'lucide-react';
 import { useApp } from '@/context/AppContext';
 import { useTheme } from '@/context/ThemeContext';
 import Sidebar from '@/components/layout/Sidebar';
@@ -31,6 +31,7 @@ export default function HomePage() {
     syncData,
     isSyncing,
     syncError,
+    toast,
   } = useApp();
   const { toggleTheme } = useTheme();
 
@@ -254,6 +255,29 @@ export default function HomePage() {
           </>
         )}
       </div>
+
+      {/* 全局操作提示 Toast */}
+      {toast && (
+        <div 
+          className="toast"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            background: toast.type === 'error' ? 'var(--color-danger)' : toast.type === 'success' ? '#10b981' : 'var(--color-bg-tooltip)',
+            color: '#ffffff',
+            boxShadow: '0 8px 20px rgba(0,0,0,0.18)',
+            fontWeight: '500',
+            zIndex: 2000,
+          }}
+        >
+          {toast.type === 'success' && <CheckCircle2 size={16} />}
+          {toast.type === 'error' && <XCircle size={16} />}
+          {toast.type === 'warning' && <AlertCircle size={16} />}
+          {toast.type === 'info' && <Info size={16} />}
+          <span>{toast.message}</span>
+        </div>
+      )}
 
       {/* 同步状态通知 */}
       {isSyncing && (

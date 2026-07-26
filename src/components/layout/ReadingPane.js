@@ -1302,7 +1302,30 @@ export default function ReadingPane() {
                   <Clock size={16} />
                 </button>
               )}
-              {selectedDoc.location !== 'archive' && (
+              {selectedDoc.location === 'archive' ? (
+                <button
+                  className="btn btn-ghost btn-sm"
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    fontSize: '12px',
+                    color: 'var(--color-accent)',
+                    background: 'var(--color-accent-light)',
+                    padding: '2px 10px',
+                    borderRadius: '12px',
+                    border: '1px solid var(--color-accent)',
+                    cursor: 'pointer'
+                  }}
+                  onClick={async () => {
+                    await batchMoveDocuments([selectedDoc.id], 'new');
+                  }}
+                  title="点击取消归档，移回收件箱"
+                >
+                  <Archive size={14} />
+                  已归档
+                </button>
+              ) : (
                 <button
                   className="btn-icon"
                   onClick={async () => {
