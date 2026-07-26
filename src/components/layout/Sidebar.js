@@ -4,7 +4,11 @@ import { useApp } from '@/context/AppContext';
 import { useTheme } from '@/context/ThemeContext';
 import { LOCATION_LABELS, CATEGORY_LABELS } from '@/lib/utils';
 import { CATEGORY_ICONS_SVG, LOCATION_ICONS_SVG } from '@/components/ui/icons';
-import { Home, Compass, Layers, Tag, Plus, RefreshCw, Sun, Moon, Settings, SlidersHorizontal, Sparkles } from 'lucide-react';
+import { 
+  Compass, Layers, Search, Plus, Tag, Settings,
+  Sparkles, ChevronLeft, ChevronRight, Hash, Folder, Wand2, RefreshCw,
+  Sun, Moon, Home, SlidersHorizontal
+} from 'lucide-react';
 
 // 折叠左侧栏的矩形图标 (同 Readwise 官方)
 const SidebarCloseIcon = () => (
@@ -221,6 +225,26 @@ export default function Sidebar({ width }) {
               <>
                 <span className="sidebar-item-label" style={{ fontWeight: '600' }}>每日回顾</span>
                 <span className="sidebar-item-count" style={{ background: 'rgba(255, 149, 0, 0.15)', color: '#ff9500', fontWeight: '700' }}>Review</span>
+              </>
+            )}
+          </button>
+
+          {/* 禅阅读 (Zen Read) AI 抽卡推荐入口 */}
+          <button
+            className={`sidebar-item ${currentView === 'zen-read' ? 'active' : ''}`}
+            onClick={() => switchView('zen-read')}
+            style={{
+              marginTop: '4px',
+              color: currentView === 'zen-read' ? '#8b5cf6' : 'inherit'
+            }}
+          >
+            <span className="sidebar-item-icon" style={{ color: '#8b5cf6' }}>
+              <Wand2 size={16} />
+            </span>
+            {!sidebarCollapsed && (
+              <>
+                <span className="sidebar-item-label" style={{ fontWeight: '600' }}>禅阅读</span>
+                <span className="sidebar-item-count" style={{ background: 'rgba(139, 92, 246, 0.15)', color: '#8b5cf6', fontWeight: '700' }}>Zen</span>
               </>
             )}
           </button>

@@ -654,3 +654,75 @@ export async function deleteBlogFromOss(documentId, ossConfig = null) {
     return { success: false, error: `博客删除 OSS 异常: ${err.message}` };
   }
 }
+
+/**
+ * 上传 Zen Read 用户分析、偏好及评价同步 JSON 到 OSS
+ */
+export async function uploadZenReadProfileToOss(zenData, ossConfig = null) {
+  try {
+    const config = ossConfig || getOssConfig();
+    const validation = validateOssConfig(config);
+    if (!validation.valid) {
+      return { success: false, error: validation.message };
+    }
+
+    const objectKey = `${config.pathPrefix}/zen_read_profile.json`;
+    const jsonStr = typeof zenData === 'string' ? zenData : JSON.stringify(zenData, null, 2);
+    const fileBuffer = Buffer.from(jsonStr, 'utf-8');
+
+    return await uploadFileToOss(fileBuffer, 'zen_read_profile.json', 'application/json; charset=utf-8', config);
+  } catch (err) {
+    return { success: false, error: `禅阅读数据同步上传 OSS 异常: ${err.message}` };
+  }
+}
+
+/**
+ * 从 OSS 下载 Zen Read 用户偏好与同步 JSON
+ */
+export async function downloadZenReadProfileFromOss(ossConfig = null) {
+  try {
+    const config = ossConfig || getOssConfig();
+    const validation = validateOssConfig(config);
+    if (!validation.valid) {
+      return { success: false, error: validation.message };
+    }
+
+    const objectKey = `${config.pathPrefix}/zen_read_profile.json`;
+    const date = new Date().toUTCString();
+    const resource = `/${config.bucket}/${objectKey}`;
+
+    const authorization = signOssRequest({
+      method: 'GET',
+      contentType: '',
+      date,
+      resource,
+      accessKeyId: config.accessKeyId,
+      accessKeySecret: config.accessKeySecret,
+    });
+
+    const endpoint = config.customDomain
+      ? `https://${config.customDomain.replace(/^https?:\/\//, '')}/${objectKey}`
+      : `https://${config.bucket}.${config.region}.aliyuncs.com/${objectKey}`;
+
+    const response = await fetch(endpoint, {
+      method: 'GET',
+      headers: {
+        'Authorization': authorization,
+        'Date': date,
+      },
+      signal: AbortSignal.timeout(15000),
+    });
+
+    if (!response.ok) {
+      if (response.status === 404) {
+        return { success: true, data: null };
+      }
+      return { success: false, error: `从 OSS 读取禅阅读同步数据失败 (HTTP ${response.status})` };
+    }
+
+    const data = await response.json();
+    return { success: true, data };
+  } catch (err) {
+    return { success: false, error: `从 OSS 下载禅阅读数据异常: ${err.message}` };
+  }
+}

@@ -14,6 +14,7 @@ import AddUrlModal from '@/components/ui/AddUrlModal';
 import TagsManagerModal from '@/components/tags/TagsManagerModal';
 import DailyReviewView from '@/components/review/DailyReviewView';
 import HomeFeedView from '@/components/home/HomeFeedView';
+import ZenReadView from '@/components/zen/ZenReadView';
 
 export default function HomePage() {
   const {
@@ -208,6 +209,10 @@ export default function HomePage() {
         {currentView === 'daily-review' ? (
           <div style={{ flex: 1, minWidth: 0, height: '100%', overflow: 'hidden' }}>
             <DailyReviewView onBackToArticles={() => switchView('all')} />
+          </div>
+        ) : currentView === 'zen-read' ? (
+          <div style={{ flex: 1, minWidth: 0, height: '100%', overflow: 'hidden' }}>
+            <ZenReadView onBackToArticles={() => switchView('all')} />
           </div>
         ) : currentView === 'home' ? (
           <div style={{ flex: 1, minWidth: 0, height: '100%', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>

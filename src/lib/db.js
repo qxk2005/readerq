@@ -118,6 +118,26 @@ function initSchema(db) {
       created_at TEXT
     );
 
+    CREATE TABLE IF NOT EXISTS zen_read_history (
+      id TEXT PRIMARY KEY,
+      session_id TEXT,
+      questions_json TEXT,
+      answers_json TEXT,
+      cards_json TEXT,
+      created_at TEXT,
+      synced_at TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS zen_read_ratings (
+      id TEXT PRIMARY KEY,
+      document_id TEXT,
+      rating INTEGER,
+      comment TEXT,
+      feedback_tags_json TEXT,
+      created_at TEXT,
+      synced_at TEXT
+    );
+
     CREATE TABLE IF NOT EXISTS review_stats (
       review_date TEXT PRIMARY KEY,
       reviewed_count INTEGER DEFAULT 0,
@@ -1098,4 +1118,123 @@ export function getArticleHighlightsByTitle(title) {
       created_at: r.created_at
     };
   });
+}
+
+/**
+ * 保存禅阅读会话与卡牌历史
+ */
+export function saveZenReadHistory({ sessionId, questions, answers, cards }) {
+  const db = getDatabase();
+  const id = `zen_hist_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+  const now = new Date().toISOString();
+
+  db.prepare(`
+    INSERT INTO zen_read_history (id, session_id, questions_json, answers_json, cards_json, created_at, synced_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    id,
+    sessionId || id,
+    JSON.stringify(questions || []),
+    JSON.stringify(answers || {}),
+    JSON.stringify(cards || []),
+    now,
+    null
+  );
+
+  return { id, sessionId, now };
+}
+
+/**
+ * 保存用户对禅阅读推荐文章的打分/反馈
+ */
+export function saveZenReadRating({ documentId, rating, comment = '', feedbackTags = [] }) {
+  const db = getDatabase();
+  const id = `zen_rate_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+  const now = new Date().toISOString();
+
+  db.prepare(`
+    INSERT OR REPLACE INTO zen_read_ratings (id, document_id, rating, comment, feedback_tags_json, created_at, synced_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    id,
+    documentId,
+    rating,
+    comment,
+    JSON.stringify(feedbackTags),
+    now,
+    null
+  );
+
+  return { id, documentId, rating, now };
+}
+
+/**
+ * 获取所有的禅阅读评分历史（用于 AI 推荐权重计算与多端同步）
+ */
+export function getZenReadRatings() {
+  const db = getDatabase();
+  const rows = db.prepare(`SELECT * FROM zen_read_ratings ORDER BY created_at DESC`).all();
+  return rows.map(r => ({
+    ...r,
+    feedbackTags: JSON.parse(r.feedback_tags_json || '[]')
+  }));
+}
+
+/**
+ * 导出全量 Zen Read 用户数据供 OSS 同步
+ */
+export function getZenReadExportData() {
+  const db = getDatabase();
+  const history = db.prepare(`SELECT * FROM zen_read_history ORDER BY created_at DESC LIMIT 50`).all();
+  const ratings = db.prepare(`SELECT * FROM zen_read_ratings ORDER BY created_at DESC`).all();
+  return { history, ratings, exportedAt: new Date().toISOString() };
+}
+
+/**
+ * 导入并合并 OSS 上的 Zen Read 同步数据
+ */
+export function importZenReadData({ history = [], ratings = [] }) {
+  const db = getDatabase();
+  const now = new Date().toISOString();
+
+  const insertHist = db.prepare(`
+    INSERT OR IGNORE INTO zen_read_history (id, session_id, questions_json, answers_json, cards_json, created_at, synced_at)
+    VALUES (@id, @session_id, @questions_json, @answers_json, @cards_json, @created_at, @synced_at)
+  `);
+
+  const insertRate = db.prepare(`
+    INSERT OR REPLACE INTO zen_read_ratings (id, document_id, rating, comment, feedback_tags_json, created_at, synced_at)
+    VALUES (@id, @document_id, @rating, @comment, @feedback_tags_json, @created_at, @synced_at)
+  `);
+
+  const transaction = db.transaction(() => {
+    for (const h of history) {
+      if (h.id) {
+        insertHist.run({
+          id: h.id,
+          session_id: h.session_id || h.id,
+          questions_json: typeof h.questions_json === 'string' ? h.questions_json : JSON.stringify(h.questions_json || []),
+          answers_json: typeof h.answers_json === 'string' ? h.answers_json : JSON.stringify(h.answers_json || {}),
+          cards_json: typeof h.cards_json === 'string' ? h.cards_json : JSON.stringify(h.cards_json || []),
+          created_at: h.created_at || now,
+          synced_at: now
+        });
+      }
+    }
+    for (const r of ratings) {
+      if (r.id && r.document_id) {
+        insertRate.run({
+          id: r.id,
+          document_id: r.document_id,
+          rating: r.rating || 5,
+          comment: r.comment || '',
+          feedback_tags_json: typeof r.feedback_tags_json === 'string' ? r.feedback_tags_json : JSON.stringify(r.feedback_tags_json || []),
+          created_at: r.created_at || now,
+          synced_at: now
+        });
+      }
+    }
+  });
+
+  transaction();
 }
