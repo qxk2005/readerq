@@ -255,8 +255,9 @@ export function getCachedDocuments({ location, category, tag, tags, search, prio
     SELECT *, 
     COALESCE(
       (SELECT MAX(created_at) FROM highlights WHERE document_id = documents.id),
-      updated_at,
-      created_at
+      saved_at,
+      created_at,
+      updated_at
     ) AS last_highlighted_at 
     FROM documents 
     WHERE parent_id IS NULL

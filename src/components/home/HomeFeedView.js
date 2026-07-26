@@ -795,10 +795,10 @@ export default function HomeFeedView() {
                     }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
                         {/* 加入时间 */}
-                        {settings.showDate !== false && (doc.created_at || doc.saved_at) && (
+                        {settings.showDate !== false && (doc.saved_at || doc.created_at || doc.updated_at) && (
                           <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                             <Calendar size={12} />
-                            {formatDate(doc.created_at || doc.saved_at)}
+                            {formatDate(doc.saved_at || doc.created_at || doc.updated_at)}
                           </span>
                         )}
 
