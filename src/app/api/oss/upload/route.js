@@ -11,7 +11,7 @@ export const dynamic = 'force-dynamic';
 export async function POST(request) {
   try {
     const body = await request.json();
-    const { imageUrl, documentId } = body;
+    const { imageUrl, documentId, sourceUrl } = body;
 
     if (!imageUrl) {
       return NextResponse.json({ error: '缺少 imageUrl 参数' }, { status: 400 });
@@ -20,7 +20,7 @@ export async function POST(request) {
       return NextResponse.json({ error: '缺少 documentId 参数' }, { status: 400 });
     }
 
-    const result = await uploadImageToOss(imageUrl, documentId);
+    const result = await uploadImageToOss(imageUrl, documentId, null, sourceUrl);
 
     if (!result.success) {
       return NextResponse.json({ error: result.error }, { status: 500 });

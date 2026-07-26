@@ -8,21 +8,54 @@ import path from 'path';
 import { getSetting } from '@/lib/db';
 
 /**
- * 获取 OSS 配置
+ * 判断字符串是否包含掩码字符 (如 •••••• 或 *****)
  */
-export function getOssConfig() {
-  const region = getSetting('oss_region');
-  const bucket = getSetting('oss_bucket');
-  const accessKeyId = getSetting('oss_access_key_id');
-  const accessKeySecret = getSetting('oss_access_key_secret');
-  const customDomain = getSetting('oss_custom_domain');
-  const pathPrefix = getSetting('oss_path_prefix') || 'readerq';
+export function isMaskedValue(val) {
+  if (!val || typeof val !== 'string') return true;
+  return val.includes('•') || val.includes('\u2022') || /^[*•\s]+$/.test(val);
+}
+
+/**
+ * 获取 OSS 配置 (支持合并前端测试用的 overrideConfig)
+ */
+export function getOssConfig(overrideConfig = null) {
+  const dbRegion = getSetting('oss_region');
+  const dbBucket = getSetting('oss_bucket');
+  const dbAccessKeyId = getSetting('oss_access_key_id');
+  const dbAccessKeySecret = getSetting('oss_access_key_secret');
+  const dbCustomDomain = getSetting('oss_custom_domain');
+  const dbPathPrefix = getSetting('oss_path_prefix') || 'readerq';
+
+  if (!overrideConfig) {
+    return {
+      region: dbRegion,
+      bucket: dbBucket,
+      accessKeyId: dbAccessKeyId,
+      accessKeySecret: dbAccessKeySecret,
+      customDomain: dbCustomDomain,
+      pathPrefix: dbPathPrefix,
+    };
+  }
+
+  const region = (overrideConfig.region && overrideConfig.region.trim()) ? overrideConfig.region.trim() : dbRegion;
+  const bucket = (overrideConfig.bucket && overrideConfig.bucket.trim()) ? overrideConfig.bucket.trim() : dbBucket;
+
+  const accessKeyId = (overrideConfig.accessKeyId && !isMaskedValue(overrideConfig.accessKeyId))
+    ? overrideConfig.accessKeyId.trim()
+    : dbAccessKeyId;
+
+  const accessKeySecret = (overrideConfig.accessKeySecret && !isMaskedValue(overrideConfig.accessKeySecret))
+    ? overrideConfig.accessKeySecret.trim()
+    : dbAccessKeySecret;
+
+  const customDomain = overrideConfig.customDomain !== undefined ? overrideConfig.customDomain : dbCustomDomain;
+  const pathPrefix = overrideConfig.pathPrefix || dbPathPrefix;
 
   return { region, bucket, accessKeyId, accessKeySecret, customDomain, pathPrefix };
 }
 
 /**
- * 校验 OSS 配置是否完整
+ * 校验 OSS 配置是否完整与合法
  */
 export function validateOssConfig(config) {
   const { region, bucket, accessKeyId, accessKeySecret } = config || {};
@@ -35,6 +68,23 @@ export function validateOssConfig(config) {
   if (missing.length > 0) {
     return { valid: false, message: `缺少配置项: ${missing.join(', ')}` };
   }
+
+  if (isMaskedValue(accessKeyId) || isMaskedValue(accessKeySecret)) {
+    return { valid: false, message: 'AccessKey 包含未替换的掩码字符(•)，请在输入框中填入完整的真实 AccessKey ID 与 Secret' };
+  }
+
+  // 检查非 ASCII 字符 (防止 Node fetch 抛出 ByteString Header 异常)
+  for (let i = 0; i < accessKeyId.length; i++) {
+    if (accessKeyId.charCodeAt(i) > 255) {
+      return { valid: false, message: `AccessKey ID 包含非 ASCII 异常字符: "${accessKeyId[i]}"` };
+    }
+  }
+  for (let i = 0; i < accessKeySecret.length; i++) {
+    if (accessKeySecret.charCodeAt(i) > 255) {
+      return { valid: false, message: `AccessKey Secret 包含非 ASCII 异常字符: "${accessKeySecret[i]}"` };
+    }
+  }
+
   return { valid: true };
 }
 
@@ -121,14 +171,15 @@ function buildPublicUrl(config, objectKey) {
 }
 
 /**
- * 下载远程图片并上传到阿里云 OSS
+ * 下载远程图片或解析 Data URL 并上传到阿里云 OSS
  * 
- * @param {string} imageUrl - 源图片 URL
+ * @param {string} imageUrl - 源图片 URL 或 Data URL
  * @param {string} documentId - 关联的文档 ID，用于组织路径
  * @param {object} [ossConfig] - 可选的 OSS 配置，为空时从数据库读取
+ * @param {string} [sourceUrl] - 源页面 URL，用于补全相对路径及防盗链 Referer
  * @returns {Promise<{success: boolean, ossUrl?: string, error?: string}>}
  */
-export async function uploadImageToOss(imageUrl, documentId, ossConfig = null) {
+export async function uploadImageToOss(imageUrl, documentId, ossConfig = null, sourceUrl = null) {
   const config = ossConfig || getOssConfig();
   const validation = validateOssConfig(config);
   if (!validation.valid) {
@@ -136,33 +187,80 @@ export async function uploadImageToOss(imageUrl, documentId, ossConfig = null) {
   }
 
   try {
-    // 1. 下载源图片
-    const imageResponse = await fetch(imageUrl, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (compatible; ReaderQ/1.0)',
-      },
-      signal: AbortSignal.timeout(30000), // 30秒超时
-    });
+    let imageBuffer;
+    let contentType;
+    let ext = '.jpg';
 
-    if (!imageResponse.ok) {
-      return { success: false, error: `下载图片失败 (HTTP ${imageResponse.status}): ${imageUrl}` };
+    // 1. 如果是 Data URL (Base64 图片)
+    if (imageUrl.startsWith('data:')) {
+      try {
+        const matches = imageUrl.match(/^data:([^;]+);base64,(.+)$/);
+        if (matches) {
+          contentType = matches[1];
+          imageBuffer = Buffer.from(matches[2], 'base64');
+          ext = getExtension('', contentType);
+        } else {
+          return { success: false, error: 'Data URL 格式无效' };
+        }
+      } catch (e) {
+        return { success: false, error: `解析 Base64 图片失败: ${e.message}` };
+      }
+    } else {
+      // 2. 规范化远程图片 URL (处理 // 或相对路径)
+      let finalUrl = imageUrl.trim();
+      if (finalUrl.startsWith('//')) {
+        finalUrl = `https:${finalUrl}`;
+      } else if (!finalUrl.startsWith('http://') && !finalUrl.startsWith('https://')) {
+        if (sourceUrl) {
+          try {
+            const baseUrl = new URL(sourceUrl);
+            finalUrl = new URL(finalUrl, baseUrl.origin).toString();
+          } catch {
+            return { success: false, error: `无效的图片相对路径: ${imageUrl}` };
+          }
+        } else {
+          return { success: false, error: `图片 URL 缺少 http/https 协议前缀: ${imageUrl}` };
+        }
+      }
+
+      // 3. 下载源图片 (支持防盗链 Referer 及常用 Headers)
+      const downloadHeaders = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
+      };
+      if (sourceUrl) {
+        downloadHeaders['Referer'] = sourceUrl;
+      }
+
+      let imageResponse;
+      try {
+        imageResponse = await fetch(finalUrl, {
+          headers: downloadHeaders,
+          signal: AbortSignal.timeout(30000), // 30秒超时
+        });
+      } catch (fetchErr) {
+        return { success: false, error: `下载源图片网络失败 (${fetchErr.message}): ${finalUrl.slice(0, 80)}...` };
+      }
+
+      if (!imageResponse.ok) {
+        return { success: false, error: `下载源图片失败 (HTTP ${imageResponse.status})` };
+      }
+
+      const responseContentType = imageResponse.headers.get('content-type') || '';
+      imageBuffer = Buffer.from(await imageResponse.arrayBuffer());
+
+      if (imageBuffer.length === 0) {
+        return { success: false, error: '下载的图片内容为空' };
+      }
+
+      ext = getExtension(finalUrl, responseContentType);
+      contentType = guessContentType(`file${ext}`);
     }
 
-    const responseContentType = imageResponse.headers.get('content-type') || '';
-    const imageBuffer = Buffer.from(await imageResponse.arrayBuffer());
-
-    if (imageBuffer.length === 0) {
-      return { success: false, error: '下载的图片内容为空' };
-    }
-
-    // 2. 确定扩展名和 Content-Type
-    const ext = getExtension(imageUrl, responseContentType);
-    const contentType = guessContentType(`file${ext}`);
-
-    // 3. 生成 OSS 对象路径
+    // 4. 生成 OSS 对象路径
     const objectKey = generateObjectKey(config.pathPrefix, documentId, ext);
 
-    // 4. 构造 PUT 请求上传到 OSS
+    // 5. 构造 PUT 请求上传到 OSS
     const date = new Date().toUTCString();
     const resource = `/${config.bucket}/${objectKey}`;
     const authorization = signOssRequest({
@@ -176,29 +274,34 @@ export async function uploadImageToOss(imageUrl, documentId, ossConfig = null) {
 
     const endpoint = `https://${config.bucket}.${config.region}.aliyuncs.com/${objectKey}`;
 
-    const uploadResponse = await fetch(endpoint, {
-      method: 'PUT',
-      headers: {
-        'Authorization': authorization,
-        'Content-Type': contentType,
-        'Date': date,
-        'Content-Length': String(imageBuffer.length),
-      },
-      body: imageBuffer,
-      signal: AbortSignal.timeout(60000), // 60秒超时
-    });
+    let uploadResponse;
+    try {
+      uploadResponse = await fetch(endpoint, {
+        method: 'PUT',
+        headers: {
+          'Authorization': authorization,
+          'Content-Type': contentType,
+          'Date': date,
+          'Content-Length': String(imageBuffer.length),
+        },
+        body: imageBuffer,
+        signal: AbortSignal.timeout(60000), // 60秒超时
+      });
+    } catch (uploadErr) {
+      return { success: false, error: `上传至 OSS 网络失败 (${uploadErr.message})，请检查 OSS 配置` };
+    }
 
     if (!uploadResponse.ok) {
       const errorText = await uploadResponse.text();
-      return { success: false, error: `OSS 上传失败 (HTTP ${uploadResponse.status}): ${errorText}` };
+      return { success: false, error: `OSS 保存拒绝 (HTTP ${uploadResponse.status}): ${errorText}` };
     }
 
-    // 5. 构建公开访问 URL
+    // 6. 构建公开访问 URL
     const ossUrl = buildPublicUrl(config, objectKey);
 
     return { success: true, ossUrl, objectKey };
   } catch (err) {
-    return { success: false, error: `图片上传异常: ${err.message}` };
+    return { success: false, error: `图片处理异常: ${err.message}` };
   }
 }
 

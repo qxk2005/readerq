@@ -885,6 +885,7 @@ export default function ReadingPane() {
           body: JSON.stringify({
             imageUrl: img.src,
             documentId: selectedDoc.id,
+            sourceUrl: selectedDoc?.source_url || selectedDoc?.url,
           }),
         });
         const data = await res.json();

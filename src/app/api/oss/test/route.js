@@ -4,14 +4,14 @@
  */
 
 import { NextResponse } from 'next/server';
-import { testOssUpload } from '@/lib/oss';
+import { testOssUpload, getOssConfig } from '@/lib/oss';
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(request) {
   try {
     const body = await request.json();
-    const config = {
+    const rawConfig = {
       region: body.oss_region,
       bucket: body.oss_bucket,
       accessKeyId: body.oss_access_key_id,
@@ -20,6 +20,7 @@ export async function POST(request) {
       pathPrefix: body.oss_path_prefix || 'readerq',
     };
 
+    const config = getOssConfig(rawConfig);
     const result = await testOssUpload(config);
 
     if (!result.success) {

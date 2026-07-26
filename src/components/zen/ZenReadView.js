@@ -368,7 +368,9 @@ export default function ZenReadView({ onBackToArticles }) {
       width: '100%', height: '100%',
       background: 'radial-gradient(circle at 50% 20%, #1e1b4b 0%, #0f172a 60%, #020617 100%)',
       color: '#ffffff',
-      overflowY: phase === 'cards' ? 'hidden' : 'auto',
+      overflow: 'hidden',
+      display: 'flex',
+      flexDirection: 'column',
       position: 'relative',
       boxSizing: 'border-box'
     }}>
@@ -410,13 +412,19 @@ export default function ZenReadView({ onBackToArticles }) {
         }
       ` }} />
 
-      {/* 顶部 Header 导航条 */}
+      {/* 顶部 Header 导航条 (常驻 Sticky / Fixed 固顶) */}
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '16px 28px',
+        padding: '14px 28px',
         borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
-        backdropFilter: 'blur(12px)',
-        zIndex: 20
+        background: 'rgba(15, 23, 42, 0.92)',
+        backdropFilter: 'blur(16px)',
+        position: 'sticky',
+        top: 0,
+        zIndex: 50,
+        flexShrink: 0,
+        width: '100%',
+        boxSizing: 'border-box'
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           {phase === 'full-reading' ? (
@@ -493,7 +501,9 @@ export default function ZenReadView({ onBackToArticles }) {
         </div>
       </div>
 
-      {/* 阶段 1: AI 禅意提问阶段 */}
+      {/* 禅阅读主体内容视口 (Flex: 1，独立于常驻 Header 独立滚动) */}
+      <div style={{ flex: 1, width: '100%', minHeight: 0, overflowY: phase === 'cards' || phase === 'full-reading' ? 'hidden' : 'auto', position: 'relative' }}>
+        {/* 阶段 1: AI 禅意提问阶段 */}
       {phase === 'questions' && (
         <div style={{ maxWidth: '680px', margin: '60px auto 40px auto', padding: '0 20px', textAlign: 'center' }}>
           {isLoadingQ ? (
@@ -832,10 +842,11 @@ export default function ZenReadView({ onBackToArticles }) {
 
       {/* 阶段 5: 禅阅读内置全功能正文阅读器 */}
       {phase === 'full-reading' && selectedCard && (
-        <div style={{ flex: 1, width: '100%', height: 'calc(100vh - 70px)', background: 'var(--color-bg-primary)', position: 'relative' }}>
+        <div style={{ flex: 1, width: '100%', height: '100%', background: 'var(--color-bg-primary)', position: 'relative', overflow: 'hidden' }}>
           <ReadingPane />
         </div>
       )}
+      </div>
     </div>
   );
 }
