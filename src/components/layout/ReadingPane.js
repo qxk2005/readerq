@@ -324,7 +324,7 @@ export default function ReadingPane() {
     };
   }, [selectedDoc?.id]);
 
-  // 清理文章 HTML：移除可能破坏全局布局的 <style> 和 <script> 标签
+  // 清理文章 HTML：移除可能破坏全局布局的 <style> 和 <script> 标签，并净化反爬虫图片后缀
   const sanitizeArticleHtml = (html) => {
     if (!html) return html;
     // 移除 <style> 标签及其内容（防止文章内嵌 CSS 覆盖全局变量和 body 样式）
@@ -333,7 +333,45 @@ export default function ReadingPane() {
     cleaned = cleaned.replace(/<script[\s\S]*?<\/script>/gi, '');
     // 移除 <link rel="stylesheet"> 标签（防止加载外部样式表）
     cleaned = cleaned.replace(/<link[^>]*rel=["']stylesheet["'][^>]*\/?>/gi, '');
+    
+    // 清理防盗链/反爬虫尾缀 (如 !ys, !wm, !large, !preview)
+    cleaned = cleaned.replace(/(<img[^>]+src=["'])([^"']+)(!ys|!wm|!large|!preview|![a-zA-Z0-9_-]+)(["'])/gi, '$1$2$4');
+    // 处理 data-src / data-original 防盗链懒加载属性
+    cleaned = cleaned.replace(/(<img[^>]+)(data-src|data-original)=["']([^"']+)["']/gi, (match, prefix, dataAttr, realUrl) => {
+      if (!prefix.includes('src=')) {
+        return `${prefix}src="${realUrl.replace(/![a-zA-Z0-9_-]+$/i, '')}" ${dataAttr}="${realUrl}"`;
+      }
+      return match;
+    });
+
     return cleaned;
+  };
+
+  // 为 DOM 中的 <img> 绑定全局 onError 代理重试机制
+  const attachImageErrorFallback = (container) => {
+    if (!container) return;
+    const images = container.querySelectorAll('img');
+    images.forEach(img => {
+      // 避免重复绑定
+      if (img.dataset.hasProxyHandler) return;
+      img.dataset.hasProxyHandler = 'true';
+
+      img.addEventListener('error', function handleImgError() {
+        const currentSrc = img.src;
+        if (!currentSrc || currentSrc.includes('/api/image-proxy')) return;
+
+        // 步骤 1: 如果链接包含 !ys 等反爬后缀，先尝试剥离后缀
+        if (/![a-zA-Z0-9_-]+$/i.test(currentSrc)) {
+          const cleanSrc = currentSrc.replace(/![a-zA-Z0-9_-]+$/i, '');
+          img.src = cleanSrc;
+          return;
+        }
+
+        // 步骤 2: 使用服务端代理 API 伪造 Referer 穿透防盗链
+        const proxyUrl = `/api/image-proxy?url=${encodeURIComponent(currentSrc)}`;
+        img.src = proxyUrl;
+      });
+    });
   };
 
   // 渲染高亮
@@ -350,6 +388,7 @@ export default function ReadingPane() {
           timerId = setTimeout(() => {
             const activeContainer = document.querySelector('.blog-article') || articleContainer;
             if (!activeContainer) return;
+            attachImageErrorFallback(activeContainer);
             const processed = restoreHighlights(activeContainer, highlights, (hl, e) => {
               const rect = e.target.getBoundingClientRect();
               setEditingHighlight({ ...hl, rect });
@@ -373,6 +412,8 @@ export default function ReadingPane() {
 
         // 必须先重置 DOM 避免多次添加 <mark> 导致文本 offset 计算错误
         articleContainer.innerHTML = sanitizeArticleHtml(selectedDoc.html_content);
+        attachImageErrorFallback(articleContainer);
+
         timerId = setTimeout(() => {
           if (!articleContainer) return;
           const processed = restoreHighlights(articleContainer, highlights, (hl, e) => {

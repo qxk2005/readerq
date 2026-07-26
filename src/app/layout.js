@@ -16,6 +16,9 @@ export const metadata = {
 export default function RootLayout({ children }) {
   return (
     <html lang="zh-CN" data-theme="dark" suppressHydrationWarning>
+      <head>
+        <meta name="referrer" content="no-referrer-when-downgrade" />
+      </head>
       <body>
         <ThemeProvider>
           <AppProvider>
