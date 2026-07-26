@@ -27,7 +27,11 @@ ReaderQ 是一款致力于提供极致速度、优雅视觉与深度 AI 赋能�
 
 ## 📸 界面纵览
 
+### 🖥️ 三栏式极致桌面工作区
 ![ReaderQ 桌面级三栏式阅读体验](public/readerq_ui.png)
+
+### 🔮 禅阅读 3D 抽卡与 3+2 扁平一屏卡池
+![ReaderQ 禅阅读 AI 抽卡界面](public/readerq_zen.png)
 
 ---
 
