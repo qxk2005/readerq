@@ -85,7 +85,7 @@ export function AppProvider({ children }) {
 
   const setSelectedDoc = useCallback((doc) => {
     _setSelectedDoc(doc);
-    if (doc && doc.html_content === null) {
+    if (doc && (!doc.html_content || doc.html_content.trim() === '')) {
       fetchDocumentDetails(doc.id);
     } else {
       setIsContentLoading(false);

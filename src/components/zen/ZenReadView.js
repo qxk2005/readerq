@@ -2,13 +2,14 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useApp } from '@/context/AppContext';
+import ReadingPane from '@/components/layout/ReadingPane';
 import { 
   Sparkles, Wand2, Compass, ArrowLeft, RefreshCw, ThumbsUp, ThumbsDown, 
   Star, Check, CloudUpload, Clock, Flame, BookOpen, Layers, Volume2, VolumeX, ShieldCheck
 } from 'lucide-react';
 
 export default function ZenReadView({ onBackToArticles }) {
-  const { setSelectedDoc, showToast } = useApp();
+  const { setSelectedDoc, switchView, showToast } = useApp();
 
   // 流程阶段: 'questions' (AI问答) -> 'drawing' (3D抽卡动画) -> 'cards' (解封卡牌) -> 'reading' (禅阅读)
   const [phase, setPhase] = useState('questions');
@@ -19,6 +20,7 @@ export default function ZenReadView({ onBackToArticles }) {
 
   const [cards, setCards] = useState([]);
   const [selectedCard, setSelectedCard] = useState(null);
+  const [readCardIds, setReadCardIds] = useState(new Set());
   const [isDrawing, setIsDrawing] = useState(false);
 
   // 反馈评分状态
@@ -176,12 +178,197 @@ export default function ZenReadView({ onBackToArticles }) {
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
+  const renderFlatGachaCard = (card) => {
+    const rarityClass = card.rarity === 'SSR' ? 'gacha-card-ssr' : card.rarity === 'SR' ? 'gacha-card-sr' : 'gacha-card-r';
+    const rarityColor = card.rarity === 'SSR' ? '#f59e0b' : card.rarity === 'SR' ? '#a855f7' : '#3b82f6';
+    const isReadSession = readCardIds.has(card.cardId);
+
+    return (
+      <div
+        key={card.cardId}
+        className={`gacha-card-container ${isReadSession ? '' : rarityClass}`}
+        onMouseMove={(e) => handleMouseMoveCard(e, card.cardId)}
+        onMouseLeave={() => handleMouseLeaveCard(card.cardId)}
+        onClick={() => {
+          setSelectedCard(card);
+          setReadCardIds(prev => new Set(prev).add(card.cardId));
+          setPhase('reading');
+        }}
+        style={{
+          padding: '14px 16px',
+          borderRadius: '18px',
+          cursor: 'pointer',
+          transform: tiltStyle[card.cardId] || 'none',
+          display: 'flex',
+          flexDirection: 'row',
+          alignItems: 'stretch',
+          gap: '14px',
+          height: 'calc((100vh - 220px) / 2)',
+          minHeight: '195px',
+          maxHeight: '240px',
+          boxSizing: 'border-box',
+          position: 'relative',
+          overflow: 'hidden',
+          background: isReadSession
+            ? 'linear-gradient(135deg, rgba(6, 78, 59, 0.85) 0%, rgba(15, 23, 42, 0.95) 100%)'
+            : undefined,
+          border: isReadSession
+            ? '1.5px solid rgba(52, 211, 153, 0.7)'
+            : undefined,
+          boxShadow: isReadSession
+            ? '0 8px 24px rgba(16, 185, 129, 0.3)'
+            : undefined,
+          transition: 'all 0.3s ease'
+        }}
+      >
+        <div style={{
+          width: '36%',
+          height: '100%',
+          borderRadius: '12px',
+          overflow: 'hidden',
+          position: 'relative',
+          flexShrink: 0,
+          background: isReadSession
+            ? 'linear-gradient(135deg, #064e3b 0%, #022c22 100%)'
+            : card.rarity === 'SSR'
+            ? 'linear-gradient(135deg, #78350f 0%, #b45309 50%, #451a03 100%)'
+            : card.rarity === 'SR'
+            ? 'linear-gradient(135deg, #581c87 0%, #7e22ce 50%, #3b0764 100%)'
+            : 'linear-gradient(135deg, #1e3a8a 0%, #2563eb 50%, #172554 100%)',
+          border: isReadSession ? '1px solid rgba(52, 211, 153, 0.4)' : '1px solid rgba(255,255,255,0.15)',
+          boxShadow: 'inset 0 0 15px rgba(0,0,0,0.3)'
+        }}>
+          {card.document.image_url ? (
+            <>
+              <img
+                src={card.document.image_url}
+                alt="Cover"
+                style={{ width: '100%', height: '100%', objectFit: 'cover', filter: isReadSession ? 'brightness(0.85) contrast(1.05)' : undefined }}
+                onError={(e) => { e.target.style.display = 'none'; }}
+              />
+              <div style={{ position: 'absolute', inset: 0, background: isReadSession ? 'linear-gradient(to top, rgba(6,78,59,0.85) 0%, transparent 70%)' : 'linear-gradient(to top, rgba(15,23,42,0.85) 0%, transparent 60%)' }} />
+            </>
+          ) : null}
+
+          <div style={{ position: 'absolute', top: '8px', left: '8px', zIndex: 3 }}>
+            <span style={{
+              padding: '2px 8px', borderRadius: '8px',
+              background: isReadSession ? '#059669' : rarityColor, color: '#ffffff',
+              fontSize: '11px', fontWeight: '900', letterSpacing: '0.05em',
+              boxShadow: '0 2px 8px rgba(0,0,0,0.4)'
+            }}>
+              {card.rarity}
+            </span>
+          </div>
+
+          <div style={{
+            position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column',
+            alignItems: 'center', justifyContent: 'center', padding: '6px', textAlign: 'center',
+            zIndex: 2, pointerEvents: 'none'
+          }}>
+            <Sparkles size={22} style={{ color: isReadSession ? '#34d399' : rarityColor, filter: 'drop-shadow(0 0 6px rgba(255,255,255,0.6))', marginBottom: '2px' }} />
+            <span style={{ fontSize: '10px', fontWeight: '800', color: isReadSession ? '#34d399' : 'rgba(255,255,255,0.9)', textTransform: 'uppercase', letterSpacing: '0.12em' }}>
+              {isReadSession ? '禅定领悟' : '灵感解封'}
+            </span>
+          </div>
+        </div>
+
+        <div style={{
+          flex: 1,
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'space-between',
+          minWidth: 0,
+          padding: '2px 0'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px', flexShrink: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              {card.isInbox && (
+                <span style={{
+                  padding: '2px 7px', borderRadius: '6px',
+                  background: 'rgba(59, 130, 246, 0.25)', color: '#60a5fa',
+                  border: '1px solid rgba(59, 130, 246, 0.4)',
+                  fontSize: '11px', fontWeight: '700'
+                }}>
+                  📥 收件箱
+                </span>
+              )}
+              {isReadSession ? (
+                <span style={{
+                  padding: '2px 8px', borderRadius: '6px',
+                  background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                  color: '#ffffff', border: '1px solid rgba(52, 211, 153, 0.6)',
+                  fontSize: '10px', fontWeight: '800', display: 'inline-flex', alignItems: 'center', gap: '3px',
+                  boxShadow: '0 2px 8px rgba(16, 185, 129, 0.4)'
+                }}>
+                  <Check size={12} /> 禅定已读
+                </span>
+              ) : card.isUnread ? (
+                <span style={{ fontSize: '10px', background: 'rgba(16, 185, 129, 0.2)', color: '#34d399', border: '1px solid rgba(16, 185, 129, 0.3)', padding: '1px 6px', borderRadius: '6px', fontWeight: '700' }}>未读新文</span>
+              ) : (
+                <span style={{ fontSize: '10px', background: 'rgba(245, 158, 11, 0.2)', color: '#fbbf24', border: '1px solid rgba(245, 158, 11, 0.3)', padding: '1px 6px', borderRadius: '6px', fontWeight: '700' }}>经典重温</span>
+              )}
+            </div>
+            <span style={{ fontSize: '12px', fontWeight: '800', color: isReadSession ? '#34d399' : rarityColor }}>
+              契合度 {card.matchPercentage}
+            </span>
+          </div>
+
+          <h3 style={{
+            fontSize: '15px', fontWeight: '800', lineHeight: '1.35',
+            color: isReadSession ? '#a7f3d0' : '#ffffff',
+            margin: '0 0 6px 0', letterSpacing: '-0.01em',
+            display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden',
+            flexShrink: 0
+          }}>
+            {isReadSession ? `✓ ${card.document.title}` : card.document.title}
+          </h3>
+
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', margin: '2px 0 6px 0', minHeight: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', fontWeight: '700', color: isReadSession ? '#34d399' : '#c084fc', marginBottom: '3px' }}>
+              <Sparkles size={12} style={{ color: isReadSession ? '#34d399' : '#c084fc' }} />
+              <span>{isReadSession ? '已完结解封' : (card.reasonTitle || 'AI 推荐理由')}</span>
+            </div>
+            <p style={{
+              fontSize: '11px', color: isReadSession ? 'rgba(167, 243, 208, 0.85)' : 'rgba(255, 255, 255, 0.8)', lineHeight: '1.45', margin: 0,
+              display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden'
+            }}>
+              {card.detailedReason || card.reason}
+            </p>
+          </div>
+
+          <div style={{
+            paddingTop: '6px', borderTop: isReadSession ? '1px solid rgba(52, 211, 153, 0.2)' : '1px solid rgba(255,255,255,0.08)',
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            marginTop: 'auto', flexShrink: 0
+          }}>
+            <span style={{
+              fontSize: '11px', color: isReadSession ? 'rgba(167, 243, 208, 0.6)' : 'rgba(255,255,255,0.5)',
+              whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '58%'
+            }}>
+              {card.document.author} • {card.document.reading_time}
+            </span>
+            <button style={{
+              padding: '5px 14px', borderRadius: '14px', border: 'none',
+              background: isReadSession ? 'linear-gradient(135deg, #10b981 0%, #047857 100%)' : rarityColor,
+              color: '#ffffff', fontSize: '11px', fontWeight: '700',
+              cursor: 'pointer', flexShrink: 0,
+              boxShadow: isReadSession ? '0 2px 10px rgba(16, 185, 129, 0.4)' : '0 2px 8px rgba(0,0,0,0.3)'
+            }}>
+              {isReadSession ? '✓ 再次温习' : '开启阅读'}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div style={{
       width: '100%', height: '100%',
       background: 'radial-gradient(circle at 50% 20%, #1e1b4b 0%, #0f172a 60%, #020617 100%)',
       color: '#ffffff',
-      overflowY: 'auto',
+      overflowY: phase === 'cards' ? 'hidden' : 'auto',
       position: 'relative',
       boxSizing: 'border-box'
     }}>
@@ -232,13 +419,57 @@ export default function ZenReadView({ onBackToArticles }) {
         zIndex: 20
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <button
-            onClick={onBackToArticles}
-            className="btn btn-ghost btn-sm"
-            style={{ color: 'rgba(255, 255, 255, 0.75)', display: 'flex', alignItems: 'center', gap: '6px' }}
-          >
-            <ArrowLeft size={16} /> 返回列表
-          </button>
+          {phase === 'full-reading' ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <button
+                onClick={() => setPhase('cards')}
+                className="btn btn-ghost btn-sm"
+                style={{ color: '#c084fc', display: 'flex', alignItems: 'center', gap: '6px', fontWeight: '700', background: 'rgba(192, 132, 252, 0.15)', padding: '4px 12px', borderRadius: '16px' }}
+              >
+                <ArrowLeft size={16} /> 返回禅阅读抽卡列表
+              </button>
+              <button
+                onClick={() => setPhase('reading')}
+                className="btn btn-ghost btn-sm"
+                style={{ color: 'rgba(255, 255, 255, 0.75)', fontSize: '13px' }}
+              >
+                返回要点
+              </button>
+            </div>
+          ) : phase === 'reading' ? (
+            <button
+              onClick={() => setPhase('cards')}
+              className="btn btn-ghost btn-sm"
+              style={{ color: 'rgba(255, 255, 255, 0.9)', display: 'flex', alignItems: 'center', gap: '6px', fontWeight: '600' }}
+            >
+              <ArrowLeft size={16} /> 返回卡牌列表
+            </button>
+          ) : phase === 'cards' ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <button
+                onClick={() => setPhase('questions')}
+                className="btn btn-ghost btn-sm"
+                style={{ color: 'rgba(255, 255, 255, 0.75)', display: 'flex', alignItems: 'center', gap: '6px' }}
+              >
+                <ArrowLeft size={16} /> 重选问答
+              </button>
+              <button
+                onClick={onBackToArticles}
+                className="btn btn-ghost btn-sm"
+                style={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: '12px' }}
+              >
+                退出禅阅读
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={onBackToArticles}
+              className="btn btn-ghost btn-sm"
+              style={{ color: 'rgba(255, 255, 255, 0.75)', display: 'flex', alignItems: 'center', gap: '6px' }}
+            >
+              <ArrowLeft size={16} /> 返回文章库
+            </button>
+          )}
           <div style={{ width: '1px', height: '16px', background: 'rgba(255, 255, 255, 0.15)' }} />
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <Wand2 size={20} style={{ color: '#a855f7' }} />
@@ -376,115 +607,71 @@ export default function ZenReadView({ onBackToArticles }) {
         </div>
       )}
 
-      {/* 阶段 3: 3D 卡牌展列与解封 */}
+      {/* 阶段 3: 3D 卡牌展列与解封 (3+2 扁平化两行阵型，一屏全显) */}
       {phase === 'cards' && (
-        <div style={{ maxWidth: '1100px', margin: '40px auto', padding: '0 24px' }}>
-          <div style={{ textAlign: 'center', marginBottom: '36px' }}>
-            <span style={{ fontSize: '12px', color: '#c084fc', fontWeight: '700', letterSpacing: '0.1em' }}>GACHA DRAW REVEAL</span>
-            <h2 style={{ fontSize: '1.8rem', fontWeight: '800', margin: '6px 0 10px 0' }}>抽卡完成！今日为你解封的灵感文章</h2>
-            <p style={{ fontSize: '13px', color: 'rgba(255,255,255,0.6)' }}>点击任意卡牌即可开启沉浸式禅阅读</p>
+        <div style={{
+          height: 'calc(100vh - 65px)',
+          maxWidth: '1380px',
+          margin: '0 auto',
+          padding: '12px 24px',
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'space-between',
+          boxSizing: 'border-box',
+          overflow: 'hidden'
+        }}>
+          {/* 顶栏标题区 */}
+          <div style={{ textAlign: 'center', marginBottom: '8px', flexShrink: 0 }}>
+            <span style={{ fontSize: '11px', color: '#c084fc', fontWeight: '700', letterSpacing: '0.1em' }}>GACHA DRAW REVEAL</span>
+            <h2 style={{ fontSize: '1.3rem', fontWeight: '800', margin: '2px 0 4px 0' }}>抽卡完成！今日为你解封的灵感文章</h2>
+            <p style={{ fontSize: '12px', color: 'rgba(255,255,255,0.6)' }}>点击任意卡牌即可开启沉浸式禅阅读</p>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '24px' }}>
-            {cards.map(card => {
-              const rarityClass = card.rarity === 'SSR' ? 'gacha-card-ssr' : card.rarity === 'SR' ? 'gacha-card-sr' : 'gacha-card-r';
-              const rarityColor = card.rarity === 'SSR' ? '#f59e0b' : card.rarity === 'SR' ? '#a855f7' : '#3b82f6';
+          {/* 3+2 两行扁平化卡片阵型容器 */}
+          <div style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '14px',
+            flex: 1,
+            justifyContent: 'center',
+            minHeight: 0,
+            width: '100%'
+          }}>
+            {/* 第一行: 前 3 张卡片 */}
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: cards.length <= 3 ? `repeat(${cards.length}, 1fr)` : 'repeat(3, 1fr)',
+              gap: '14px',
+              width: '100%'
+            }}>
+              {cards.slice(0, 3).map(card => renderFlatGachaCard(card))}
+            </div>
 
-              return (
-                <div
-                  key={card.cardId}
-                  className={`gacha-card-container ${rarityClass}`}
-                  onMouseMove={(e) => handleMouseMoveCard(e, card.cardId)}
-                  onMouseLeave={() => handleMouseLeaveCard(card.cardId)}
-                  onClick={() => handleOpenCardReading(card)}
-                  style={{
-                    padding: '24px',
-                    borderRadius: '20px',
-                    cursor: 'pointer',
-                    transform: tiltStyle[card.cardId] || 'none',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    justifyContent: 'space-between',
-                    minHeight: '360px',
-                    position: 'relative',
-                    overflow: 'hidden'
-                  }}
-                >
-                  {/* 稀有度 Badge 与契合度 */}
-                  <div>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
-                      <span style={{
-                        padding: '4px 12px', borderRadius: '12px',
-                        background: rarityColor, color: '#ffffff',
-                        fontSize: '12px', fontWeight: '900', letterSpacing: '0.05em'
-                      }}>
-                        {card.rarity}
-                      </span>
-                      <span style={{ fontSize: '13px', fontWeight: '700', color: rarityColor }}>
-                        契合度 {card.matchPercentage}
-                      </span>
-                    </div>
-
-                    {/* AI 详细推荐理由面板 */}
-                    <div style={{
-                      padding: '12px 14px',
-                      borderRadius: '14px',
-                      background: 'rgba(255, 255, 255, 0.07)',
-                      border: '1px solid rgba(255, 255, 255, 0.15)',
-                      marginBottom: '16px',
-                      backdropFilter: 'blur(8px)'
-                    }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', fontWeight: '700', color: '#c084fc', marginBottom: '4px' }}>
-                        <Sparkles size={13} />
-                        <span>{card.reasonTitle || 'AI 深度推荐理由'}</span>
-                        {card.isUnread ? (
-                          <span style={{ fontSize: '10px', background: 'rgba(16, 185, 129, 0.2)', color: '#10b981', padding: '1px 6px', borderRadius: '8px', marginLeft: 'auto' }}>未读新文</span>
-                        ) : (
-                          <span style={{ fontSize: '10px', background: 'rgba(245, 158, 11, 0.2)', color: '#f59e0b', padding: '1px 6px', borderRadius: '8px', marginLeft: 'auto' }}>经典重温</span>
-                        )}
-                      </div>
-                      <div style={{ fontSize: '12px', color: 'rgba(255, 255, 255, 0.85)', lineHeight: '1.55' }}>
-                        {card.detailedReason || card.reason}
-                      </div>
-                    </div>
-
-                    <h3 style={{ fontSize: '1.2rem', fontWeight: '700', lineHeight: '1.4', marginBottom: '12px', color: '#ffffff' }}>
-                      {card.document.title}
-                    </h3>
-
-                    <p style={{
-                      fontSize: '13px', color: 'rgba(255,255,255,0.75)', lineHeight: '1.6',
-                      display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden'
-                    }}>
-                      {card.document.summary}
-                    </p>
+            {/* 第二行: 后 2 张卡片 (居中分布，宽度与第一行卡片保持一致) */}
+            {cards.length > 3 && (
+              <div style={{
+                display: 'flex',
+                justifyContent: 'center',
+                gap: '14px',
+                width: '100%'
+              }}>
+                {cards.slice(3, 5).map(card => (
+                  <div key={card.cardId} style={{ width: 'calc((100% - 28px) / 3)' }}>
+                    {renderFlatGachaCard(card)}
                   </div>
-
-                  {/* 底部按钮 */}
-                  <div style={{ paddingTop: '16px', borderTop: '1px solid rgba(255,255,255,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.5)' }}>
-                      {card.document.author} • {card.document.reading_time}
-                    </span>
-                    <button style={{
-                      padding: '8px 18px', borderRadius: '20px', border: 'none',
-                      background: rarityColor, color: '#ffffff', fontSize: '12px', fontWeight: '700',
-                      cursor: 'pointer'
-                    }}>
-                      开启阅读
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
+                ))}
+              </div>
+            )}
           </div>
 
-          <div style={{ textAlign: 'center', marginTop: '40px' }}>
+          {/* 重新抽卡按钮 (固定最底部) */}
+          <div style={{ textAlign: 'center', marginTop: '6px', flexShrink: 0 }}>
             <button
               onClick={() => setPhase('questions')}
               className="btn btn-ghost btn-sm"
-              style={{ color: 'rgba(255,255,255,0.6)', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+              style={{ color: 'rgba(255,255,255,0.6)', display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '12px' }}
             >
-              <RefreshCw size={14} /> 重新答题并再次抽卡
+              <RefreshCw size={13} /> 重新答题并再次抽卡
             </button>
           </div>
         </div>
@@ -511,30 +698,61 @@ export default function ZenReadView({ onBackToArticles }) {
             </div>
           </div>
 
-          {/* 文章摘要/正文 */}
+          {/* 极简 AI 文章核心精华凝练 */}
           <div style={{
-            fontSize: '16px', lineHeight: '1.9', color: 'rgba(255, 255, 255, 0.9)',
-            background: 'rgba(255, 255, 255, 0.02)', padding: '32px', borderRadius: '20px',
-            border: '1px solid rgba(255, 255, 255, 0.05)', marginBottom: '48px'
+            background: 'linear-gradient(135deg, rgba(30, 27, 75, 0.6) 0%, rgba(15, 23, 42, 0.7) 100%)',
+            padding: '32px', borderRadius: '24px',
+            border: '1px solid rgba(192, 132, 252, 0.25)', marginBottom: '48px',
+            boxShadow: '0 10px 30px rgba(0,0,0,0.3)'
           }}>
-            <h3 style={{ fontSize: '14px', color: '#c084fc', marginBottom: '12px', fontWeight: '700' }}>💡 文章核心精华</h3>
-            <p>{selectedCard.document.summary}</p>
-            <p style={{ marginTop: '20px', fontSize: '14px', color: 'rgba(255,255,255,0.6)' }}>
-              (点击下方全功能按钮，可直接跳转到完整原正文或在侧栏深入笔记高亮)
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
+              <h3 style={{ fontSize: '15px', color: '#c084fc', margin: 0, fontWeight: '700', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <Sparkles size={16} /> 💡 AI 极简核心金句与要点
+              </h3>
+              <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.4)', background: 'rgba(255,255,255,0.06)', padding: '2px 8px', borderRadius: '10px' }}>
+                禅意高度凝练
+              </span>
+            </div>
+
+            {/* 极简核心文字摘要 (120~150字，支持多行与换行) */}
+            <p style={{ fontSize: '15px', lineHeight: '1.8', color: 'rgba(255, 255, 255, 0.95)', marginBottom: '20px', wordBreak: 'break-word', whiteSpace: 'pre-line' }}>
+              {selectedCard.zenSummary || (selectedCard.document.summary ? selectedCard.document.summary.slice(0, 150) + '...' : '暂无核心描述')}
             </p>
 
-            <div style={{ marginTop: '24px' }}>
+            {/* 突破性要点 Bullet 标签框 */}
+            {selectedCard.zenBullets && selectedCard.zenBullets.length > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '16px', paddingTop: '16px', borderTop: '1px dashed rgba(255,255,255,0.1)' }}>
+                {selectedCard.zenBullets.map((bullet, bIdx) => (
+                  <div key={bIdx} style={{
+                    padding: '10px 14px', borderRadius: '12px',
+                    background: 'rgba(255, 255, 255, 0.04)',
+                    border: '1px solid rgba(255, 255, 255, 0.08)',
+                    fontSize: '13px', color: 'rgba(255, 255, 255, 0.85)', lineHeight: '1.6',
+                    whiteSpace: 'pre-line'
+                  }}>
+                    {bullet}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div style={{ marginTop: '28px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
+              <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.5)' }}>
+                需要查阅完整原正文或深入笔记高亮？
+              </span>
               <button
                 onClick={() => {
                   setSelectedDoc(selectedCard.document);
+                  setPhase('full-reading');
                 }}
                 style={{
                   padding: '10px 24px', borderRadius: '20px', border: 'none',
-                  background: 'var(--color-accent)', color: '#ffffff',
-                  fontSize: '14px', fontWeight: '600', cursor: 'pointer'
+                  background: 'linear-gradient(135deg, #a855f7 0%, #3b82f6 100%)', color: '#ffffff',
+                  fontSize: '13px', fontWeight: '700', cursor: 'pointer',
+                  boxShadow: '0 4px 15px rgba(168, 85, 247, 0.3)'
                 }}
               >
-                进入完整阅读器模式
+                进入完整阅读器模式 →
               </button>
             </div>
           </div>
@@ -609,6 +827,13 @@ export default function ZenReadView({ onBackToArticles }) {
               </div>
             )}
           </div>
+        </div>
+      )}
+
+      {/* 阶段 5: 禅阅读内置全功能正文阅读器 */}
+      {phase === 'full-reading' && selectedCard && (
+        <div style={{ flex: 1, width: '100%', height: 'calc(100vh - 70px)', background: 'var(--color-bg-primary)', position: 'relative' }}>
+          <ReadingPane />
         </div>
       )}
     </div>

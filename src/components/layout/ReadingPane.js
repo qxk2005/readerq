@@ -1544,10 +1544,27 @@ export default function ReadingPane() {
                     className="reading-article-body"
                   />
                 ) : (
-                  <div className="reading-article-body">
-                    <p style={{ color: 'var(--color-text-tertiary)', fontStyle: 'italic' }}>
-                      此文章未提供正文内容，或无法解析 HTML。您可以通过上方链接在原始网站阅读。
-                    </p>
+                  <div className="reading-article-body" style={{ margin: 'var(--space-6) 0' }}>
+                    <div style={{
+                      padding: '24px', borderRadius: '16px',
+                      background: 'rgba(59, 130, 246, 0.06)',
+                      border: '1px solid rgba(59, 130, 246, 0.2)',
+                      textAlign: 'center', marginBottom: '24px'
+                    }}>
+                      <p style={{ color: 'var(--color-text-secondary)', fontSize: '14px', marginBottom: '16px', lineHeight: '1.6' }}>
+                        此 RSS/网页文章尚未装载正文。您可以点击下方按钮一键发起全网动态抓取与解析：
+                      </p>
+                      <button
+                        className="btn btn-primary"
+                        onClick={() => fetchDocumentDetails(selectedDoc.id)}
+                        style={{ padding: '10px 24px', fontSize: '13px', borderRadius: '20px', fontWeight: '600' }}
+                      >
+                        <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <RefreshCw size={16} className={isContentLoading ? 'animate-spin' : ''} />
+                          {isContentLoading ? '⚡ 正在为您全网动态解析与抓取网页正文...' : '🌐 重新动态抓取并解析网页正文'}
+                        </span>
+                      </button>
+                    </div>
                     {selectedDoc.notes && (
                       <div style={{ marginTop: 'var(--space-6)' }}>
                         <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><Edit3 size={18} /> 笔记</h3>

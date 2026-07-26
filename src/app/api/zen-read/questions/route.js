@@ -63,9 +63,9 @@ export async function GET() {
       {
         id: 'q4',
         question: '在推荐文章的探索范围与已读配比上，你更倾向于？',
-        subtitle: '权衡全新未知新知与经典已读温习的比例',
+        subtitle: '权衡全库及 RSS 中的全新未知新知与经典已读温习的比例',
         options: [
-          { id: 'q4_o1', label: '🚀 全新探索：100% 优先推荐收件箱中的未读新文章', exploreMode: 'unread' },
+          { id: 'q4_o1', label: '🚀 全新探索：100% 优先推荐全库及 RSS 中的未读新文章', exploreMode: 'unread' },
           { id: 'q4_o2', label: '⚖️ 温故知新：平衡推荐全新文章与经典已读 (推荐)', exploreMode: 'balanced' },
           { id: 'q4_o3', label: '🧠 经典温味：优先精选带划线笔记的已读文章重温', exploreMode: 'read' }
         ]
