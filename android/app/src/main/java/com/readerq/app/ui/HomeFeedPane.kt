@@ -21,7 +21,6 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -35,9 +34,8 @@ fun HomeFeedPane(
     onDocumentClick: (DocumentEntity) -> Unit
 ) {
     val documents by viewModel.documents.collectAsState()
-    val columns by viewModel.homeFeedColumns.collectAsState()
+    val userColumns by viewModel.homeFeedColumns.collectAsState()
     val showSummary by viewModel.homeFeedShowSummary.collectAsState()
-    val showTags by viewModel.homeFeedShowTags.collectAsState()
     val showCover by viewModel.homeFeedShowCover.collectAsState()
     val theme by viewModel.theme.collectAsState()
     val searchQuery by viewModel.searchQuery.collectAsState()
@@ -54,7 +52,7 @@ fun HomeFeedPane(
         else -> Color(0xFF2D2D2D)
     }
 
-    Column(
+    BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
             .background(
@@ -65,131 +63,150 @@ fun HomeFeedPane(
                 }
             )
     ) {
-        // 顶部瀑布流 Header 与搜索过滤
-        Surface(
-            modifier = Modifier.fillMaxWidth(),
-            color = cardBg,
-            tonalElevation = 2.dp
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 12.dp)
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            Icons.Default.Menu,
-                            contentDescription = "首页瀑布流",
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(20.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = "首页灵感流",
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Surface(
-                            shape = RoundedCornerShape(12.dp),
-                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
-                        ) {
-                            Text(
-                                text = "${documents.size} 篇",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
-                            )
-                        }
-                    }
+        val screenWidth = maxWidth
+        // 折叠屏与多端自适应列数计算
+        val actualColumns = remember(screenWidth, userColumns) {
+            if (userColumns > 0) {
+                userColumns
+            } else {
+                when {
+                    screenWidth < 480.dp -> 1
+                    screenWidth < 840.dp -> 2
+                    screenWidth < 1200.dp -> 3
+                    else -> 4
                 }
-
-                Spacer(modifier = Modifier.height(10.dp))
-
-                // 搜索框
-                OutlinedTextField(
-                    value = searchQuery,
-                    onValueChange = { viewModel.setSearchQuery(it) },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(48.dp),
-                    placeholder = { Text("搜索全库灵感与文章...", fontSize = 13.sp) },
-                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(18.dp)) },
-                    trailingIcon = {
-                        if (searchQuery.isNotEmpty()) {
-                            IconButton(onClick = { viewModel.setSearchQuery("") }) {
-                                Icon(Icons.Default.Close, contentDescription = "清除", modifier = Modifier.size(16.dp))
-                            }
-                        }
-                    },
-                    shape = RoundedCornerShape(24.dp),
-                    singleLine = true,
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = MaterialTheme.colorScheme.primary,
-                        unfocusedBorderColor = cardBorder
-                    )
-                )
             }
         }
 
-        Divider(color = cardBorder, thickness = 0.5.dp)
-
-        if (documents.isEmpty()) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(32.dp),
-                contentAlignment = Alignment.Center
+        Column(modifier = Modifier.fillMaxSize()) {
+            // 顶部瀑布流 Header 与搜索过滤
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                color = cardBg,
+                tonalElevation = 2.dp
             ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(
-                        Icons.Default.Star,
-                        contentDescription = null,
-                        modifier = Modifier.size(48.dp),
-                        tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f)
-                    )
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Text(
-                        text = if (searchQuery.isNotEmpty()) "未找到相关匹配文章" else "暂无灵感文章",
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 12.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                Icons.Default.Menu,
+                                contentDescription = "首页瀑布流",
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "首页灵感流",
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+                            ) {
+                                Text(
+                                    text = "${documents.size} 篇",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    // 搜索框
+                    OutlinedTextField(
+                        value = searchQuery,
+                        onValueChange = { viewModel.setSearchQuery(it) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(48.dp),
+                        placeholder = { Text("搜索全库灵感与文章...", fontSize = 13.sp) },
+                        leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                        trailingIcon = {
+                            if (searchQuery.isNotEmpty()) {
+                                IconButton(onClick = { viewModel.setSearchQuery("") }) {
+                                    Icon(Icons.Default.Close, contentDescription = "清除", modifier = Modifier.size(16.dp))
+                                }
+                            }
+                        },
+                        shape = RoundedCornerShape(24.dp),
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = MaterialTheme.colorScheme.primary,
+                            unfocusedBorderColor = cardBorder
+                        )
                     )
                 }
             }
-        } else {
-            // 原生 LazyVerticalStaggeredGrid 瀑布流卡片列表
-            LazyVerticalStaggeredGrid(
-                columns = StaggeredGridCells.Fixed(columns.coerceIn(1, 3)),
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(12.dp),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                verticalItemSpacing = 10.dp
-            ) {
-                items(documents, key = { it.id }) { doc ->
-                    HomeFeedCard(
-                        doc = doc,
-                        showCover = showCover,
-                        showSummary = showSummary,
-                        showTags = showTags,
-                        cardBg = cardBg,
-                        cardBorder = cardBorder,
-                        onClick = { onDocumentClick(doc) },
-                        onMoveDoc = { location -> viewModel.moveDocument(doc.id, location) }
-                    )
+
+            Divider(color = cardBorder, thickness = 0.5.dp)
+
+            if (documents.isEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(32.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(
+                            Icons.Default.Star,
+                            contentDescription = null,
+                            modifier = Modifier.size(48.dp),
+                            tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f)
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Text(
+                            text = if (searchQuery.isNotEmpty()) "未找到相关匹配文章" else "暂无灵感文章",
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                        )
+                    }
+                }
+            } else {
+                // 原生折叠屏自适应 LazyVerticalStaggeredGrid 瀑布流卡片列表
+                LazyVerticalStaggeredGrid(
+                    columns = StaggeredGridCells.Fixed(actualColumns.coerceIn(1, 4)),
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalItemSpacing = 10.dp
+                ) {
+                    items(documents, key = { it.id }) { doc ->
+                        HomeFeedCard(
+                            doc = doc,
+                            showCover = showCover,
+                            showSummary = showSummary,
+                            cardBg = cardBg,
+                            cardBorder = cardBorder,
+                            onClick = { onDocumentClick(doc) },
+                            onMoveDoc = { location -> viewModel.moveDocument(doc.id, location) }
+                        )
+                    }
                 }
             }
         }
     }
 }
 
+/**
+ * 精美艺术海报封面 (直接在渐变气泡封面上渲染完整标题与来源分类)
+ */
 @Composable
 fun DefaultArtCover(
     doc: DocumentEntity,
@@ -207,52 +224,77 @@ fun DefaultArtCover(
         listOf(Color(0xFF2C3E50), Color(0xFF4CA1AF))
     )
     val colorList = gradients[hash % gradients.size]
-    val initialLetter = doc.title.trim().take(1).uppercase().ifBlank { "R" }
+
+    val locationLabel = when (doc.location.lowercase()) {
+        "new", "inbox" -> "📥 收件箱"
+        "feed", "rss" -> "📡 RSS 订阅"
+        "later" -> "⏰ 稍后读"
+        "archive" -> "📦 归档"
+        else -> "📄 ${doc.location.uppercase()}"
+    }
 
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .height(130.dp)
-            .background(Brush.linearGradient(colorList)),
-        contentAlignment = Alignment.Center
+            .heightIn(min = 130.dp, max = 170.dp)
+            .background(Brush.linearGradient(colorList))
+            .padding(14.dp)
     ) {
-        // 背景微光光芒
+        // 背景气泡光效
         Canvas(modifier = Modifier.fillMaxSize()) {
             drawCircle(
                 color = Color.White.copy(alpha = 0.08f),
-                radius = size.minDimension * 0.75f,
-                center = androidx.compose.ui.geometry.Offset(size.width * 0.85f, size.height * 0.25f)
+                radius = size.minDimension * 0.8f,
+                center = androidx.compose.ui.geometry.Offset(size.width * 0.85f, size.height * 0.2f)
             )
         }
 
-        // 居中半透明 Typography 首字母印记
-        Text(
-            text = initialLetter,
-            fontSize = 68.sp,
-            fontWeight = FontWeight.Black,
-            color = Color.White.copy(alpha = 0.22f),
-            textAlign = TextAlign.Center
-        )
-
-        // 底部 Overlay 分类 Badge
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(10.dp),
-            contentAlignment = Alignment.BottomStart
+        Column(
+            modifier = Modifier.fillMaxSize(),
+            verticalArrangement = Arrangement.SpaceBetween
         ) {
-            Surface(
-                shape = RoundedCornerShape(6.dp),
-                color = Color.Black.copy(alpha = 0.38f)
+            // 顶部来源与类型 Chip
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = (doc.category ?: "article").uppercase(),
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White,
-                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                )
+                Surface(
+                    shape = RoundedCornerShape(6.dp),
+                    color = Color.Black.copy(alpha = 0.45f)
+                ) {
+                    Text(
+                        text = locationLabel,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                    )
+                }
+
+                if (!doc.site_name.isNullOrBlank()) {
+                    Text(
+                        text = doc.site_name!!,
+                        fontSize = 10.sp,
+                        color = Color.White.copy(alpha = 0.75f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
             }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // 直接在海报封面上精美渲染文章标题
+            Text(
+                text = doc.title.ifBlank { "无标题文章" },
+                fontSize = 15.sp,
+                fontWeight = FontWeight.ExtraBold,
+                color = Color.White,
+                lineHeight = 20.sp,
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis
+            )
         }
     }
 }
@@ -262,12 +304,19 @@ fun HomeFeedCard(
     doc: DocumentEntity,
     showCover: Boolean,
     showSummary: Boolean,
-    showTags: Boolean,
     cardBg: Color,
     cardBorder: Color,
     onClick: () -> Unit,
     onMoveDoc: (String) -> Unit
 ) {
+    val locationLabel = when (doc.location.lowercase()) {
+        "new", "inbox" -> "📥 收件箱"
+        "feed", "rss" -> "📡 RSS 订阅"
+        "later" -> "⏰ 稍后读"
+        "archive" -> "📦 归档"
+        else -> "📄 ${doc.location.uppercase()}"
+    }
+
     Surface(
         modifier = Modifier
             .fillMaxWidth()
@@ -278,18 +327,36 @@ fun HomeFeedCard(
         tonalElevation = 1.dp
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
-            // 1. 文章封面 (如果有网络大图则展示 AsyncImage，无图片则自动生成艺术渐变 DefaultArtCover)
+            // 1. 文章封面 (如果有网络大图则展示 AsyncImage，无图片则自动生成融合标题与来源的艺术 DefaultArtCover)
             if (showCover) {
                 if (!doc.image_url.isNullOrBlank()) {
-                    AsyncImage(
-                        model = doc.image_url,
-                        contentDescription = doc.title,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(min = 100.dp, max = 220.dp)
-                            .clip(RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp))
-                    )
+                    Box(modifier = Modifier.fillMaxWidth()) {
+                        AsyncImage(
+                            model = doc.image_url,
+                            contentDescription = doc.title,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 110.dp, max = 220.dp)
+                                .clip(RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp))
+                        )
+                        // 图片卡片上的来源 Badge
+                        Surface(
+                            modifier = Modifier
+                                .padding(10.dp)
+                                .align(Alignment.TopStart),
+                            shape = RoundedCornerShape(6.dp),
+                            color = Color.Black.copy(alpha = 0.55f)
+                        ) {
+                            Text(
+                                text = locationLabel,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                            )
+                        }
+                    }
                 } else {
                     DefaultArtCover(
                         doc = doc,
@@ -299,24 +366,40 @@ fun HomeFeedCard(
             }
 
             Column(modifier = Modifier.padding(14.dp)) {
-                // 2. 分类 & 作者 Meta 标签行 (当没有显示封面时展现 Badge)
+                // 2. 来源位置 & 分类 Meta 标签行 (当未显示封面时展现)
                 if (!showCover) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Surface(
-                            shape = RoundedCornerShape(6.dp),
-                            color = Color(0xFF007AFF).copy(alpha = 0.1f)
-                        ) {
-                            Text(
-                                text = (doc.category ?: "article").uppercase(),
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color(0xFF007AFF),
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                            )
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = Color(0xFF007AFF).copy(alpha = 0.12f)
+                            ) {
+                                Text(
+                                    text = locationLabel,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF007AFF),
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
+                            if (!doc.category.isNullOrBlank()) {
+                                Surface(
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
+                                ) {
+                                    Text(
+                                        text = doc.category!!.uppercase(),
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                    )
+                                }
+                            }
                         }
 
                         if (!doc.author.isNullOrBlank()) {
@@ -332,16 +415,18 @@ fun HomeFeedCard(
                     Spacer(modifier = Modifier.height(8.dp))
                 }
 
-                // 3. 文章标题
-                Text(
-                    text = doc.title.ifBlank { "无标题文章" },
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    lineHeight = 20.sp,
-                    maxLines = 3,
-                    overflow = TextOverflow.Ellipsis
-                )
+                // 3. 文章标题 (如果无封面，在正文中展示标题)
+                if (!showCover || !doc.image_url.isNullOrBlank()) {
+                    Text(
+                        text = doc.title.ifBlank { "无标题文章" },
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        lineHeight = 20.sp,
+                        maxLines = 3,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
 
                 // 4. 摘要 (Summary)
                 if (showSummary && !doc.summary.isNullOrBlank()) {
