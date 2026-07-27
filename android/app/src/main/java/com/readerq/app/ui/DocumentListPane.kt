@@ -215,13 +215,14 @@ fun DocumentListPane(
 
         if (selectedCategory != null || selectedTag != null) {
             val filterText = if (selectedCategory != null) {
-                val displayName = when (selectedCategory) {
-                    "article" -> "Articles"
-                    "book" -> "Books"
-                    "pdf" -> "PDFs"
-                    "video" -> "Videos"
-                    "email" -> "Emails"
-                    "tweet" -> "Tweets"
+                val displayName = when (selectedCategory?.lowercase()) {
+                    "rss" -> "RSS 订阅"
+                    "article" -> "文章"
+                    "book" -> "书籍"
+                    "pdf" -> "电子书 / PDF"
+                    "video" -> "视频"
+                    "email" -> "邮件"
+                    "tweet" -> "推特 / 短文"
                     else -> selectedCategory
                 }
                 "分类: $displayName"

@@ -38,6 +38,7 @@ fun GlobalNotebookPane(
 
     val categories = listOf(
         Triple("article", "文章", R.drawable.ic_cat_article),
+        Triple("rss", "RSS 订阅", R.drawable.ic_cat_rss),
         Triple("book", "书籍", R.drawable.ic_cat_book),
         Triple("pdf", "电子书 / PDF", R.drawable.ic_cat_pdf),
         Triple("video", "视频", R.drawable.ic_cat_video),

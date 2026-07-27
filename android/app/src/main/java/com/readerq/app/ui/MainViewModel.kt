@@ -473,7 +473,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         docsFlow.map { list ->
             var filtered = list
             if (filter.category != null) {
-                filtered = filtered.filter { it.category?.lowercase() == filter.category.lowercase() }
+                val targetCat = filter.category.lowercase().trim()
+                filtered = filtered.filter { doc ->
+                    val docCat = doc.category?.lowercase()?.trim() ?: ""
+                    when (targetCat) {
+                        "rss" -> docCat in listOf("rss", "feed", "rss_feed", "rss订阅", "rss 订阅")
+                        "article" -> docCat in listOf("article", "articles")
+                        "book" -> docCat in listOf("book", "books")
+                        "pdf" -> docCat in listOf("pdf", "epub")
+                        "video" -> docCat in listOf("video", "youtube")
+                        "tweet" -> docCat in listOf("tweet", "short", "twitter")
+                        else -> docCat == targetCat
+                    }
+                }
             }
             if (filter.tag != null) {
                 filtered = filtered.filter { doc ->
@@ -496,7 +508,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         .map { list ->
             val counts = mutableMapOf<String, Int>()
             list.forEach { doc ->
-                val cat = doc.category?.lowercase() ?: ""
+                val rawCat = doc.category?.lowercase()?.trim() ?: ""
+                val cat = when (rawCat) {
+                    "rss", "feed", "rss_feed", "rss订阅", "rss 订阅" -> "rss"
+                    "article", "articles" -> "article"
+                    "book", "books" -> "book"
+                    "pdf", "epub" -> "pdf"
+                    "video", "youtube" -> "video"
+                    "tweet", "short", "twitter" -> "tweet"
+                    else -> rawCat
+                }
                 if (cat.isNotEmpty()) {
                     counts[cat] = counts.getOrDefault(cat, 0) + 1
                 }
@@ -603,7 +624,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             _homeFeedShowTags.value = settingDao.getSetting("ui_home_feed_show_tags")?.replace("\"", "")?.toBooleanStrictOrNull() ?: true
             _homeFeedShowCover.value = settingDao.getSetting("ui_home_feed_show_cover")?.replace("\"", "")?.toBooleanStrictOrNull() ?: true
             
-            _currentTab.value = "review"
+            _currentTab.value = "notebook"
             _homeFeedTab.value = settingDao.getSetting("ui_home_feed_tab")?.replace("\"", "") ?: "all"
             _homeFeedPrioritizeInbox.value = settingDao.getSetting("ui_home_feed_prioritize_inbox")?.replace("\"", "")?.toBooleanStrictOrNull() ?: true
             val storedTags = settingDao.getSetting("ui_home_feed_filter_tags")?.replace("\"", "")
