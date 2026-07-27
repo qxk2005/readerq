@@ -36,6 +36,9 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Close
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -803,6 +806,7 @@ fun HighlightContentWithImages(
     tagBg: Color = Color.Gray.copy(alpha = 0.2f),
     modifier: Modifier = Modifier
 ) {
+    var previewImageUrl by remember { mutableStateOf<String?>(null) }
     val imageRegex = remember { Regex("""!\[([^]]*)]\(([^)]+)\)""") }
     
     val blocks = remember(text) {
@@ -835,7 +839,7 @@ fun HighlightContentWithImages(
         list
     }
 
-    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(10.dp)) {
         blocks.forEach { block ->
             when (block) {
                 is HighlightBlock.TextBlock -> {
@@ -849,18 +853,95 @@ fun HighlightContentWithImages(
                     )
                 }
                 is HighlightBlock.ImageBlock -> {
-                    AsyncImage(
-                        model = block.url,
-                        contentDescription = block.alt,
-                        contentScale = ContentScale.Fit,
+                    Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .heightIn(max = 240.dp)
-                            .padding(vertical = 2.dp)
-                            .clip(RoundedCornerShape(8.dp))
-                            .border(1.dp, tagBg, RoundedCornerShape(8.dp))
+                            .padding(vertical = 4.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .border(1.dp, tagBg, RoundedCornerShape(10.dp))
+                            .clickable { previewImageUrl = block.url }
+                    ) {
+                        AsyncImage(
+                            model = block.url,
+                            contentDescription = block.alt,
+                            contentScale = ContentScale.FillWidth,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 140.dp, max = 360.dp)
+                        )
+
+                        // 🔍 悬浮提示 Chip
+                        Surface(
+                            modifier = Modifier
+                                .align(Alignment.BottomEnd)
+                                .padding(8.dp),
+                            shape = androidx.compose.foundation.shape.CircleShape,
+                            color = Color.Black.copy(alpha = 0.65f)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Search,
+                                    contentDescription = "查看大图",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(12.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("点击查看大图", fontSize = 10.sp, color = Color.White, fontWeight = FontWeight.Medium)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // 🔍 大图全屏预览 Modal
+    if (previewImageUrl != null) {
+        androidx.compose.ui.window.Dialog(
+            onDismissRequest = { previewImageUrl = null },
+            properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.92f))
+                    .clickable { previewImageUrl = null },
+                contentAlignment = Alignment.Center
+            ) {
+                AsyncImage(
+                    model = previewImageUrl,
+                    contentDescription = "大图预览",
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(16.dp)
+                )
+
+                IconButton(
+                    onClick = { previewImageUrl = null },
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(top = 40.dp, end = 20.dp)
+                        .background(Color.White.copy(alpha = 0.2f), androidx.compose.foundation.shape.CircleShape)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = "关闭",
+                        tint = Color.White
                     )
                 }
+
+                Text(
+                    text = "点击任意位置返回",
+                    color = Color.White.copy(alpha = 0.7f),
+                    fontSize = 12.sp,
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = 32.dp)
+                )
             }
         }
     }

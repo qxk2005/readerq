@@ -743,7 +743,7 @@ fun DailyReviewPane(
                                 )
                             }
 
-                            // 已复习 / 下一条 (Space) - 同步 Readwise
+                            // 已复习 / 下一条 - 同步 Readwise
                             val isLastCard = currentIndex == highlights.size - 1
                             Button(
                                 onClick = { viewModel.nextReviewCard() },
@@ -754,7 +754,7 @@ fun DailyReviewPane(
                                 )
                             ) {
                                 Text(
-                                    text = if (isLastCard) "🎉 完成复习 (Space) ›" else "已复习 / 下一条 (Space) ›",
+                                    text = if (isLastCard) "🎉 完成复习 ›" else "下一条 ›",
                                     color = Color.White,
                                     fontSize = 13.sp,
                                     fontWeight = FontWeight.Bold
@@ -938,7 +938,7 @@ fun DailyReviewPane(
                         showAddTagDialog = false
                     }
                 }) {
-                    Text("添加并同步至 Readwise")
+                    Text("添加")
                 }
             },
             dismissButton = {

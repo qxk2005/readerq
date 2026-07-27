@@ -643,7 +643,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             _homeFeedShowTags.value = settingDao.getSetting("ui_home_feed_show_tags")?.replace("\"", "")?.toBooleanStrictOrNull() ?: true
             _homeFeedShowCover.value = settingDao.getSetting("ui_home_feed_show_cover")?.replace("\"", "")?.toBooleanStrictOrNull() ?: true
             
-            _currentTab.value = "notebook"
+            _selectedDoc.value = null
+            _currentTab.value = "review"
             _homeFeedTab.value = settingDao.getSetting("ui_home_feed_tab")?.replace("\"", "") ?: "all"
             _homeFeedPrioritizeInbox.value = settingDao.getSetting("ui_home_feed_prioritize_inbox")?.replace("\"", "")?.toBooleanStrictOrNull() ?: true
             val storedTags = settingDao.getSetting("ui_home_feed_filter_tags")?.replace("\"", "")
