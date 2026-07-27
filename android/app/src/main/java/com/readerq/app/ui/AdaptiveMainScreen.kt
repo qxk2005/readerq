@@ -415,11 +415,7 @@ fun AdaptiveMainScreen(
                                             }
                                         } else {
                                             Box(modifier = Modifier.width(currentSidebarWidth)) {
-                                                when (currentTab) {
-                                                    "home" -> HomeFeedPane(viewModel = viewModel, onDocumentClick = { doc -> viewModel.selectDocument(doc) })
-                                                    "zen" -> ZenReadPane(viewModel = viewModel, onDocumentClick = { doc -> viewModel.selectDocument(doc) })
-                                                    else -> documentListPane(currentTab == "feed")
-                                                }
+                                                documentListPane(currentTab == "feed")
                                             }
                                             
                                             // Left Draggable Split Divider
