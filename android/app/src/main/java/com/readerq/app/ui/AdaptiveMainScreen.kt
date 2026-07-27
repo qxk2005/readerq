@@ -359,9 +359,9 @@ fun AdaptiveMainScreen(
                                 SettingsPane(viewModel = viewModel)
                             } else if (currentTab == "notebook") {
                                 GlobalNotebookPane(viewModel = viewModel)
-                            } else if (currentTab == "home") {
+                            } else if (currentTab == "home" && selectedDoc == null) {
                                 HomeFeedPane(viewModel = viewModel, onDocumentClick = { doc -> viewModel.selectDocument(doc) })
-                            } else if (currentTab == "zen") {
+                            } else if (currentTab == "zen" && selectedDoc == null) {
                                 ZenReadPane(viewModel = viewModel, onDocumentClick = { doc -> viewModel.selectDocument(doc) })
                             } else {
                                 // Split layout for reading
@@ -415,7 +415,11 @@ fun AdaptiveMainScreen(
                                             }
                                         } else {
                                             Box(modifier = Modifier.width(currentSidebarWidth)) {
-                                                documentListPane(currentTab == "feed")
+                                                when (currentTab) {
+                                                    "home" -> HomeFeedPane(viewModel = viewModel, onDocumentClick = { doc -> viewModel.selectDocument(doc) })
+                                                    "zen" -> ZenReadPane(viewModel = viewModel, onDocumentClick = { doc -> viewModel.selectDocument(doc) })
+                                                    else -> documentListPane(currentTab == "feed")
+                                                }
                                             }
                                             
                                             // Left Draggable Split Divider

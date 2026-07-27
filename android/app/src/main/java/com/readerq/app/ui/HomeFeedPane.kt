@@ -1,5 +1,6 @@
 package com.readerq.app.ui
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -16,9 +17,11 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -188,6 +191,73 @@ fun HomeFeedPane(
 }
 
 @Composable
+fun DefaultArtCover(
+    doc: DocumentEntity,
+    modifier: Modifier = Modifier
+) {
+    val hash = (doc.id.hashCode() and 0x7FFFFFFF)
+    val gradients = listOf(
+        listOf(Color(0xFF1A2A6C), Color(0xFFB21F1F), Color(0xFFFDBB2D)),
+        listOf(Color(0xFF0F2027), Color(0xFF203A43), Color(0xFF2C5364)),
+        listOf(Color(0xFF3A1C71), Color(0xFFD76D77), Color(0xFFFFAF7B)),
+        listOf(Color(0xFF134E5E), Color(0xFF71B280)),
+        listOf(Color(0xFF1D2671), Color(0xFFC33764)),
+        listOf(Color(0xFF304352), Color(0xFF434343)),
+        listOf(Color(0xFF00416A), Color(0xFFE4E5E6)),
+        listOf(Color(0xFF2C3E50), Color(0xFF4CA1AF))
+    )
+    val colorList = gradients[hash % gradients.size]
+    val initialLetter = doc.title.trim().take(1).uppercase().ifBlank { "R" }
+
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(130.dp)
+            .background(Brush.linearGradient(colorList)),
+        contentAlignment = Alignment.Center
+    ) {
+        // 背景微光光芒
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            drawCircle(
+                color = Color.White.copy(alpha = 0.08f),
+                radius = size.minDimension * 0.75f,
+                center = androidx.compose.ui.geometry.Offset(size.width * 0.85f, size.height * 0.25f)
+            )
+        }
+
+        // 居中半透明 Typography 首字母印记
+        Text(
+            text = initialLetter,
+            fontSize = 68.sp,
+            fontWeight = FontWeight.Black,
+            color = Color.White.copy(alpha = 0.22f),
+            textAlign = TextAlign.Center
+        )
+
+        // 底部 Overlay 分类 Badge
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(10.dp),
+            contentAlignment = Alignment.BottomStart
+        ) {
+            Surface(
+                shape = RoundedCornerShape(6.dp),
+                color = Color.Black.copy(alpha = 0.38f)
+            ) {
+                Text(
+                    text = (doc.category ?: "article").uppercase(),
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White,
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
 fun HomeFeedCard(
     doc: DocumentEntity,
     showCover: Boolean,
@@ -208,51 +278,59 @@ fun HomeFeedCard(
         tonalElevation = 1.dp
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
-            // 1. 文章大图封面
-            if (showCover && !doc.image_url.isNullOrBlank()) {
-                AsyncImage(
-                    model = doc.image_url,
-                    contentDescription = doc.title,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = 100.dp, max = 220.dp)
-                        .clip(RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp))
-                )
+            // 1. 文章封面 (如果有网络大图则展示 AsyncImage，无图片则自动生成艺术渐变 DefaultArtCover)
+            if (showCover) {
+                if (!doc.image_url.isNullOrBlank()) {
+                    AsyncImage(
+                        model = doc.image_url,
+                        contentDescription = doc.title,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 100.dp, max = 220.dp)
+                            .clip(RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp))
+                    )
+                } else {
+                    DefaultArtCover(
+                        doc = doc,
+                        modifier = Modifier.clip(RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp))
+                    )
+                }
             }
 
             Column(modifier = Modifier.padding(14.dp)) {
-                // 2. 分类 & 作者 Meta 标签行
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Surface(
-                        shape = RoundedCornerShape(6.dp),
-                        color = Color(0xFF007AFF).copy(alpha = 0.1f)
+                // 2. 分类 & 作者 Meta 标签行 (当没有显示封面时展现 Badge)
+                if (!showCover) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Text(
-                            text = (doc.category ?: "article").uppercase(),
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color(0xFF007AFF),
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                        )
-                    }
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = Color(0xFF007AFF).copy(alpha = 0.1f)
+                        ) {
+                            Text(
+                                text = (doc.category ?: "article").uppercase(),
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF007AFF),
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
 
-                    if (!doc.author.isNullOrBlank()) {
-                        Text(
-                            text = doc.author!!,
-                            fontSize = 11.sp,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
+                        if (!doc.author.isNullOrBlank()) {
+                            Text(
+                                text = doc.author!!,
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
                     }
+                    Spacer(modifier = Modifier.height(8.dp))
                 }
-
-                Spacer(modifier = Modifier.height(8.dp))
 
                 // 3. 文章标题
                 Text(
