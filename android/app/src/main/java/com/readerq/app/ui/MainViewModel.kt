@@ -175,23 +175,48 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _streakDays = MutableStateFlow(5)
     val streakDays: StateFlow<Int> = _streakDays.asStateFlow()
 
+    private val _isReviewCompleted = MutableStateFlow(false)
+    val isReviewCompleted: StateFlow<Boolean> = _isReviewCompleted.asStateFlow()
+
     fun setReviewSubTab(tab: String) {
         _reviewSubTab.value = tab
     }
 
     fun nextReviewCard() {
         if (_reviewHighlights.value.isNotEmpty()) {
-            val nextIdx = (_reviewCurrentIndex.value + 1) % _reviewHighlights.value.size
-            _reviewCurrentIndex.value = nextIdx
-            _reviewedCountToday.value += 1
-            saveSetting("review_today_count", _reviewedCountToday.value.toString())
+            val total = _reviewHighlights.value.size
+            if (_reviewCurrentIndex.value < total - 1) {
+                _reviewCurrentIndex.value += 1
+                _reviewedCountToday.value += 1
+                saveSetting("review_today_count", _reviewedCountToday.value.toString())
+            } else {
+                // 读完最后一条，触发胜利完成结算
+                _isReviewCompleted.value = true
+                _reviewedCountToday.value += 1
+                saveSetting("review_today_count", _reviewedCountToday.value.toString())
+            }
         }
     }
 
     fun prevReviewCard() {
-        if (_reviewHighlights.value.isNotEmpty()) {
-            val count = _reviewHighlights.value.size
-            _reviewCurrentIndex.value = (_reviewCurrentIndex.value - 1 + count) % count
+        if (_isReviewCompleted.value) {
+            _isReviewCompleted.value = false
+        } else if (_reviewCurrentIndex.value > 0) {
+            _reviewCurrentIndex.value -= 1
+        }
+    }
+
+    fun restartReviewSession() {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val all = hlDao.getAllHighlightsSync()
+                val validHls = all.filter { it.text.trim().isNotEmpty() || !it.note.isNullOrBlank() }
+                if (validHls.isNotEmpty()) {
+                    _reviewHighlights.value = validHls.shuffled().take(15)
+                }
+            } catch (e: Exception) {}
+            _reviewCurrentIndex.value = 0
+            _isReviewCompleted.value = false
         }
     }
 

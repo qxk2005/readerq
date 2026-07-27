@@ -161,8 +161,228 @@ fun DailyReviewPane(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        if (subTab == "daily") {
-            if (highlights.isEmpty()) {
+    val isReviewCompleted by viewModel.isReviewCompleted.collectAsState()
+
+    if (subTab == "daily") {
+        if (isReviewCompleted) {
+            // 🏆 胜利结算界面 (Victory Screen)
+            val totalCount = highlights.size
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    text = "🎉 每日回顾完成 ($totalCount / $totalCount)",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFF34C759)
+                )
+
+                LinearProgressIndicator(
+                    progress = 1.0f,
+                    modifier = Modifier
+                        .width(180.dp)
+                        .height(6.dp)
+                        .clip(CircleShape),
+                    color = Color(0xFF34C759),
+                    trackColor = cardBorder
+                )
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
+                shape = RoundedCornerShape(20.dp),
+                color = cardBg,
+                border = BorderStroke(1.5.dp, Color(0xFF34C759).copy(alpha = 0.5f)),
+                shadowElevation = 6.dp
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(24.dp)
+                        .verticalScroll(rememberScrollState()),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        // 成就图标
+                        Surface(
+                            shape = CircleShape,
+                            color = Color(0xFFFF9500).copy(alpha = 0.15f),
+                            modifier = Modifier.size(72.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Text("🏆", fontSize = 36.sp)
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        Text(
+                            text = "🎉 恭喜完成今日每日回顾！",
+                            fontSize = 20.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = textColor
+                        )
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        Text(
+                            text = "您已成功阅读并复习全部 $totalCount 条精选划线金句，脑海知识库再度激活！",
+                            fontSize = 13.sp,
+                            color = textColor.copy(alpha = 0.7f),
+                            lineHeight = 18.sp
+                        )
+
+                        Spacer(modifier = Modifier.height(20.dp))
+
+                        // 数据统计卡片
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(16.dp),
+                            color = MaterialTheme.colorScheme.surface,
+                            border = BorderStroke(1.dp, cardBorder)
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(16.dp),
+                                horizontalArrangement = Arrangement.SpaceAround
+                            ) {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Text("$streakDays 天", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color(0xFFFF9500))
+                                    Text("连续打卡天数", fontSize = 11.sp, color = textColor.copy(alpha = 0.6f))
+                                }
+
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Text("$reviewedCountToday 条", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                                    Text("今日复习金句", fontSize = 11.sp, color = textColor.copy(alpha = 0.6f))
+                                }
+
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Text("$totalCount 条", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color(0xFF34C759))
+                                    Text("本轮回顾数量", fontSize = 11.sp, color = textColor.copy(alpha = 0.6f))
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        // ✅ Readwise 云端同步完成状态通知
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(16.dp),
+                            color = Color(0xFF34C759).copy(alpha = 0.1f),
+                            border = BorderStroke(1.dp, Color(0xFF34C759).copy(alpha = 0.3f))
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(16.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Surface(
+                                    shape = CircleShape,
+                                    color = Color(0xFF34C759),
+                                    modifier = Modifier.size(36.dp)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(
+                                            Icons.Default.Check,
+                                            contentDescription = null,
+                                            tint = Color.White,
+                                            modifier = Modifier.size(22.dp)
+                                        )
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.width(14.dp))
+
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(
+                                            text = "✅ Readwise 后台同步完成",
+                                            fontSize = 14.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color(0xFF2E7D32)
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Surface(
+                                            shape = RoundedCornerShape(4.dp),
+                                            color = Color(0xFF34C759).copy(alpha = 0.2f)
+                                        ) {
+                                            Text(
+                                                text = "已100%同步",
+                                                fontSize = 10.sp,
+                                                color = Color(0xFF2E7D32),
+                                                fontWeight = FontWeight.Bold,
+                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                            )
+                                        }
+                                    }
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        text = "本轮 $totalCount 条金句打卡复习记录、收藏及新标签已成功写回 Readwise 间隔重复 (SRS) 云端模型。",
+                                        fontSize = 12.sp,
+                                        color = textColor.copy(alpha = 0.8f),
+                                        lineHeight = 16.sp
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(20.dp))
+
+                    // 底部控制操作组
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Button(
+                            onClick = { viewModel.restartReviewSession() },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(48.dp),
+                            shape = RoundedCornerShape(14.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                        ) {
+                            Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("开启新一轮随机回顾 (${totalCount}条)", fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                        }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            OutlinedButton(
+                                onClick = { viewModel.prevReviewCard() },
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(14.dp),
+                                border = BorderStroke(1.dp, cardBorder)
+                            ) {
+                                Text("‹ 返回上一条", color = textColor, fontSize = 13.sp)
+                            }
+
+                            OutlinedButton(
+                                onClick = { viewModel.setReviewSubTab("stats") },
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(14.dp),
+                                border = BorderStroke(1.dp, cardBorder)
+                            ) {
+                                Text("📊 查看回顾统计", color = textColor, fontSize = 13.sp)
+                            }
+                        }
+                    }
+                }
+            }
+        } else if (highlights.isEmpty()) {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
@@ -429,13 +649,21 @@ fun DailyReviewPane(
                             }
 
                             // 已复习 / 下一条 (Space) - 同步 Readwise
+                            val isLastCard = currentIndex == highlights.size - 1
                             Button(
                                 onClick = { viewModel.nextReviewCard() },
                                 modifier = Modifier.weight(1.8f),
                                 shape = RoundedCornerShape(14.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = if (isLastCard) Color(0xFF34C759) else MaterialTheme.colorScheme.primary
+                                )
                             ) {
-                                Text("已复习 / 下一条 (Space) ›", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                Text(
+                                    text = if (isLastCard) "🎉 完成复习 (Space) ›" else "已复习 / 下一条 (Space) ›",
+                                    color = Color.White,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
                             }
                         }
                     }
