@@ -205,6 +205,8 @@ fun DailyReviewPane(
         Spacer(modifier = Modifier.height(16.dp))
 
     val isReviewCompleted by viewModel.isReviewCompleted.collectAsState()
+    val isSyncingReviewComplete by viewModel.isSyncingReviewComplete.collectAsState()
+    val reviewCompleteSyncSuccess by viewModel.reviewCompleteSyncSuccess.collectAsState()
 
     if (subTab == "daily") {
         if (isReviewCompleted) {
@@ -318,12 +320,16 @@ fun DailyReviewPane(
 
                         Spacer(modifier = Modifier.height(16.dp))
 
-                        // ✅ Readwise 云端同步完成状态通知
+                        // ✅ Readwise 云端同步完成状态通知 (真实打卡状态)
+                        val isSuccess = reviewCompleteSyncSuccess == true
+                        val isFailed = reviewCompleteSyncSuccess == false
+                        val themeColor = if (isSyncingReviewComplete) MaterialTheme.colorScheme.primary else if (isSuccess) Color(0xFF34C759) else Color(0xFFFF9500)
+
                         Surface(
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(16.dp),
-                            color = Color(0xFF34C759).copy(alpha = 0.1f),
-                            border = BorderStroke(1.dp, Color(0xFF34C759).copy(alpha = 0.3f))
+                            color = themeColor.copy(alpha = 0.1f),
+                            border = BorderStroke(1.dp, themeColor.copy(alpha = 0.3f))
                         ) {
                             Row(
                                 modifier = Modifier.padding(16.dp),
@@ -331,16 +337,24 @@ fun DailyReviewPane(
                             ) {
                                 Surface(
                                     shape = CircleShape,
-                                    color = Color(0xFF34C759),
+                                    color = themeColor,
                                     modifier = Modifier.size(36.dp)
                                 ) {
                                     Box(contentAlignment = Alignment.Center) {
-                                        Icon(
-                                            Icons.Default.Check,
-                                            contentDescription = null,
-                                            tint = Color.White,
-                                            modifier = Modifier.size(22.dp)
-                                        )
+                                        if (isSyncingReviewComplete) {
+                                            CircularProgressIndicator(
+                                                modifier = Modifier.size(20.dp),
+                                                color = Color.White,
+                                                strokeWidth = 2.dp
+                                            )
+                                        } else {
+                                            Icon(
+                                                if (isSuccess) Icons.Default.Check else Icons.Default.Refresh,
+                                                contentDescription = null,
+                                                tint = Color.White,
+                                                modifier = Modifier.size(20.dp)
+                                            )
+                                        }
                                     }
                                 }
 
@@ -349,20 +363,22 @@ fun DailyReviewPane(
                                 Column(modifier = Modifier.weight(1f)) {
                                     Row(verticalAlignment = Alignment.CenterVertically) {
                                         Text(
-                                            text = "✅ Readwise 后台同步完成",
+                                            text = if (isSyncingReviewComplete) "⌛ 正在同步至 Readwise 官方..." 
+                                                   else if (isSuccess) "✅ Readwise 官方后台打卡成功" 
+                                                   else "⚠️ Readwise 官方同步需要重试",
                                             fontSize = 14.sp,
                                             fontWeight = FontWeight.Bold,
-                                            color = Color(0xFF2E7D32)
+                                            color = if (isSuccess) Color(0xFF2E7D32) else themeColor
                                         )
                                         Spacer(modifier = Modifier.width(6.dp))
                                         Surface(
                                             shape = RoundedCornerShape(4.dp),
-                                            color = Color(0xFF34C759).copy(alpha = 0.2f)
+                                            color = themeColor.copy(alpha = 0.2f)
                                         ) {
                                             Text(
-                                                text = "已100%同步",
+                                                text = if (isSyncingReviewComplete) "同步中" else if (isSuccess) "已100%同步" else "待重试",
                                                 fontSize = 10.sp,
-                                                color = Color(0xFF2E7D32),
+                                                color = if (isSuccess) Color(0xFF2E7D32) else themeColor,
                                                 fontWeight = FontWeight.Bold,
                                                 modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                                             )
@@ -370,11 +386,20 @@ fun DailyReviewPane(
                                     }
                                     Spacer(modifier = Modifier.height(4.dp))
                                     Text(
-                                        text = "本轮 $totalCount 条金句打卡复习记录、收藏及新标签已成功写回 Readwise 间隔重复 (SRS) 云端模型。",
+                                        text = if (isSyncingReviewComplete) "正在将本轮 $totalCount 条划线打卡记录向 Readwise 官方 API 发送 POST 标记..."
+                                               else if (isSuccess) "本轮 $totalCount 条划线复习记录与 Complete 打卡指令已成功发送至 Readwise 官方 API，readwise.io 后台状态同步成功。"
+                                               else "本地复习进度已妥善保存。请点击右侧重试按钮，向 Readwise 官方提交打卡完成指令。",
                                         fontSize = 12.sp,
                                         color = textColor.copy(alpha = 0.8f),
                                         lineHeight = 16.sp
                                     )
+                                }
+
+                                if (isFailed && !isSyncingReviewComplete) {
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    IconButton(onClick = { viewModel.submitOfficialReviewComplete() }) {
+                                        Icon(Icons.Default.Refresh, contentDescription = "重试同步", tint = themeColor)
+                                    }
                                 }
                             }
                         }

@@ -411,4 +411,43 @@ class ReadwiseClient(private val token: String) {
         }
         return response.body()
     }
+
+    // 14. 获取 Readwise 官方 Daily Review (V2 API)
+    suspend fun getDailyReview(): ReadwiseReviewResponse {
+        val url = "https://readwise.io/api/v2/review/"
+        val response = executeWithRetry(url) {
+            get(url) {
+                authHeaders()
+            }
+        }
+        return response.body()
+    }
+
+    // 15. 提交 Readwise 官方单条 Review 操作状态 (V2 API)
+    suspend fun submitReviewAction(highlightId: Long, action: String = "keep", reviewId: Long? = null): HttpResponse {
+        val url = "https://readwise.io/api/v2/review/action/"
+        val req = ReadwiseReviewActionRequest(
+            highlight_id = highlightId,
+            action = if (action == "reviewed") "keep" else action,
+            review_id = reviewId
+        )
+        return executeWithRetry(url) {
+            post(url) {
+                authHeaders()
+                setBody(req)
+            }
+        }
+    }
+
+    // 16. 标记 Readwise 官方今日 Daily Review 全部打卡完成 (V2 API)
+    suspend fun markDailyReviewComplete(reviewId: Long? = null): HttpResponse {
+        val url = "https://readwise.io/api/v2/review/complete/"
+        val req = ReadwiseReviewCompleteRequest(review_id = reviewId)
+        return executeWithRetry(url) {
+            post(url) {
+                authHeaders()
+                setBody(req)
+            }
+        }
+    }
 }

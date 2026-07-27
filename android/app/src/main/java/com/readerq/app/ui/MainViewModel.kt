@@ -178,6 +178,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _isReviewCompleted = MutableStateFlow(false)
     val isReviewCompleted: StateFlow<Boolean> = _isReviewCompleted.asStateFlow()
 
+    private val _currentReviewId = MutableStateFlow<Long?>(null)
+    val currentReviewId: StateFlow<Long?> = _currentReviewId.asStateFlow()
+
+    private val _isSyncingReviewComplete = MutableStateFlow(false)
+    val isSyncingReviewComplete: StateFlow<Boolean> = _isSyncingReviewComplete.asStateFlow()
+
+    private val _reviewCompleteSyncSuccess = MutableStateFlow<Boolean?>(null)
+    val reviewCompleteSyncSuccess: StateFlow<Boolean?> = _reviewCompleteSyncSuccess.asStateFlow()
+
     fun setReviewSubTab(tab: String) {
         _reviewSubTab.value = tab
     }
@@ -185,6 +194,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun nextReviewCard() {
         if (_reviewHighlights.value.isNotEmpty()) {
             val total = _reviewHighlights.value.size
+            val currentHl = _reviewHighlights.value.getOrNull(_reviewCurrentIndex.value)
+
+            // 1. 异步提交当前划线操作至 Readwise 官方 API
+            if (currentHl != null) {
+                sendReviewActionToOfficial(currentHl, "keep")
+            }
+
             if (_reviewCurrentIndex.value < total - 1) {
                 _reviewCurrentIndex.value += 1
                 _reviewedCountToday.value += 1
@@ -194,6 +210,50 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 _isReviewCompleted.value = true
                 _reviewedCountToday.value += 1
                 saveSetting("review_today_count", _reviewedCountToday.value.toString())
+                
+                // 2. 触发向 Readwise 官方 API 提交 Complete 打卡完成标记！
+                submitOfficialReviewComplete()
+            }
+        }
+    }
+
+    fun sendReviewActionToOfficial(highlight: HighlightEntity, action: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val currentToken = settingDao.getSetting("readwise_api_token")?.replace("\"", "")
+                if (!currentToken.isNullOrBlank()) {
+                    val client = ReadwiseClient(currentToken)
+                    val hlIdLong = highlight.id.toLongOrNull()
+                    if (hlIdLong != null) {
+                        client.submitReviewAction(highlightId = hlIdLong, action = action, reviewId = _currentReviewId.value)
+                        println("[Readwise Official Sync] 成功发送 Review Action ($action) for highlight $hlIdLong")
+                    }
+                }
+            } catch (e: Exception) {
+                println("[Readwise Official Sync] 发送 Review Action 失败: ${e.message}")
+            }
+        }
+    }
+
+    fun submitOfficialReviewComplete() {
+        viewModelScope.launch(Dispatchers.IO) {
+            _isSyncingReviewComplete.value = true
+            _reviewCompleteSyncSuccess.value = null
+            try {
+                val currentToken = settingDao.getSetting("readwise_api_token")?.replace("\"", "")
+                if (!currentToken.isNullOrBlank()) {
+                    val client = ReadwiseClient(currentToken)
+                    client.markDailyReviewComplete(reviewId = _currentReviewId.value)
+                    _reviewCompleteSyncSuccess.value = true
+                    println("[Readwise Official Sync] 成功向 Readwise 官方 API 标记今日 Daily Review 已 100% 完成打卡！")
+                } else {
+                    _reviewCompleteSyncSuccess.value = true
+                }
+            } catch (e: Exception) {
+                println("[Readwise Official Sync] 标记 Readwise 官方 Daily Review 完成失败: ${e.message}")
+                _reviewCompleteSyncSuccess.value = false
+            } finally {
+                _isSyncingReviewComplete.value = false
             }
         }
     }
@@ -208,6 +268,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun restartReviewSession() {
         viewModelScope.launch(Dispatchers.IO) {
+            _reviewCompleteSyncSuccess.value = null
+            // 尝试向 Readwise 官方 API 获取 Daily Review 会话 ID
+            try {
+                val currentToken = settingDao.getSetting("readwise_api_token")?.replace("\"", "")
+                if (!currentToken.isNullOrBlank()) {
+                    val client = ReadwiseClient(currentToken)
+                    try {
+                        val officialReview = client.getDailyReview()
+                        _currentReviewId.value = officialReview.review_id
+                        println("[Readwise Official Sync] 获取到官方 Daily Review 会话 ID: ${officialReview.review_id}")
+                    } catch (e: Exception) {
+                        println("[Readwise Official Sync] 获取官方 Daily Review 会话失败: ${e.message}")
+                    }
+                }
+            } catch (e: Exception) {}
+
             try {
                 val allHls = hlDao.getAllHighlightsSync()
                 val docs = docDao.getAllDocumentsSync()

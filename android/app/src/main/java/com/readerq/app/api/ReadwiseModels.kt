@@ -225,3 +225,37 @@ data class SubtitleSegment(
     val endTime: Double,   // 秒
     val text: String
 )
+
+// --- Review API Models (V2) ---
+
+@Serializable
+data class ReadwiseReviewItem(
+    val id: Long? = null,
+    val highlight_id: Long? = null,
+    val highlight: ReadwiseHighlightListItem? = null,
+    val text: String? = null,
+    val note: String? = null,
+    val title: String? = null,
+    val author: String? = null,
+    val source_url: String? = null
+)
+
+@Serializable
+data class ReadwiseReviewResponse(
+    val review_id: Long? = null,
+    val review_url: String? = null,
+    val review_items: List<ReadwiseReviewItem>? = null,
+    val results: List<ReadwiseReviewItem>? = null
+)
+
+@Serializable
+data class ReadwiseReviewActionRequest(
+    val highlight_id: Long,
+    val action: String,
+    val review_id: Long? = null
+)
+
+@Serializable
+data class ReadwiseReviewCompleteRequest(
+    val review_id: Long? = null
+)
