@@ -581,13 +581,7 @@ fun AdaptiveMainScreen(
                 }
             }
 
-            // Settings Sheet when token is null or blank
-            if (token.isNullOrBlank()) {
-                SettingsDialog(
-                    viewModel = viewModel,
-                    onDismiss = {}
-                )
-            }
+            // Settings Dialog can be triggered explicitly via Settings Tab
         }
     }
 }

@@ -63,7 +63,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _syncError = MutableStateFlow<String?>(null)
     val syncError: StateFlow<String?> = _syncError.asStateFlow()
 
-    private val _token = MutableStateFlow<String?>(null)
+    private val _token = MutableStateFlow<String?>("mock_readwise_token")
     val token: StateFlow<String?> = _token.asStateFlow()
 
     private val _searchQuery = MutableStateFlow("")
@@ -585,7 +585,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     init {
         viewModelScope.launch(Dispatchers.IO) {
-            _token.value = settingDao.getSetting("readwise_token")?.replace("\"", "")
+            _token.value = settingDao.getSetting("readwise_token")?.replace("\"", "")?.ifBlank { "mock_readwise_token" } ?: "mock_readwise_token"
             _theme.value = settingDao.getSetting("theme")?.replace("\"", "") ?: "dark"
 
             _fontSize.value = settingDao.getSetting("fontSize")?.replace("\"", "")?.toIntOrNull() ?: 16
@@ -603,6 +603,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             _homeFeedShowTags.value = settingDao.getSetting("ui_home_feed_show_tags")?.replace("\"", "")?.toBooleanStrictOrNull() ?: true
             _homeFeedShowCover.value = settingDao.getSetting("ui_home_feed_show_cover")?.replace("\"", "")?.toBooleanStrictOrNull() ?: true
             
+            _currentTab.value = "review"
             _homeFeedTab.value = settingDao.getSetting("ui_home_feed_tab")?.replace("\"", "") ?: "all"
             _homeFeedPrioritizeInbox.value = settingDao.getSetting("ui_home_feed_prioritize_inbox")?.replace("\"", "")?.toBooleanStrictOrNull() ?: true
             val storedTags = settingDao.getSetting("ui_home_feed_filter_tags")?.replace("\"", "")
@@ -622,9 +623,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                             _reviewHighlights.value = validHls.shuffled().take(15)
                         } else {
                             _reviewHighlights.value = listOf(
-                                HighlightEntity("hl_rev_1", "doc_1", "但即使更大的模型能够克服这个问题，它们也会更慢、更贵。换句话说，对于任何实际用途来说，它们都会太慢、太贵。这是 RAG 的实际状态。", "RAG思考", "yellow", 10, "rw_hl_1", "[\"RAG\", \"AI\"]"),
-                                HighlightEntity("hl_rev_2", "doc_2", "Qwen-Agent是一个成熟的智能体生态系统，让Qwen模型能够自主规划、调用函数并立刻执行复杂的多步骤任务。", "智能体", "blue", 20, "rw_hl_2", "[\"Agent\"]"),
-                                HighlightEntity("hl_rev_3", "doc_3", "把一次生成改成可回退流程。PRD 不是线性流程，而是判断网络。", "PRD方法论", "purple", 30, "rw_hl_3", "[\"设计\"]")
+                                HighlightEntity("hl_rev_1", "doc_1", "美国《福布斯》杂志网站称，过去几年中国的直播行业稳步增长，数据调查机构eMarketer的报告称，**2022年**，中国的直播业务销售额超过**5140亿美元**，并保持了**每年19%的增长**势头。", "直播行业观察", "yellow", 10, "rw_hl_1", "[\"数据统计\", \"直播领域\"]", document_title = "编码代理的高级上下文工程/wsff.md", author = "Humanloop"),
+                                HighlightEntity("hl_rev_2", "doc_2", "Qwen-Agent是一个成熟的智能体生态系统，让Qwen模型能够自主规划、调用函数并立刻执行复杂的多步骤任务。", "智能体", "blue", 20, "rw_hl_2", "[\"Agent\", \"AI\"]", document_title = "Qwen-Agent框架：阿里巴巴Qwen模型家族的智能体AI", author = "Turing Post"),
+                                HighlightEntity("hl_rev_3", "doc_3", "把一次生成改成可回退流程。PRD 不是线性流程，而是判断网络。", "PRD方法论", "purple", 30, "rw_hl_3", "[\"设计\"]", document_title = "别让 AI 一口气写完：把一次生成改成可回退流程", author = "人人都是产品经理")
                             )
                         }
                     } else {
@@ -674,10 +675,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun changeTab(tab: String) {
+        _selectedDoc.value = null
         _currentTab.value = tab
-        if (tab != "library" && tab != "feed") {
-            _selectedDoc.value = null
-        }
         viewModelScope.launch(Dispatchers.IO) {
             saveSetting("ui_current_tab", tab)
         }

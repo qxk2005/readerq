@@ -71,8 +71,35 @@ fun DailyReviewPane(
     val currentHl = if (highlights.isNotEmpty()) highlights[currentIndex.coerceIn(0, highlights.size - 1)] else null
     val currentDoc = remember(currentHl, documents) {
         if (currentHl != null) {
-            documents.find { it.id == currentHl.document_id }
+            documents.find { doc ->
+                doc.id == currentHl.document_id ||
+                (!doc.source_url.isNullOrBlank() && (doc.source_url == currentHl.document_id || currentHl.document_id.contains(doc.source_url))) ||
+                (!doc.url.isNullOrBlank() && (doc.url == currentHl.document_id || currentHl.document_id.contains(doc.url))) ||
+                (!currentHl.document_title.isNullOrBlank() && doc.title.trim().equals(currentHl.document_title?.trim(), ignoreCase = true))
+            }
         } else null
+    }
+
+    val displayTitle = remember(currentHl, currentDoc) {
+        when {
+            !currentDoc?.title.isNullOrBlank() -> currentDoc!!.title
+            !currentHl?.document_title.isNullOrBlank() -> currentHl!!.document_title!!
+            else -> "精选选段"
+        }
+    }
+
+    val displayAuthor = remember(currentHl, currentDoc) {
+        val rawAuthor = currentDoc?.author?.ifBlank { null }
+            ?: currentHl?.author?.ifBlank { null }
+            ?: currentDoc?.site_name?.ifBlank { null }
+
+        if (!rawAuthor.isNullOrBlank() && rawAuthor != "未知作者") {
+            "作者: $rawAuthor"
+        } else if (!currentDoc?.site_name.isNullOrBlank()) {
+            "来源: ${currentDoc!!.site_name}"
+        } else {
+            null
+        }
     }
 
     val cardBg = when (theme) {
@@ -482,27 +509,33 @@ fun DailyReviewPane(
                                     ) {
                                         Box(contentAlignment = Alignment.Center) {
                                             Text(
-                                                text = currentDoc?.title?.take(1)?.uppercase() ?: "📖",
+                                                text = displayTitle.take(1).uppercase(),
                                                 fontWeight = FontWeight.Bold,
                                                 color = MaterialTheme.colorScheme.primary
                                             )
                                         }
                                     }
                                     Spacer(modifier = Modifier.width(10.dp))
-                                    Column {
+                                    Column(
+                                        modifier = Modifier.clickable(enabled = currentDoc != null) {
+                                            currentDoc?.let { onDocumentClick(it) }
+                                        }
+                                    ) {
                                         Text(
-                                            text = currentDoc?.title ?: "精选选段",
+                                            text = displayTitle,
                                             fontWeight = FontWeight.Bold,
                                             fontSize = 15.sp,
                                             color = textColor,
                                             maxLines = 1,
                                             overflow = TextOverflow.Ellipsis
                                         )
-                                        Text(
-                                            text = "作者: ${currentDoc?.author ?: "未知作者"}",
-                                            fontSize = 12.sp,
-                                            color = textColor.copy(alpha = 0.5f)
-                                        )
+                                        if (displayAuthor != null) {
+                                            Text(
+                                                text = displayAuthor,
+                                                fontSize = 12.sp,
+                                                color = textColor.copy(alpha = 0.5f)
+                                            )
+                                        }
                                     }
                                 }
 
@@ -565,11 +598,14 @@ fun DailyReviewPane(
 
                             if (!currentHl.note.isNullOrBlank()) {
                                 Spacer(modifier = Modifier.height(12.dp))
+                                val noteAnnotatedText = buildMarkdownAnnotatedString(
+                                    input = "💡 笔记想法: ${currentHl.note}",
+                                    textColor = MaterialTheme.colorScheme.primary
+                                )
                                 Text(
-                                    text = "💡 笔记想法: ${currentHl.note}",
+                                    text = noteAnnotatedText,
                                     fontSize = 13.sp,
-                                    color = MaterialTheme.colorScheme.primary,
-                                    fontWeight = FontWeight.SemiBold
+                                    color = MaterialTheme.colorScheme.primary
                                 )
                             }
 

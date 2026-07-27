@@ -12,8 +12,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.readerq.app.data.HighlightEntity
@@ -710,6 +716,84 @@ sealed class HighlightBlock {
 }
 
 @Composable
+fun buildMarkdownAnnotatedString(
+    input: String,
+    textColor: Color,
+    primaryColor: Color = MaterialTheme.colorScheme.primary
+): AnnotatedString {
+    return remember(input, textColor, primaryColor) {
+        buildAnnotatedString {
+            val pattern = Regex("""(\*\*|__)(.*?)\1|(\*|_)(.*?)\3|(~~)(.*?)\5|(`)(.*?)\7|\[([^\]]+)\]\(([^)]+)\)""")
+            var lastIndex = 0
+
+            pattern.findAll(input).forEach { match ->
+                val range = match.range
+                if (range.first > lastIndex) {
+                    append(input.substring(lastIndex, range.first))
+                }
+
+                val fullGroup = match.value
+                when {
+                    fullGroup.startsWith("**") || fullGroup.startsWith("__") -> {
+                        val content = match.groupValues[2]
+                        withStyle(SpanStyle(fontWeight = FontWeight.Bold)) {
+                            append(content)
+                        }
+                    }
+                    fullGroup.startsWith("~~") -> {
+                        val content = match.groupValues[6]
+                        withStyle(SpanStyle(textDecoration = TextDecoration.LineThrough)) {
+                            append(content)
+                        }
+                    }
+                    fullGroup.startsWith("`") -> {
+                        val content = match.groupValues[8]
+                        withStyle(
+                            SpanStyle(
+                                fontFamily = FontFamily.Monospace,
+                                background = primaryColor.copy(alpha = 0.12f),
+                                color = primaryColor,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        ) {
+                            append(" $content ")
+                        }
+                    }
+                    fullGroup.startsWith("[") -> {
+                        val label = match.groupValues[9]
+                        val url = match.groupValues[10]
+                        pushStringAnnotation(tag = "URL", annotation = url)
+                        withStyle(
+                            SpanStyle(
+                                color = Color(0xFF007AFF),
+                                textDecoration = TextDecoration.Underline,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        ) {
+                            append(label)
+                        }
+                        pop()
+                    }
+                    fullGroup.startsWith("*") || fullGroup.startsWith("_") -> {
+                        val content = match.groupValues[4]
+                        withStyle(SpanStyle(fontStyle = FontStyle.Italic)) {
+                            append(content)
+                        }
+                    }
+                    else -> append(fullGroup)
+                }
+
+                lastIndex = range.last + 1
+            }
+
+            if (lastIndex < input.length) {
+                append(input.substring(lastIndex))
+            }
+        }
+    }
+}
+
+@Composable
 fun HighlightContentWithImages(
     text: String,
     textColor: Color,
@@ -755,12 +839,12 @@ fun HighlightContentWithImages(
         blocks.forEach { block ->
             when (block) {
                 is HighlightBlock.TextBlock -> {
+                    val annotatedText = buildMarkdownAnnotatedString(block.text, textColor)
                     Text(
-                        text = block.text,
+                        text = annotatedText,
                         color = textColor,
                         fontSize = fontSize,
                         lineHeight = lineHeight,
-                        fontWeight = fontWeight,
                         modifier = Modifier.fillMaxWidth()
                     )
                 }

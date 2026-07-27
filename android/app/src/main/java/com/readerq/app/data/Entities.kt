@@ -41,7 +41,9 @@ data class HighlightEntity(
     val location: Int,
     val readwise_highlight_id: String?,
     val tags_json: String?, // JSON representation of tags List/Map
-    val created_at: String? = null // ISO 8601 timestamp of when highlight was created
+    val created_at: String? = null, // ISO 8601 timestamp of when highlight was created
+    val document_title: String? = null,
+    val author: String? = null
 )
 
 @Entity(tableName = "settings")

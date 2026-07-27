@@ -7,7 +7,7 @@ import androidx.room.RoomDatabase
 
 @Database(
     entities = [DocumentEntity::class, HighlightEntity::class, SettingEntity::class],
-    version = 2,
+    version = 3,
     exportSchema = false
 )
 abstract class ReaderQDatabase : RoomDatabase() {
