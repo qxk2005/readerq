@@ -124,8 +124,9 @@ fun AdaptiveMainScreen(
                                 horizontalArrangement = Arrangement.SpaceAround
                             ) {
                                 val tabs = listOf(
-                                    Triple("library", "库", R.drawable.ic_tab_library),
-                                    Triple("feed", "订阅", R.drawable.ic_tab_feed),
+                                    Triple("home", "首页", R.drawable.ic_tab_library),
+                                    Triple("library", "库", R.drawable.ic_tab_feed),
+                                    Triple("zen", "禅阅读", R.drawable.ic_cat_book),
                                     Triple("notebook", "浏览", R.drawable.ic_tab_notebook),
                                     Triple("settings", "设置", R.drawable.ic_tab_settings)
                                 )
@@ -140,8 +141,8 @@ fun AdaptiveMainScreen(
                                             .clip(RoundedCornerShape(16.dp))
                                             .background(if (isSelected) tabIndicatorColor else Color.Transparent)
                                             .clickable {
-                                                if ((tabId == "library" || tabId == "feed") && selectedDoc != null && detailPaneType != null && !isDetailPaneCollapsed) {
-                                                    viewModel.showSidebarAndCloseDetail()
+                                                if (selectedDoc != null) {
+                                                    viewModel.selectDocument(null)
                                                 }
                                                 viewModel.changeTab(tabId)
                                             }
