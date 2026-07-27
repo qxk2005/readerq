@@ -419,14 +419,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _selectedCategory.value = category
         _selectedTag.value = null
         _currentView.value = "all"
-        _currentTab.value = "library"
     }
 
     fun selectTag(tag: String?) {
         _selectedTag.value = tag
         _selectedCategory.value = null
         _currentView.value = "all"
-        _currentTab.value = "library"
     }
 
     fun clearFilters() {

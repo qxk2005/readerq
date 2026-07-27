@@ -115,7 +115,10 @@ fun ReadingPane(
                         // 在双栏模式下，如果左侧侧边栏折叠，展示 library 菜单按钮用于重新恢复侧边栏并折叠右详情
                         val isSidebarCollapsed by viewModel.isSidebarCollapsed.collectAsState()
                         if (isSidebarCollapsed) {
-                            IconButton(onClick = { viewModel.showSidebarAndCloseDetail() }) {
+                            IconButton(onClick = {
+                                viewModel.showSidebarAndCloseDetail()
+                                viewModel.selectDocument(null)
+                            }) {
                                 Icon(
                                     painter = painterResource(id = R.drawable.ic_tab_library),
                                     contentDescription = "Show Documents List",
