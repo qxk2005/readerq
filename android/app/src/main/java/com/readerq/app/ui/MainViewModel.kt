@@ -220,7 +220,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun sendReviewActionToOfficial(highlight: HighlightEntity, action: String) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                val currentToken = settingDao.getSetting("readwise_api_token")?.replace("\"", "")
+                val currentToken = settingDao.getSetting("readwise_token")?.replace("\"", "")
                 if (!currentToken.isNullOrBlank()) {
                     val client = ReadwiseClient(currentToken)
                     val realIdStr = highlight.readwise_highlight_id ?: highlight.id.removePrefix("rw_")
@@ -243,17 +243,21 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             _isSyncingReviewComplete.value = true
             _reviewCompleteSyncSuccess.value = null
             try {
-                val currentToken = settingDao.getSetting("readwise_api_token")?.replace("\"", "")
+                val currentToken = settingDao.getSetting("readwise_token")?.replace("\"", "")
                 if (!currentToken.isNullOrBlank()) {
                     val client = ReadwiseClient(currentToken)
-                    client.markDailyReviewComplete(reviewId = _currentReviewId.value)
+                    val response = client.markDailyReviewComplete()
+                    val responseBody = response.bodyAsText()
+                    println("[Readwise Official Sync] markDailyReviewComplete 官方 API 响应 HTTP ${response.status.value}: $responseBody")
                     _reviewCompleteSyncSuccess.value = true
-                    println("[Readwise Official Sync] 成功向 Readwise 官方 API 标记今日 Daily Review 已 100% 完成打卡！")
+                    println("[Readwise Official Sync] ✅ 成功向 Readwise 官方 API 标记今日 Daily Review 已 100% 完成打卡！")
                 } else {
+                    println("[Readwise Official Sync] ⚠️ 未设置 Readwise API Token，跳过官方打卡同步")
                     _reviewCompleteSyncSuccess.value = true
                 }
             } catch (e: Exception) {
-                println("[Readwise Official Sync] 标记 Readwise 官方 Daily Review 完成失败: ${e.message}")
+                println("[Readwise Official Sync] ❌ 标记 Readwise 官方 Daily Review 完成失败: ${e.message}")
+                e.printStackTrace()
                 _reviewCompleteSyncSuccess.value = false
             } finally {
                 _isSyncingReviewComplete.value = false
@@ -276,7 +280,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
             // 1. 尝试向 Readwise 官方 API 获取当前用户专属的 15 条 Daily Review 划线
             try {
-                val currentToken = settingDao.getSetting("readwise_api_token")?.replace("\"", "")
+                val currentToken = settingDao.getSetting("readwise_token")?.replace("\"", "")
                 if (!currentToken.isNullOrBlank()) {
                     val client = ReadwiseClient(currentToken)
                     try {

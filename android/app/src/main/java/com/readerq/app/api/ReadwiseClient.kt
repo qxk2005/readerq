@@ -424,29 +424,31 @@ class ReadwiseClient(private val token: String) {
     }
 
     // 15. 提交 Readwise 官方单条 Review 操作状态 (V2 API)
+    // 注意: 与桌面端对齐——不传 review_id，只传 highlight_id 和 action
     suspend fun submitReviewAction(highlightId: Long, action: String = "keep", reviewId: Long? = null): HttpResponse {
         val url = "https://readwise.io/api/v2/review/action/"
-        val req = ReadwiseReviewActionRequest(
-            highlight_id = highlightId,
-            action = if (action == "reviewed") "keep" else action,
-            review_id = reviewId
-        )
+        val apiAction = if (action == "reviewed") "keep" else action
         return executeWithRetry(url) {
             post(url) {
                 authHeaders()
-                setBody(req)
+                // 与桌面端 (readwise.js) 保持一致: 只发 { highlight_id, action }
+                setBody(mapOf("highlight_id" to highlightId, "action" to apiAction))
             }
         }
     }
 
     // 16. 标记 Readwise 官方今日 Daily Review 全部打卡完成 (V2 API)
+    // 严格遵循官方文档: POST https://readwise.io/api/v2/review/complete/
+    // 官方文档明确指出此接口不需要 request body，只需 Authorization header。
+    // 桌面端 (readwise.js) 发送的是 body: JSON.stringify({}) 即空对象。
     suspend fun markDailyReviewComplete(reviewId: Long? = null): HttpResponse {
         val url = "https://readwise.io/api/v2/review/complete/"
-        val req = ReadwiseReviewCompleteRequest(review_id = reviewId)
         return executeWithRetry(url) {
             post(url) {
-                authHeaders()
-                setBody(req)
+                header(HttpHeaders.Authorization, "Token $token")
+                header(HttpHeaders.ContentType, ContentType.Application.Json)
+                // 与桌面端保持一致：发送空 JSON body {}
+                setBody(mapOf<String, String>())
             }
         }
     }
