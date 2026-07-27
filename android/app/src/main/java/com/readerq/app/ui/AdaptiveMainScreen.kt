@@ -1390,59 +1390,6 @@ fun TabAppearanceContent(
                 steps = 24
             )
         }
-
-        // 首页瀑布流设置
-        Divider(modifier = Modifier.padding(vertical = 8.dp), color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
-        Text("首页瀑布流卡片设置", color = textColor, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-
-        val columns by viewModel.homeFeedColumns.collectAsState()
-        val showSummary by viewModel.homeFeedShowSummary.collectAsState()
-        val showCover by viewModel.homeFeedShowCover.collectAsState()
-
-        Column {
-            Text("瀑布流列数: ${columns} 列", color = textColor, fontSize = 13.sp)
-            Spacer(modifier = Modifier.height(4.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf(1, 2, 3).forEach { c ->
-                    OutlinedButton(
-                        onClick = { viewModel.updateHomeFeedColumns(c) },
-                        border = BorderStroke(
-                            width = 1.dp,
-                            color = if (columns == c) MaterialTheme.colorScheme.primary else Color.Gray
-                        ),
-                        colors = ButtonDefaults.outlinedButtonColors(
-                            containerColor = if (columns == c) MaterialTheme.colorScheme.primary.copy(alpha = 0.1f) else Color.Transparent
-                        )
-                    ) {
-                        Text("${c} 列", color = if (columns == c) MaterialTheme.colorScheme.primary else textColor)
-                    }
-                }
-            }
-        }
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Text("显示文章封面大图", color = textColor, fontSize = 13.sp)
-            Switch(
-                checked = showCover,
-                onCheckedChange = { viewModel.updateHomeFeedShowCover(it) }
-            )
-        }
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Text("显示文章摘要", color = textColor, fontSize = 13.sp)
-            Switch(
-                checked = showSummary,
-                onCheckedChange = { viewModel.updateHomeFeedShowSummary(it) }
-            )
-        }
     }
 }
 
