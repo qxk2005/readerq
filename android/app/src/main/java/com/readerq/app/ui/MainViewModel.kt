@@ -94,6 +94,52 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _contentWidth = MutableStateFlow(700)
     val contentWidth: StateFlow<Int> = _contentWidth.asStateFlow()
 
+    // 瀑布流配置状态 (Home Feed Settings)
+    private val _homeFeedColumns = MutableStateFlow(2) // 1, 2, 3
+    val homeFeedColumns: StateFlow<Int> = _homeFeedColumns.asStateFlow()
+
+    private val _homeFeedShowSummary = MutableStateFlow(true)
+    val homeFeedShowSummary: StateFlow<Boolean> = _homeFeedShowSummary.asStateFlow()
+
+    private val _homeFeedShowTags = MutableStateFlow(true)
+    val homeFeedShowTags: StateFlow<Boolean> = _homeFeedShowTags.asStateFlow()
+
+    private val _homeFeedShowCover = MutableStateFlow(true)
+    val homeFeedShowCover: StateFlow<Boolean> = _homeFeedShowCover.asStateFlow()
+
+    // 禅阅读状态 (Zen Read States)
+    private val _zenCurrentDocIndex = MutableStateFlow(0)
+    val zenCurrentDocIndex: StateFlow<Int> = _zenCurrentDocIndex.asStateFlow()
+
+    private val _zenUserRating = MutableStateFlow(0)
+    val zenUserRating: StateFlow<Int> = _zenUserRating.asStateFlow()
+
+    private fun saveSetting(key: String, value: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            settingDao.setSetting(SettingEntity(key, value))
+        }
+    }
+
+    fun updateHomeFeedColumns(cols: Int) {
+        _homeFeedColumns.value = cols
+        saveSetting("ui_home_feed_cols", cols.toString())
+    }
+
+    fun updateHomeFeedShowSummary(show: Boolean) {
+        _homeFeedShowSummary.value = show
+        saveSetting("ui_home_feed_show_summary", show.toString())
+    }
+
+    fun updateHomeFeedShowTags(show: Boolean) {
+        _homeFeedShowTags.value = show
+        saveSetting("ui_home_feed_show_tags", show.toString())
+    }
+
+    fun updateHomeFeedShowCover(show: Boolean) {
+        _homeFeedShowCover.value = show
+        saveSetting("ui_home_feed_show_cover", show.toString())
+    }
+
     // Sidebar Drag & Collapse States
     private val _sidebarWidthDp = MutableStateFlow(360f)
     val sidebarWidthDp: StateFlow<Float> = _sidebarWidthDp.asStateFlow()
@@ -452,6 +498,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     e.printStackTrace()
                 }
             }
+        }
+    }
+
+    fun moveDocument(docId: String, newLocation: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val doc = docDao.getDocumentById(docId) ?: return@launch
+            val updated = doc.copy(location = newLocation)
+            docDao.insertDocument(updated)
         }
     }
 

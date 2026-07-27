@@ -205,8 +205,9 @@ fun AdaptiveMainScreen(
                             tonalElevation = 0.dp
                         ) {
                             val tabs = listOf(
-                                Triple("library", "库", R.drawable.ic_tab_library),
-                                Triple("feed", "订阅", R.drawable.ic_tab_feed),
+                                Triple("home", "首页", R.drawable.ic_tab_library),
+                                Triple("library", "库", R.drawable.ic_tab_feed),
+                                Triple("zen", "禅阅读", R.drawable.ic_tab_notebook),
                                 Triple("notebook", "浏览", R.drawable.ic_tab_notebook),
                                 Triple("settings", "设置", R.drawable.ic_tab_settings)
                             )
@@ -331,8 +332,10 @@ fun AdaptiveMainScreen(
                                 .fillMaxSize()
                         ) {
                             when (currentTab) {
+                                "home" -> HomeFeedPane(viewModel = viewModel, onDocumentClick = { doc -> viewModel.selectDocument(doc) })
                                 "library" -> documentListPane(false)
                                 "feed" -> documentListPane(true)
+                                "zen" -> ZenReadPane(viewModel = viewModel, onDocumentClick = { doc -> viewModel.selectDocument(doc) })
                                 "notebook" -> GlobalNotebookPane(viewModel = viewModel)
                                 "settings" -> SettingsPane(viewModel = viewModel)
                             }
@@ -355,6 +358,10 @@ fun AdaptiveMainScreen(
                                 SettingsPane(viewModel = viewModel)
                             } else if (currentTab == "notebook") {
                                 GlobalNotebookPane(viewModel = viewModel)
+                            } else if (currentTab == "home") {
+                                HomeFeedPane(viewModel = viewModel, onDocumentClick = { doc -> viewModel.selectDocument(doc) })
+                            } else if (currentTab == "zen") {
+                                ZenReadPane(viewModel = viewModel, onDocumentClick = { doc -> viewModel.selectDocument(doc) })
                             } else {
                                 // Split layout for reading
                                 val sidebarWidthDp by viewModel.sidebarWidthDp.collectAsState()
@@ -855,8 +862,9 @@ fun SettingsPane(
                             }
                         )
                         "appearance" -> TabAppearanceContent(
+                            viewModel = viewModel,
                             theme = theme,
-                            onThemeChange = { viewModel.toggleTheme() },
+                            onThemeChange = { viewModel.setTheme(it) },
                             fontFamily = fontFamily,
                             onFontFamilyChange = {
                                 viewModel.saveAppearanceSettings(it, fontSize, lineHeight, contentWidth)
@@ -1262,6 +1270,7 @@ fun TabOSSContent(
 
 @Composable
 fun TabAppearanceContent(
+    viewModel: MainViewModel,
     theme: String,
     onThemeChange: (String) -> Unit,
     fontFamily: String,
@@ -1369,6 +1378,59 @@ fun TabAppearanceContent(
                 onValueChange = { onContentWidthChange(it.toInt()) },
                 valueRange = 500f..1000f,
                 steps = 24
+            )
+        }
+
+        // 首页瀑布流设置
+        Divider(modifier = Modifier.padding(vertical = 8.dp), color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
+        Text("首页瀑布流卡片设置", color = textColor, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+
+        val columns by viewModel.homeFeedColumns.collectAsState()
+        val showSummary by viewModel.homeFeedShowSummary.collectAsState()
+        val showCover by viewModel.homeFeedShowCover.collectAsState()
+
+        Column {
+            Text("瀑布流列数: ${columns} 列", color = textColor, fontSize = 13.sp)
+            Spacer(modifier = Modifier.height(4.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf(1, 2, 3).forEach { c ->
+                    OutlinedButton(
+                        onClick = { viewModel.updateHomeFeedColumns(c) },
+                        border = BorderStroke(
+                            width = 1.dp,
+                            color = if (columns == c) MaterialTheme.colorScheme.primary else Color.Gray
+                        ),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            containerColor = if (columns == c) MaterialTheme.colorScheme.primary.copy(alpha = 0.1f) else Color.Transparent
+                        )
+                    ) {
+                        Text("${c} 列", color = if (columns == c) MaterialTheme.colorScheme.primary else textColor)
+                    }
+                }
+            }
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text("显示文章封面大图", color = textColor, fontSize = 13.sp)
+            Switch(
+                checked = showCover,
+                onCheckedChange = { viewModel.updateHomeFeedShowCover(it) }
+            )
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text("显示文章摘要", color = textColor, fontSize = 13.sp)
+            Switch(
+                checked = showSummary,
+                onCheckedChange = { viewModel.updateHomeFeedShowSummary(it) }
             )
         }
     }
