@@ -396,8 +396,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             stopTts()
         }
         _selectedDoc.value = doc
-        if (doc != null && doc.html_content == null) {
-            fetchDocumentContent(doc.id)
+        if (doc != null) {
+            _currentTab.value = "library"
+            if (doc.html_content == null) {
+                fetchDocumentContent(doc.id)
+            }
         }
     }
 
