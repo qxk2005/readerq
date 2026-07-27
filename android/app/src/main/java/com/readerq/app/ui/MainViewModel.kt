@@ -95,7 +95,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val contentWidth: StateFlow<Int> = _contentWidth.asStateFlow()
 
     // 瀑布流配置状态 (Home Feed Settings)
-    private val _homeFeedColumns = MutableStateFlow(2) // 1, 2, 3
+    private val _homeFeedColumns = MutableStateFlow(0) // 0 为智能自适应，1, 2, 3, 4
     val homeFeedColumns: StateFlow<Int> = _homeFeedColumns.asStateFlow()
 
     private val _homeFeedShowSummary = MutableStateFlow(true)
@@ -365,6 +365,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             _isSidebarCollapsed.value = settingDao.getSetting("sidebar_collapsed")?.replace("\"", "")?.toBooleanStrictOrNull() ?: false
             _isNavBarCollapsed.value = settingDao.getSetting("navbar_collapsed")?.replace("\"", "")?.toBooleanStrictOrNull() ?: false
             _highlightSortMode.value = settingDao.getSetting("highlight_sort_mode")?.replace("\"", "") ?: "position_asc"
+            
+            _homeFeedColumns.value = settingDao.getSetting("ui_home_feed_cols")?.replace("\"", "")?.toIntOrNull() ?: 0
+            _homeFeedShowSummary.value = settingDao.getSetting("ui_home_feed_show_summary")?.replace("\"", "")?.toBooleanStrictOrNull() ?: true
+            _homeFeedShowTags.value = settingDao.getSetting("ui_home_feed_show_tags")?.replace("\"", "")?.toBooleanStrictOrNull() ?: true
+            _homeFeedShowCover.value = settingDao.getSetting("ui_home_feed_show_cover")?.replace("\"", "")?.toBooleanStrictOrNull() ?: true
             
             _openaiApiKey.value = settingDao.getSetting("openai_api_key")?.replace("\"", "") ?: ""
             _openaiBaseUrl.value = settingDao.getSetting("openai_base_url")?.replace("\"", "") ?: "https://api.openai.com/v1"
