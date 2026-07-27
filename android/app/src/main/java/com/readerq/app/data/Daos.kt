@@ -56,6 +56,9 @@ interface DocumentDao {
 
 @Dao
 interface HighlightDao {
+    @Query("SELECT * FROM highlights ORDER BY created_at DESC")
+    fun getAllHighlights(): Flow<List<HighlightEntity>>
+
     @Query("SELECT * FROM highlights WHERE document_id = :documentId ORDER BY location ASC")
     fun getHighlightsForDocument(documentId: String): Flow<List<HighlightEntity>>
 

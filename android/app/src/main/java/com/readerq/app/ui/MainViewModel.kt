@@ -159,6 +159,113 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         saveSetting("ui_home_feed_show_cover", show.toString())
     }
 
+    // 每日回顾 Daily Review States & Readwise Sync
+    private val _reviewHighlights = MutableStateFlow<List<HighlightEntity>>(emptyList())
+    val reviewHighlights: StateFlow<List<HighlightEntity>> = _reviewHighlights.asStateFlow()
+
+    private val _reviewCurrentIndex = MutableStateFlow(0)
+    val reviewCurrentIndex: StateFlow<Int> = _reviewCurrentIndex.asStateFlow()
+
+    private val _reviewSubTab = MutableStateFlow("daily") // "daily" (每日高亮) 或 "stats" (回顾统计)
+    val reviewSubTab: StateFlow<String> = _reviewSubTab.asStateFlow()
+
+    private val _reviewedCountToday = MutableStateFlow(0)
+    val reviewedCountToday: StateFlow<Int> = _reviewedCountToday.asStateFlow()
+
+    private val _streakDays = MutableStateFlow(5)
+    val streakDays: StateFlow<Int> = _streakDays.asStateFlow()
+
+    fun setReviewSubTab(tab: String) {
+        _reviewSubTab.value = tab
+    }
+
+    fun nextReviewCard() {
+        if (_reviewHighlights.value.isNotEmpty()) {
+            val nextIdx = (_reviewCurrentIndex.value + 1) % _reviewHighlights.value.size
+            _reviewCurrentIndex.value = nextIdx
+            _reviewedCountToday.value += 1
+            saveSetting("review_today_count", _reviewedCountToday.value.toString())
+        }
+    }
+
+    fun prevReviewCard() {
+        if (_reviewHighlights.value.isNotEmpty()) {
+            val count = _reviewHighlights.value.size
+            _reviewCurrentIndex.value = (_reviewCurrentIndex.value - 1 + count) % count
+        }
+    }
+
+    fun toggleReviewHighlightFavorite(highlight: HighlightEntity) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val existingTags = try {
+                if (highlight.tags_json.isNullOrBlank()) emptyList()
+                else if (highlight.tags_json.startsWith("[")) Json.decodeFromString<List<String>>(highlight.tags_json)
+                else Json.decodeFromString<Map<String, Int>>(highlight.tags_json).keys.toList()
+            } catch (e: Exception) { emptyList() }
+
+            val mutableTags = existingTags.toMutableList()
+            val isFav = mutableTags.contains("favorite") || mutableTags.contains("收藏")
+            if (isFav) {
+                mutableTags.remove("favorite")
+                mutableTags.remove("收藏")
+            } else {
+                mutableTags.add("favorite")
+            }
+
+            val newTagsJson = Json.encodeToString(mutableTags)
+            val updated = highlight.copy(tags_json = newTagsJson)
+            hlDao.insertHighlight(updated)
+
+            // 更新本地列表状态
+            _reviewHighlights.value = _reviewHighlights.value.map { if (it.id == highlight.id) updated else it }
+
+            // 异步同步更新至 Readwise 云端 API
+            val tokenVal = _token.value
+            if (!tokenVal.isNullOrBlank() && !highlight.readwise_highlight_id.isNullOrBlank()) {
+                try {
+                    val client = ReadwiseClient(tokenVal)
+                    if (!isFav) {
+                        client.addHighlightTag(highlight.readwise_highlight_id, "favorite")
+                    }
+                } catch (e: Exception) {
+                    println("Sync favorite to Readwise Cloud failed: ${e.message}")
+                }
+            }
+        }
+    }
+
+    fun addReviewHighlightTag(highlight: HighlightEntity, newTag: String) {
+        val cleanTag = newTag.trim().removePrefix("#")
+        if (cleanTag.isBlank()) return
+        viewModelScope.launch(Dispatchers.IO) {
+            val existingTags = try {
+                if (highlight.tags_json.isNullOrBlank()) emptyList()
+                else if (highlight.tags_json.startsWith("[")) Json.decodeFromString<List<String>>(highlight.tags_json)
+                else Json.decodeFromString<Map<String, Int>>(highlight.tags_json).keys.toList()
+            } catch (e: Exception) { emptyList() }
+
+            if (!existingTags.contains(cleanTag)) {
+                val mutableTags = existingTags + cleanTag
+                val newTagsJson = Json.encodeToString(mutableTags)
+                val updated = highlight.copy(tags_json = newTagsJson)
+                hlDao.insertHighlight(updated)
+
+                _reviewHighlights.value = _reviewHighlights.value.map { if (it.id == highlight.id) updated else it }
+
+                // 异步同步添加标签至 Readwise 云端 API 数据库
+                val tokenVal = _token.value
+                if (!tokenVal.isNullOrBlank() && !highlight.readwise_highlight_id.isNullOrBlank()) {
+                    try {
+                        val client = ReadwiseClient(tokenVal)
+                        client.addHighlightTag(highlight.readwise_highlight_id, cleanTag)
+                    } catch (e: Exception) {
+                        println("Sync tag to Readwise Cloud failed: ${e.message}")
+                    }
+                }
+            }
+        }
+    }
+
     fun setHomeFeedTab(tab: String) {
         _homeFeedTab.value = tab
         saveSetting("ui_home_feed_tab", tab)
@@ -438,6 +545,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
             _homeFeedSummaryMaxLines.value = settingDao.getSetting("ui_home_feed_summary_max_lines")?.replace("\"", "")?.toIntOrNull() ?: 3
             _homeFeedShowHighlightsCount.value = settingDao.getSetting("ui_home_feed_show_hl_count")?.replace("\"", "")?.toBooleanStrictOrNull() ?: true
+            
+            _reviewedCountToday.value = settingDao.getSetting("review_today_count")?.replace("\"", "")?.toIntOrNull() ?: 0
+
+            viewModelScope.launch(Dispatchers.IO) {
+                hlDao.getAllHighlights().collect { hls ->
+                    if (hls.isNotEmpty()) {
+                        _reviewHighlights.value = hls.shuffled().take(15)
+                    } else {
+                        _reviewHighlights.value = listOf(
+                            HighlightEntity("hl_rev_1", "doc_1", "但即使更大的模型能够克服这个问题，它们也会更慢、更贵。换句话说，对于任何实际用途来说，它们都会太慢、太贵。这是 RAG 的实际状态。", "RAG思考", "yellow", 10, "rw_hl_1", "[\"RAG\", \"AI\"]"),
+                            HighlightEntity("hl_rev_2", "doc_2", "Qwen-Agent是一个成熟的智能体生态系统，让Qwen模型能够自主规划、调用函数并立刻执行复杂的多步骤任务。", "智能体", "blue", 20, "rw_hl_2", "[\"Agent\"]"),
+                            HighlightEntity("hl_rev_3", "doc_3", "把一次生成改成可回退流程。PRD 不是线性流程，而是判断网络。", "PRD方法论", "purple", 30, "rw_hl_3", "[\"设计\"]")
+                        )
+                    }
+                }
+            }
             
             _openaiApiKey.value = settingDao.getSetting("openai_api_key")?.replace("\"", "") ?: ""
             _openaiBaseUrl.value = settingDao.getSetting("openai_base_url")?.replace("\"", "") ?: "https://api.openai.com/v1"

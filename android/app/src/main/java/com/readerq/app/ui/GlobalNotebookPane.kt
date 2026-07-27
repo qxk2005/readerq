@@ -50,14 +50,52 @@ fun GlobalNotebookPane(
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
     ) {
-        // --- 顶部 App Bar ---
+        // --- 每日回顾 专属推荐 Banner ---
         item {
-            TopAppBar(
-                title = {
-                    Text("浏览", fontWeight = FontWeight.Bold, fontSize = 18.sp, color = textColor)
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface)
-            )
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp)
+                    .clickable { viewModel.changeTab("review") },
+                shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp),
+                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+                border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.3f))
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Surface(
+                            shape = androidx.compose.foundation.shape.RoundedCornerShape(10.dp),
+                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.2f),
+                            modifier = Modifier.size(38.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Text("✨", fontSize = 20.sp)
+                            }
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("每日回顾 (Daily Review)", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = textColor)
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Surface(
+                                    shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
+                                    color = Color(0xFFFF9500).copy(alpha = 0.2f)
+                                ) {
+                                    Text("Review", fontSize = 10.sp, color = Color(0xFFFF9500), fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp))
+                                }
+                            }
+                            Text("基于 Readwise 间隔重复算法，重温灵感划线", fontSize = 12.sp, color = mutedColor)
+                        }
+                    }
+                    Text("开始 ›", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                }
+            }
         }
 
         // --- 内容类型分类 标题 ---
