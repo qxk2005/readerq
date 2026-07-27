@@ -323,6 +323,18 @@ export default function ReadingPane() {
       isMounted.current = false;
     };
   }, [selectedDoc?.id]);
+  // 🎯 当侧边栏高亮处于选中或进入编辑态时，智能将其卷入视口，保证底部编辑栏、标签与操作按钮完全可见
+  useEffect(() => {
+    if (sidebarEditingId) {
+      const timer = setTimeout(() => {
+        const el = document.getElementById(`sidebar-hl-${sidebarEditingId}`);
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+      }, 120);
+      return () => clearTimeout(timer);
+    }
+  }, [sidebarEditingId]);
 
   // 清理文章 HTML：移除可能破坏全局布局的 <style> 和 <script> 标签，并净化反爬虫图片后缀
   const sanitizeArticleHtml = (html) => {
@@ -1731,7 +1743,7 @@ export default function ReadingPane() {
 
           {/* Notebook Tab */}
           {rightPanelTab === 'notebook' && (
-            <div style={{ padding: 'var(--space-4)', display: 'flex', flexDirection: 'column', gap: 'var(--space-6)', flex: 1, overflowY: 'auto' }}>
+            <div style={{ padding: 'var(--space-4)', paddingBottom: '220px', display: 'flex', flexDirection: 'column', gap: 'var(--space-6)', flex: 1, overflowY: 'auto' }}>
               {/* Document Metadata Form */}
               <div style={{ backgroundColor: 'var(--color-bg-primary)', padding: 'var(--space-3)', borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)', display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
                 <div>
@@ -1809,7 +1821,7 @@ export default function ReadingPane() {
                   )}
                 </div>
                 
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)', paddingBottom: 'var(--space-8)' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)', paddingBottom: '220px' }}>
                   {(() => {
                     const posMap = highlightPositionsRef.current;
                     const getPos = (hl) => posMap[hl.id] ?? hl.location_start ?? Infinity;
