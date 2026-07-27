@@ -12,6 +12,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.*
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -141,9 +143,7 @@ fun AdaptiveMainScreen(
                                             .clip(RoundedCornerShape(16.dp))
                                             .background(if (isSelected) tabIndicatorColor else Color.Transparent)
                                             .clickable {
-                                                if (selectedDoc != null) {
-                                                    viewModel.selectDocument(null)
-                                                }
+                                                viewModel.selectDocument(null)
                                                 viewModel.changeTab(tabId)
                                             }
                                             .padding(horizontal = 4.dp),
@@ -216,9 +216,7 @@ fun AdaptiveMainScreen(
                                 NavigationBarItem(
                                     selected = currentTab == tabId,
                                     onClick = {
-                                        if (selectedDoc != null) {
-                                            viewModel.selectDocument(null)
-                                        }
+                                        viewModel.selectDocument(null)
                                         viewModel.changeTab(tabId)
                                     },
                                     icon = {
@@ -359,9 +357,9 @@ fun AdaptiveMainScreen(
                                 SettingsPane(viewModel = viewModel)
                             } else if (currentTab == "notebook") {
                                 GlobalNotebookPane(viewModel = viewModel)
-                            } else if (currentTab == "home" && selectedDoc == null) {
+                            } else if (currentTab == "home") {
                                 HomeFeedPane(viewModel = viewModel, onDocumentClick = { doc -> viewModel.selectDocument(doc) })
-                            } else if (currentTab == "zen" && selectedDoc == null) {
+                            } else if (currentTab == "zen") {
                                 ZenReadPane(viewModel = viewModel, onDocumentClick = { doc -> viewModel.selectDocument(doc) })
                             } else {
                                 // Split layout for reading
@@ -750,6 +748,7 @@ fun SettingsPane(
                 val tabs = listOf(
                     Triple("api", "API 配置", R.drawable.ic_settings_api),
                     Triple("oss", "图床配置", R.drawable.ic_settings_oss),
+                    Triple("home", "首页设置", R.drawable.ic_tab_feed),
                     Triple("appearance", "外观设置", R.drawable.ic_settings_appearance),
                     Triple("sync", "数据同步", R.drawable.ic_settings_sync),
                     Triple("shortcuts", "快捷键", R.drawable.ic_settings_shortcuts),
@@ -861,6 +860,11 @@ fun SettingsPane(
                                     ossPathPrefixInput
                                 )
                             }
+                        )
+                        "home" -> TabHomeSettingsContent(
+                            viewModel = viewModel,
+                            textColor = textColor,
+                            dividerColor = dividerColor
                         )
                         "appearance" -> TabAppearanceContent(
                             viewModel = viewModel,
@@ -1727,12 +1731,229 @@ fun TabAboutContent(
                                     color = if (isDark) Color(0xFF333333) else Color(0xFFE5E7EB),
                                     modifier = Modifier.padding(vertical = 4.dp)
                                 )
-                                Text(
+                                 Text(
                                     text = release.body ?: "无发布说明",
                                     fontSize = 12.sp,
                                     color = textColor,
                                     lineHeight = 16.sp
                                 )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@Composable
+fun TabHomeSettingsContent(
+    viewModel: MainViewModel,
+    textColor: Color,
+    dividerColor: Color
+) {
+    val showHighlightsCount by viewModel.homeFeedShowHighlightsCount.collectAsState()
+    val summaryMaxLines by viewModel.homeFeedSummaryMaxLines.collectAsState()
+    val userColumns by viewModel.homeFeedColumns.collectAsState()
+    val filterTags by viewModel.homeFeedFilterTags.collectAsState()
+    val allTags by viewModel.allTags.collectAsState()
+
+    var newTagInput by remember { mutableStateOf("") }
+    var dropdownExpanded by remember { mutableStateOf(false) }
+
+    Column(
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        // 1. 划线高亮数
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(12.dp),
+            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+            border = BorderStroke(1.dp, dividerColor)
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("划线高亮数", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = textColor)
+                    Text("显示该文章已划线高亮的数量标记", fontSize = 12.sp, color = textColor.copy(alpha = 0.6f))
+                }
+                Checkbox(
+                    checked = showHighlightsCount,
+                    onCheckedChange = { viewModel.updateHomeFeedShowHighlightsCount(it) }
+                )
+            }
+        }
+
+        // 2. 文章摘要预览截断行数
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(12.dp),
+            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+            border = BorderStroke(1.dp, dividerColor)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp)
+            ) {
+                Text("文章摘要预览截断行数", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = textColor)
+                Text("设置瀑布流卡片中文章摘要最多显示的行数", fontSize = 12.sp, color = textColor.copy(alpha = 0.6f))
+                Spacer(modifier = Modifier.height(10.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    listOf(1, 2, 3, 4, 0).forEach { lines ->
+                        val label = if (lines == 0) "不截断" else if (lines == 3) "3 行(默认)" else "$lines 行"
+                        val isSel = summaryMaxLines == lines
+                        FilterChip(
+                            selected = isSel,
+                            onClick = { viewModel.updateHomeFeedSummaryMaxLines(lines) },
+                            label = { Text(label, fontSize = 11.sp) }
+                        )
+                    }
+                }
+            }
+        }
+
+        // 3. 瀑布流列数 (宽屏适配)
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(12.dp),
+            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+            border = BorderStroke(1.dp, dividerColor)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp)
+            ) {
+                Text("瀑布流列数 (宽屏适配)", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = textColor)
+                Text("设置在大屏/宽屏/折叠屏设备上首页瀑布流展示的最大列数", fontSize = 12.sp, color = textColor.copy(alpha = 0.6f))
+                Spacer(modifier = Modifier.height(10.dp))
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    listOf(0 to "⚡ 自动响应式 (1~4列)", 1 to "1 列", 2 to "2 列", 3 to "3 列", 4 to "4 列").forEach { (cols, label) ->
+                        val isSel = userColumns == cols
+                        FilterChip(
+                            selected = isSel,
+                            onClick = { viewModel.updateHomeFeedColumns(cols) },
+                            label = { Text(label, fontSize = 11.sp) }
+                        )
+                    }
+                }
+            }
+        }
+
+        // 4. Tab 2 瀑布流标签筛选规则 (多标签模式)
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(12.dp),
+            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+            border = BorderStroke(1.dp, dividerColor)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp)
+            ) {
+                Text("Tab 2 瀑布流标签筛选规则 (多标签模式)", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = textColor)
+                Text("包含下列任意标签的文章都会展示在首页 Tab 2 瀑布流中。可以在下方输入框输入，或从下拉菜单中快速点选添加。", fontSize = 12.sp, color = textColor.copy(alpha = 0.6f))
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // 已添加的包含标签 Chips
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    filterTags.forEach { tag ->
+                        Surface(
+                            shape = RoundedCornerShape(16.dp),
+                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.4f))
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text("🏷️ $tag", fontSize = 12.sp, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    "✕",
+                                    fontSize = 11.sp,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.clickable { viewModel.removeHomeFeedFilterTag(tag) }
+                                )
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // 输入框与下拉菜单组
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    OutlinedTextField(
+                        value = newTagInput,
+                        onValueChange = { newTagInput = it },
+                        placeholder = { Text("输入标签名称...", fontSize = 12.sp) },
+                        singleLine = true,
+                        modifier = Modifier.weight(1f),
+                        trailingIcon = {
+                            if (newTagInput.isNotBlank()) {
+                                IconButton(onClick = {
+                                    viewModel.addHomeFeedFilterTag(newTagInput)
+                                    newTagInput = ""
+                                }) {
+                                    Icon(Icons.Default.Add, contentDescription = "添加")
+                                }
+                            }
+                        }
+                    )
+
+                    // 从已有选择下拉框
+                    Box {
+                        OutlinedButton(
+                            onClick = { dropdownExpanded = true }
+                        ) {
+                            Text("+ 从已有选择...", fontSize = 11.sp)
+                        }
+
+                        DropdownMenu(
+                            expanded = dropdownExpanded,
+                            onDismissRequest = { dropdownExpanded = false }
+                        ) {
+                            val availableTags = allTags.filter { !filterTags.contains(it) }
+                            if (availableTags.isEmpty()) {
+                                DropdownMenuItem(
+                                    text = { Text("暂无更多已有标签", fontSize = 12.sp, color = Color.Gray) },
+                                    onClick = { dropdownExpanded = false }
+                                )
+                            } else {
+                                availableTags.forEach { tag ->
+                                    DropdownMenuItem(
+                                        text = { Text("🏷️ $tag", fontSize = 13.sp) },
+                                        onClick = {
+                                            viewModel.addHomeFeedFilterTag(tag)
+                                            dropdownExpanded = false
+                                        }
+                                    )
+                                }
                             }
                         }
                     }

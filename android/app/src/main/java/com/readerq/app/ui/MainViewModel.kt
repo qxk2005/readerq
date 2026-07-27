@@ -107,6 +107,25 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _homeFeedShowCover = MutableStateFlow(true)
     val homeFeedShowCover: StateFlow<Boolean> = _homeFeedShowCover.asStateFlow()
 
+    // 首页 Advanced Tab / Inbox / Tag Filter States
+    private val _homeFeedTab = MutableStateFlow("all") // "all" 或 "tag"
+    val homeFeedTab: StateFlow<String> = _homeFeedTab.asStateFlow()
+
+    private val _homeFeedPrioritizeInbox = MutableStateFlow(true)
+    val homeFeedPrioritizeInbox: StateFlow<Boolean> = _homeFeedPrioritizeInbox.asStateFlow()
+
+    private val _homeFeedFilterTags = MutableStateFlow(listOf("readerq"))
+    val homeFeedFilterTags: StateFlow<List<String>> = _homeFeedFilterTags.asStateFlow()
+
+    private val _homeFeedSummaryMaxLines = MutableStateFlow(3)
+    val homeFeedSummaryMaxLines: StateFlow<Int> = _homeFeedSummaryMaxLines.asStateFlow()
+
+    private val _homeFeedShowHighlightsCount = MutableStateFlow(true)
+    val homeFeedShowHighlightsCount: StateFlow<Boolean> = _homeFeedShowHighlightsCount.asStateFlow()
+
+    private val _homeFeedLimit = MutableStateFlow(20)
+    val homeFeedLimit: StateFlow<Int> = _homeFeedLimit.asStateFlow()
+
     // 禅阅读状态 (Zen Read States)
     private val _zenCurrentDocIndex = MutableStateFlow(0)
     val zenCurrentDocIndex: StateFlow<Int> = _zenCurrentDocIndex.asStateFlow()
@@ -138,6 +157,46 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun updateHomeFeedShowCover(show: Boolean) {
         _homeFeedShowCover.value = show
         saveSetting("ui_home_feed_show_cover", show.toString())
+    }
+
+    fun setHomeFeedTab(tab: String) {
+        _homeFeedTab.value = tab
+        saveSetting("ui_home_feed_tab", tab)
+    }
+
+    fun toggleHomeFeedPrioritizeInbox() {
+        val newVal = !_homeFeedPrioritizeInbox.value
+        _homeFeedPrioritizeInbox.value = newVal
+        saveSetting("ui_home_feed_prioritize_inbox", newVal.toString())
+    }
+
+    fun addHomeFeedFilterTag(tag: String) {
+        val cleanTag = tag.trim().removePrefix("#")
+        if (cleanTag.isNotBlank() && !_homeFeedFilterTags.value.contains(cleanTag)) {
+            val newList = _homeFeedFilterTags.value + cleanTag
+            _homeFeedFilterTags.value = newList
+            saveSetting("ui_home_feed_filter_tags", newList.joinToString(","))
+        }
+    }
+
+    fun removeHomeFeedFilterTag(tag: String) {
+        val newList = _homeFeedFilterTags.value - tag
+        _homeFeedFilterTags.value = newList
+        saveSetting("ui_home_feed_filter_tags", newList.joinToString(","))
+    }
+
+    fun updateHomeFeedSummaryMaxLines(lines: Int) {
+        _homeFeedSummaryMaxLines.value = lines
+        saveSetting("ui_home_feed_summary_max_lines", lines.toString())
+    }
+
+    fun updateHomeFeedShowHighlightsCount(show: Boolean) {
+        _homeFeedShowHighlightsCount.value = show
+        saveSetting("ui_home_feed_show_hl_count", show.toString())
+    }
+
+    fun loadMoreHomeFeed() {
+        _homeFeedLimit.value += 20
     }
 
     // Sidebar Drag & Collapse States
@@ -371,6 +430,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             _homeFeedShowTags.value = settingDao.getSetting("ui_home_feed_show_tags")?.replace("\"", "")?.toBooleanStrictOrNull() ?: true
             _homeFeedShowCover.value = settingDao.getSetting("ui_home_feed_show_cover")?.replace("\"", "")?.toBooleanStrictOrNull() ?: true
             
+            _homeFeedTab.value = settingDao.getSetting("ui_home_feed_tab")?.replace("\"", "") ?: "all"
+            _homeFeedPrioritizeInbox.value = settingDao.getSetting("ui_home_feed_prioritize_inbox")?.replace("\"", "")?.toBooleanStrictOrNull() ?: true
+            val storedTags = settingDao.getSetting("ui_home_feed_filter_tags")?.replace("\"", "")
+            if (!storedTags.isNullOrBlank()) {
+                _homeFeedFilterTags.value = storedTags.split(",").map { it.trim() }.filter { it.isNotBlank() }
+            }
+            _homeFeedSummaryMaxLines.value = settingDao.getSetting("ui_home_feed_summary_max_lines")?.replace("\"", "")?.toIntOrNull() ?: 3
+            _homeFeedShowHighlightsCount.value = settingDao.getSetting("ui_home_feed_show_hl_count")?.replace("\"", "")?.toBooleanStrictOrNull() ?: true
+            
             _openaiApiKey.value = settingDao.getSetting("openai_api_key")?.replace("\"", "") ?: ""
             _openaiBaseUrl.value = settingDao.getSetting("openai_base_url")?.replace("\"", "") ?: "https://api.openai.com/v1"
             _openaiModel.value = settingDao.getSetting("openai_model")?.replace("\"", "") ?: "gpt-4o-mini"
@@ -410,6 +478,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun changeTab(tab: String) {
         _currentTab.value = tab
+        if (tab != "library") {
+            _selectedDoc.value = null
+        }
     }
 
     fun saveToken(newToken: String) {
