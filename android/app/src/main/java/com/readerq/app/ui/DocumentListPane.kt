@@ -488,10 +488,12 @@ fun DocumentItemCard(
                     contentDescription = null,
                     modifier = Modifier
                         .size(56.dp)
-                        .clip(RoundedCornerShape(4.dp))
+                        .clip(RoundedCornerShape(8.dp))
                         .background(Color.Gray.copy(alpha = 0.1f)),
                     contentScale = ContentScale.Crop
                 )
+            } else {
+                CompactArtCoverThumbnail(doc = doc)
             }
         }
         
@@ -500,6 +502,60 @@ fun DocumentItemCard(
             thickness = 1.dp,
             modifier = Modifier.fillMaxWidth()
         )
+    }
+}
+
+@Composable
+fun CompactArtCoverThumbnail(
+    doc: DocumentEntity,
+    modifier: Modifier = Modifier
+) {
+    val hash = (doc.id.hashCode() and 0x7FFFFFFF)
+    val gradients = listOf(
+        listOf(Color(0xFF1A2A6C), Color(0xFFB21F1F), Color(0xFFFDBB2D)),
+        listOf(Color(0xFF0F2027), Color(0xFF203A43), Color(0xFF2C5364)),
+        listOf(Color(0xFF3A1C71), Color(0xFFD76D77), Color(0xFFFFAF7B)),
+        listOf(Color(0xFF134E5E), Color(0xFF71B280)),
+        listOf(Color(0xFF1D2671), Color(0xFFC33764)),
+        listOf(Color(0xFF304352), Color(0xFF434343)),
+        listOf(Color(0xFF00416A), Color(0xFFE4E5E6)),
+        listOf(Color(0xFF2C3E50), Color(0xFF4CA1AF))
+    )
+    val colorList = gradients[hash % gradients.size]
+    val initialLetter = doc.title.trim().take(1).uppercase().ifBlank { "R" }
+
+    Box(
+        modifier = modifier
+            .size(56.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .background(androidx.compose.ui.graphics.Brush.linearGradient(colorList)),
+        contentAlignment = Alignment.Center
+    ) {
+        androidx.compose.foundation.Canvas(modifier = Modifier.fillMaxSize()) {
+            drawCircle(
+                color = Color.White.copy(alpha = 0.15f),
+                radius = size.minDimension * 0.6f,
+                center = androidx.compose.ui.geometry.Offset(size.width * 0.8f, size.height * 0.2f)
+            )
+        }
+
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Text(
+                text = initialLetter,
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Black,
+                color = Color.White
+            )
+            Text(
+                text = (doc.category ?: "article").take(3).uppercase(),
+                fontSize = 8.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color.White.copy(alpha = 0.8f)
+            )
+        }
     }
 }
 
