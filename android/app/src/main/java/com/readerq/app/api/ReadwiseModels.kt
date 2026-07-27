@@ -119,6 +119,7 @@ data class ReadwiseBookListResponse(
 data class ReadwiseBookItem(
     val id: Int,
     val title: String,
+    val author: String? = null,
     val source_url: String? = null,
     val tags: List<ReadwiseV2TagItem> = emptyList()
 )
@@ -149,6 +150,7 @@ data class ReadwiseExportResponse(
 data class ReadwiseExportBookItem(
     val user_book_id: Int,
     val title: String,
+    val author: String? = null,
     val source_url: String? = null,
     val readable_id: String? = null,
     val asin: String? = null,

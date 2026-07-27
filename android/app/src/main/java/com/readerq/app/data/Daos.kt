@@ -8,6 +8,9 @@ interface DocumentDao {
     @Query("SELECT * FROM documents WHERE location != 'trash' ORDER BY created_at DESC")
     fun getAllDocuments(): Flow<List<DocumentEntity>>
 
+    @Query("SELECT * FROM documents")
+    suspend fun getAllDocumentsSync(): List<DocumentEntity>
+
     @Query("SELECT * FROM documents WHERE location = :location ORDER BY CASE WHEN :location = 'archive' OR :location = 'trash' THEN coalesce(updated_at, created_at) ELSE created_at END DESC")
     fun getDocumentsByLocation(location: String): Flow<List<DocumentEntity>>
 

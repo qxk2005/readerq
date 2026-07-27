@@ -209,8 +209,27 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun restartReviewSession() {
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                val all = hlDao.getAllHighlightsSync()
-                val validHls = all.filter { it.text.trim().isNotEmpty() || !it.note.isNullOrBlank() }
+                val allHls = hlDao.getAllHighlightsSync()
+                val docs = docDao.getAllDocumentsSync()
+                val docsById = docs.associateBy { it.id }
+                val docsByUrl = docs.mapNotNull { d -> 
+                    if (!d.source_url.isNullOrBlank()) d.source_url to d 
+                    else if (!d.url.isNullOrBlank()) d.url to d 
+                    else null 
+                }.toMap()
+
+                val enrichedHls = allHls.map { hl ->
+                    val matchedDoc = docsById[hl.document_id] ?: docsByUrl[hl.document_id]
+                    val finalTitle = if (!hl.document_title.isNullOrBlank()) hl.document_title else matchedDoc?.title
+                    val finalAuthor = if (!hl.author.isNullOrBlank()) hl.author else (matchedDoc?.author ?: matchedDoc?.site_name)
+                    if (finalTitle != hl.document_title || finalAuthor != hl.author) {
+                        hl.copy(document_title = finalTitle, author = finalAuthor)
+                    } else {
+                        hl
+                    }
+                }
+
+                val validHls = enrichedHls.filter { it.text.trim().isNotEmpty() || !it.note.isNullOrBlank() }
                 if (validHls.isNotEmpty()) {
                     _reviewHighlights.value = validHls.shuffled().take(15)
                 }
@@ -637,8 +656,26 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             _reviewedCountToday.value = settingDao.getSetting("review_today_count")?.replace("\"", "")?.toIntOrNull() ?: 0
 
             viewModelScope.launch(Dispatchers.IO) {
-                hlDao.getAllHighlights().collect { hls ->
-                    val validHls = hls.filter { it.text.trim().isNotEmpty() || !it.note.isNullOrBlank() }
+                combine(hlDao.getAllHighlights(), docDao.getAllDocuments()) { hls, docs ->
+                    val docsById = docs.associateBy { it.id }
+                    val docsByUrl = docs.mapNotNull { d -> 
+                        if (!d.source_url.isNullOrBlank()) d.source_url to d 
+                        else if (!d.url.isNullOrBlank()) d.url to d 
+                        else null 
+                    }.toMap()
+
+                    hls.map { hl ->
+                        val matchedDoc = docsById[hl.document_id] ?: docsByUrl[hl.document_id]
+                        val finalTitle = if (!hl.document_title.isNullOrBlank()) hl.document_title else matchedDoc?.title
+                        val finalAuthor = if (!hl.author.isNullOrBlank()) hl.author else (matchedDoc?.author ?: matchedDoc?.site_name)
+                        if (finalTitle != hl.document_title || finalAuthor != hl.author) {
+                            hl.copy(document_title = finalTitle, author = finalAuthor)
+                        } else {
+                            hl
+                        }
+                    }
+                }.collect { enrichedHls ->
+                    val validHls = enrichedHls.filter { it.text.trim().isNotEmpty() || !it.note.isNullOrBlank() }
                     if (_reviewHighlights.value.isEmpty()) {
                         if (validHls.isNotEmpty()) {
                             _reviewHighlights.value = validHls.shuffled().take(15)
@@ -1567,20 +1604,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                             if (documentId == null) {
                                 documentId = docDao.findDocumentIdByTitle(book.title)
                             }
-                            if (documentId == null) continue
+                            val targetDocId = documentId ?: "rw_book_${book.user_book_id}"
 
                             for (h in book.highlights) {
                                 highlightsToInsert.add(
                                     HighlightEntity(
                                         id = h.id.toString(),
-                                        document_id = documentId,
+                                        document_id = targetDocId,
                                         text = h.text,
                                         note = h.note,
                                         color = h.color ?: "yellow",
                                         location = h.location ?: 0,
                                         readwise_highlight_id = h.id.toString(),
                                         tags_json = Json.encodeToString(h.tags.map { it.name }),
-                                        created_at = h.highlighted_at ?: h.created_at
+                                        created_at = h.highlighted_at ?: h.created_at,
+                                        document_title = book.title,
+                                        author = book.author
                                     )
                                 )
                             }

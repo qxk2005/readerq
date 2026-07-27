@@ -84,7 +84,19 @@ fun DailyReviewPane(
         when {
             !currentDoc?.title.isNullOrBlank() -> currentDoc!!.title
             !currentHl?.document_title.isNullOrBlank() -> currentHl!!.document_title!!
-            else -> "精选选段"
+            !currentHl?.document_id.isNullOrBlank() && (currentHl!!.document_id.startsWith("http://") || currentHl!!.document_id.startsWith("https://")) -> {
+                try {
+                    val host = java.net.URI(currentHl.document_id).host
+                    if (!host.isNullOrBlank()) "文章来自: $host" else currentHl.document_id
+                } catch (e: Exception) {
+                    currentHl.document_id
+                }
+            }
+            !currentHl?.text.isNullOrBlank() -> {
+                val cleanText = currentHl!!.text.replace(Regex("[*#`_~\\s]"), "")
+                if (cleanText.length > 18) "${cleanText.take(18)}..." else cleanText
+            }
+            else -> "每日划线选段"
         }
     }
 
@@ -489,7 +501,7 @@ fun DailyReviewPane(
                     ) {
                         Column(
                             modifier = Modifier
-                                .weight(1f, fill = false)
+                                .weight(1f)
                                 .verticalScroll(rememberScrollState())
                         ) {
                             // 3.1 卡片头部：文章信息与操作组
