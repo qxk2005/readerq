@@ -487,7 +487,7 @@ fun AdaptiveMainScreen(
 
                                         // Main Reading Area
                                         Box(modifier = Modifier.weight(1f)) {
-                                            if (selectedDoc != null) {
+                                            if (selectedDoc != null && currentTab == "library") {
                                                 readingPane(Modifier.fillMaxSize(), null)
                                             } else {
                                                 Box(

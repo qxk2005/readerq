@@ -503,19 +503,109 @@ fun DailyReviewPane(
         }
     }
 
-    // 5. 标签添加对话框
+    // 5. 标签添加对话框 (带自动完成与常用标签选择)
     if (showAddTagDialog && currentHl != null) {
+        val allTags by viewModel.allTags.collectAsState()
+        val currentHlTags = remember(currentHl) { parseHlTags(currentHl.tags_json) }
+
+        // 提取最后一个英文/中文输入片段用于匹配
+        val currentQuery = remember(tagInputText) {
+            val parts = tagInputText.split(",", "，")
+            parts.lastOrNull()?.trim() ?: ""
+        }
+
+        // 匹配未被当前划线添加的候选标签列表
+        val matchedTags = remember(allTags, currentQuery, currentHlTags) {
+            val candidate = if (currentQuery.isBlank()) {
+                allTags
+            } else {
+                allTags.filter { it.contains(currentQuery, ignoreCase = true) }
+            }
+            candidate.filter { !currentHlTags.contains(it) }.take(12)
+        }
+
         AlertDialog(
             onDismissRequest = { showAddTagDialog = false },
-            title = { Text("为划线金句添加标签", fontSize = 16.sp, fontWeight = FontWeight.Bold) },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        Icons.Default.AddCircle,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("为划线金句添加标签", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                }
+            },
             text = {
-                OutlinedTextField(
-                    value = tagInputText,
-                    onValueChange = { tagInputText = it },
-                    placeholder = { Text("例如: AI, 思考, 方法论", fontSize = 13.sp) },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    OutlinedTextField(
+                        value = tagInputText,
+                        onValueChange = { tagInputText = it },
+                        placeholder = { Text("例如: AI, 思考, 方法论", fontSize = 13.sp) },
+                        singleLine = true,
+                        trailingIcon = {
+                            if (tagInputText.isNotEmpty()) {
+                                IconButton(onClick = { tagInputText = "" }) {
+                                    Icon(Icons.Default.Clear, contentDescription = "清空", modifier = Modifier.size(18.dp))
+                                }
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    // 自动完成 / 候选标签 Chips
+                    Text(
+                        text = if (currentQuery.isBlank()) "💡 现有常用标签 (点击快捷添加):" else "🔍 匹配的标签 (点击自动完成):",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = textColor.copy(alpha = 0.7f)
+                    )
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    if (matchedTags.isNotEmpty()) {
+                        androidx.compose.foundation.lazy.LazyRow(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            items(matchedTags.size) { idx ->
+                                val tag = matchedTags[idx]
+                                FilterChip(
+                                    selected = false,
+                                    onClick = {
+                                        val parts = tagInputText.split(",", "，").map { it.trim() }.filter { it.isNotEmpty() }
+                                        val newParts = if (currentQuery.isNotBlank() && parts.isNotEmpty()) {
+                                            parts.dropLast(1) + tag
+                                        } else {
+                                            parts + tag
+                                        }
+                                        tagInputText = newParts.distinct().joinToString(", ")
+                                    },
+                                    label = { Text("#$tag", fontSize = 12.sp) },
+                                    leadingIcon = {
+                                        Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(14.dp))
+                                    },
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = FilterChipDefaults.filterChipColors(
+                                        containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
+                                        labelColor = MaterialTheme.colorScheme.primary
+                                    )
+                                )
+                            }
+                        }
+                    } else {
+                        Text(
+                            text = if (currentQuery.isBlank()) "暂无现有标签，请输入自定义标签" else "未搜到匹配标签，将自动创建新标签 \"$currentQuery\"",
+                            fontSize = 11.sp,
+                            color = textColor.copy(alpha = 0.5f),
+                            modifier = Modifier.padding(vertical = 4.dp)
+                        )
+                    }
+                }
             },
             confirmButton = {
                 Button(onClick = {

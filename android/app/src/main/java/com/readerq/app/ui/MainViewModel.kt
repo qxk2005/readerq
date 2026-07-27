@@ -459,22 +459,41 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         .flowOn(Dispatchers.IO)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
 
-    // Live list of all tags present in the documents database
-    val allTags: StateFlow<List<String>> = docDao.getAllDocuments()
-        .map { list ->
-            val tagsSet = mutableSetOf<String>()
-            list.forEach { doc ->
-                try {
-                    doc.tags_json?.let {
+    // Live list of all tags present in the documents & highlights database
+    val allTags: StateFlow<List<String>> = combine(docDao.getAllDocuments(), hlDao.getAllHighlights()) { docs, hls ->
+        val tagsSet = mutableSetOf<String>()
+        docs.forEach { doc ->
+            try {
+                doc.tags_json?.let {
+                    if (it.startsWith("{")) {
+                        val tagsMap = Json.decodeFromString<Map<String, Int>>(it)
+                        tagsSet.addAll(tagsMap.keys)
+                    } else if (it.startsWith("[")) {
+                        val tagsList = Json.decodeFromString<List<String>>(it)
+                        tagsSet.addAll(tagsList)
+                    }
+                    Unit
+                }
+            } catch (e: Exception) {}
+        }
+        hls.forEach { hl ->
+            try {
+                hl.tags_json?.let {
+                    if (it.startsWith("[")) {
+                        val tagsList = Json.decodeFromString<List<String>>(it)
+                        tagsSet.addAll(tagsList)
+                    } else if (it.startsWith("{")) {
                         val tagsMap = Json.decodeFromString<Map<String, Int>>(it)
                         tagsSet.addAll(tagsMap.keys)
                     }
-                } catch (e: Exception) {}
-            }
-            tagsSet.sorted()
+                    Unit
+                }
+            } catch (e: Exception) {}
         }
-        .flowOn(Dispatchers.IO)
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+        tagsSet.filter { it.isNotBlank() }.sorted()
+    }
+    .flowOn(Dispatchers.IO)
+    .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     // Highlight sort mode: position_asc, position_desc, time_asc, time_desc
     private val _highlightSortMode = MutableStateFlow("position_asc")
