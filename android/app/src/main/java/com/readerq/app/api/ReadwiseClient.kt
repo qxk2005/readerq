@@ -149,13 +149,14 @@ class ReadwiseClient(private val token: String) {
     // 5. 更新高亮 (V2 API)
     suspend fun patchHighlight(
         highlightId: String,
+        text: String? = null,
         note: String? = null
     ): HttpResponse {
-        val url = "https://readwise.io/api/v2/highlights/$highlightId"
+        val url = "https://readwise.io/api/v2/highlights/$highlightId/"
         return executeWithRetry(url) {
             patch(url) {
                 authHeaders()
-                setBody(ReadwiseHighlightPatchRequest(note = note))
+                setBody(ReadwiseHighlightPatchRequest(text = text, note = note))
             }
         }
     }

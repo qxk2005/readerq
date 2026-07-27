@@ -291,6 +291,28 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun updateReviewHighlightTextAndNote(highlight: HighlightEntity, newText: String, newNote: String?) {
+        val cleanText = newText.trim()
+        if (cleanText.isBlank()) return
+        viewModelScope.launch(Dispatchers.IO) {
+            val updated = highlight.copy(text = cleanText, note = newNote?.trim()?.ifBlank { null })
+            hlDao.insertHighlight(updated)
+
+            _reviewHighlights.value = _reviewHighlights.value.map { if (it.id == highlight.id) updated else it }
+
+            // 异步同步更新至 Readwise 云端 API
+            val tokenVal = _token.value
+            if (!tokenVal.isNullOrBlank() && !highlight.readwise_highlight_id.isNullOrBlank()) {
+                try {
+                    val client = ReadwiseClient(tokenVal)
+                    client.patchHighlight(highlight.readwise_highlight_id, text = cleanText, note = newNote?.trim()?.ifBlank { null })
+                } catch (e: Exception) {
+                    println("Sync updated highlight text & note to Readwise Cloud failed: ${e.message}")
+                }
+            }
+        }
+    }
+
     fun setHomeFeedTab(tab: String) {
         _homeFeedTab.value = tab
         saveSetting("ui_home_feed_tab", tab)
@@ -595,14 +617,21 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             viewModelScope.launch(Dispatchers.IO) {
                 hlDao.getAllHighlights().collect { hls ->
                     val validHls = hls.filter { it.text.trim().isNotEmpty() || !it.note.isNullOrBlank() }
-                    if (validHls.isNotEmpty()) {
-                        _reviewHighlights.value = validHls.shuffled().take(15)
+                    if (_reviewHighlights.value.isEmpty()) {
+                        if (validHls.isNotEmpty()) {
+                            _reviewHighlights.value = validHls.shuffled().take(15)
+                        } else {
+                            _reviewHighlights.value = listOf(
+                                HighlightEntity("hl_rev_1", "doc_1", "但即使更大的模型能够克服这个问题，它们也会更慢、更贵。换句话说，对于任何实际用途来说，它们都会太慢、太贵。这是 RAG 的实际状态。", "RAG思考", "yellow", 10, "rw_hl_1", "[\"RAG\", \"AI\"]"),
+                                HighlightEntity("hl_rev_2", "doc_2", "Qwen-Agent是一个成熟的智能体生态系统，让Qwen模型能够自主规划、调用函数并立刻执行复杂的多步骤任务。", "智能体", "blue", 20, "rw_hl_2", "[\"Agent\"]"),
+                                HighlightEntity("hl_rev_3", "doc_3", "把一次生成改成可回退流程。PRD 不是线性流程，而是判断网络。", "PRD方法论", "purple", 30, "rw_hl_3", "[\"设计\"]")
+                            )
+                        }
                     } else {
-                        _reviewHighlights.value = listOf(
-                            HighlightEntity("hl_rev_1", "doc_1", "但即使更大的模型能够克服这个问题，它们也会更慢、更贵。换句话说，对于任何实际用途来说，它们都会太慢、太贵。这是 RAG 的实际状态。", "RAG思考", "yellow", 10, "rw_hl_1", "[\"RAG\", \"AI\"]"),
-                            HighlightEntity("hl_rev_2", "doc_2", "Qwen-Agent是一个成熟的智能体生态系统，让Qwen模型能够自主规划、调用函数并立刻执行复杂的多步骤任务。", "智能体", "blue", 20, "rw_hl_2", "[\"Agent\"]"),
-                            HighlightEntity("hl_rev_3", "doc_3", "把一次生成改成可回退流程。PRD 不是线性流程，而是判断网络。", "PRD方法论", "purple", 30, "rw_hl_3", "[\"设计\"]")
-                        )
+                        val validMap = validHls.associateBy { it.id }
+                        _reviewHighlights.value = _reviewHighlights.value.map { current ->
+                            validMap[current.id] ?: current
+                        }
                     }
                 }
             }

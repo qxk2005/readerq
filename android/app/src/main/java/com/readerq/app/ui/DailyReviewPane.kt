@@ -64,6 +64,10 @@ fun DailyReviewPane(
     var showAddTagDialog by remember { mutableStateOf(false) }
     var tagInputText by remember { mutableStateOf("") }
 
+    var showEditHlDialog by remember { mutableStateOf(false) }
+    var editHlText by remember { mutableStateOf("") }
+    var editHlNote by remember { mutableStateOf("") }
+
     val currentHl = if (highlights.isNotEmpty()) highlights[currentIndex.coerceIn(0, highlights.size - 1)] else null
     val currentDoc = remember(currentHl, documents) {
         if (currentHl != null) {
@@ -600,12 +604,55 @@ fun DailyReviewPane(
                                         .clip(RoundedCornerShape(12.dp))
                                         .clickable { showAddTagDialog = true }
                                 ) {
-                                    Text(
-                                        text = "+ 添加标签",
-                                        fontSize = 11.sp,
-                                        color = textColor.copy(alpha = 0.7f),
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                                    )
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                                    ) {
+                                        Icon(
+                                            Icons.Default.Add,
+                                            contentDescription = null,
+                                            tint = textColor.copy(alpha = 0.7f),
+                                            modifier = Modifier.size(13.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(
+                                            text = "添加标签",
+                                            fontSize = 11.sp,
+                                            color = textColor.copy(alpha = 0.8f),
+                                            fontWeight = FontWeight.Medium
+                                        )
+                                    }
+                                }
+
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .clickable {
+                                            editHlText = currentHl.text
+                                            editHlNote = currentHl.note ?: ""
+                                            showEditHlDialog = true
+                                        }
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                                    ) {
+                                        Icon(
+                                            Icons.Default.Edit,
+                                            contentDescription = "编辑",
+                                            tint = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.size(13.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(
+                                            text = "编辑划线/笔记",
+                                            fontSize = 11.sp,
+                                            color = MaterialTheme.colorScheme.primary,
+                                            fontWeight = FontWeight.SemiBold
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -848,6 +895,68 @@ fun DailyReviewPane(
             },
             dismissButton = {
                 TextButton(onClick = { showAddTagDialog = false }) {
+                    Text("取消")
+                }
+            }
+        )
+    }
+
+    // 6. 划线与笔记编辑对话框
+    if (showEditHlDialog && currentHl != null) {
+        AlertDialog(
+            onDismissRequest = { showEditHlDialog = false },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        Icons.Default.Edit,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("编辑划线金句与笔记", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                }
+            },
+            text = {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Text("划线金句正文:", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = textColor.copy(alpha = 0.7f))
+                    Spacer(modifier = Modifier.height(6.dp))
+                    OutlinedTextField(
+                        value = editHlText,
+                        onValueChange = { editHlText = it },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 90.dp, max = 180.dp),
+                        maxLines = 6
+                    )
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    Text("笔记感悟 (可选):", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = textColor.copy(alpha = 0.7f))
+                    Spacer(modifier = Modifier.height(6.dp))
+                    OutlinedTextField(
+                        value = editHlNote,
+                        onValueChange = { editHlNote = it },
+                        placeholder = { Text("记录下您此时的思考与心得...", fontSize = 13.sp) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 70.dp, max = 140.dp),
+                        maxLines = 4
+                    )
+                }
+            },
+            confirmButton = {
+                Button(onClick = {
+                    if (editHlText.isNotBlank()) {
+                        viewModel.updateReviewHighlightTextAndNote(currentHl, editHlText, editHlNote)
+                        showEditHlDialog = false
+                    }
+                }) {
+                    Text("保存并同步至 Readwise")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showEditHlDialog = false }) {
                     Text("取消")
                 }
             }

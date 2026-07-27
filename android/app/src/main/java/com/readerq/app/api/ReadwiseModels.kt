@@ -88,6 +88,7 @@ data class ReadwiseHighlightResponseItem(
 
 @Serializable
 data class ReadwiseHighlightPatchRequest(
+    val text: String? = null,
     val note: String? = null
 )
 
