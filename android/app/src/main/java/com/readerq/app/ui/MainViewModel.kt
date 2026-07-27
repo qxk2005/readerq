@@ -1771,12 +1771,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                             val httpResponse = httpClient.get(img.src)
                             if (httpResponse.status.value in 200..299) {
                                 val bytes = httpResponse.body<ByteArray>()
-                                val fileName = if (img.src.contains("/")) img.src.substringAfterLast("/") else "image.jpg"
-                                val ossUrl = oss.uploadImage(bytes, doc.id, fileName)
+                                val cleanFileName = if (img.src.contains("/")) img.src.substringAfterLast("/").substringBefore("?") else "image.jpg"
+                                val ossUrl = oss.uploadImage(bytes, doc.id, cleanFileName)
                                 
-                                val placeholder = "[图片: ${img.alt}]"
-                                val markdownImg = "![${img.alt}]($ossUrl)"
-                                updatedText = updatedText.replace(placeholder, markdownImg)
+                                val rawMarkdownImg = "![${img.alt}](${img.src})"
+                                val newMarkdownImg = "![${img.alt}]($ossUrl)"
+                                if (updatedText.contains(rawMarkdownImg)) {
+                                    updatedText = updatedText.replace(rawMarkdownImg, newMarkdownImg)
+                                } else {
+                                    val placeholder = "[图片: ${img.alt}]"
+                                    updatedText = updatedText.replace(placeholder, newMarkdownImg)
+                                }
                                 hasUploadSuccess = true
                             }
                         } catch (err: Exception) {

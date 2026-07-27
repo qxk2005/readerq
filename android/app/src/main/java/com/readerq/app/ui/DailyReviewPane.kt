@@ -317,12 +317,12 @@ fun DailyReviewPane(
                                             .background(Color(0xFFFFB300), RoundedCornerShape(2.dp))
                                     )
                                     Spacer(modifier = Modifier.width(12.dp))
-                                    Text(
+                                    HighlightContentWithImages(
                                         text = currentHl.text,
+                                        textColor = textColor,
                                         fontSize = 16.sp,
                                         lineHeight = 24.sp,
-                                        fontWeight = FontWeight.Medium,
-                                        color = textColor
+                                        fontWeight = FontWeight.Medium
                                     )
                                 }
                             }

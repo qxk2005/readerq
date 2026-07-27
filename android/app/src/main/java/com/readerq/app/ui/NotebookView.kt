@@ -379,11 +379,6 @@ fun NotebookHighlightCard(
             )
     ) {
         Column(modifier = Modifier.padding(12.dp)) {
-            // Parse markdown image syntax: ![description](url) for all embedded images
-            val imageRegex = Regex("""!\[[^]]*]\((https?://[^)]+)\)""")
-            val matches = imageRegex.findAll(hl.text).toList()
-            val displayImageUrls = matches.mapNotNull { it.groups[1]?.value }
-            val cleanText = hl.text.replace(imageRegex, "").replace(Regex("""\n{3,}"""), "\n\n").trim()
 
             Column(
                 modifier = Modifier
@@ -392,42 +387,23 @@ fun NotebookHighlightCard(
                         onEditingChange(true)
                         viewModel.triggerScrollToHighlight(hl.id)
                     }
-            ) {
-                if (displayImageUrls.isNotEmpty()) {
-                    displayImageUrls.forEach { imageUrl ->
-                        AsyncImage(
-                            model = imageUrl,
-                            contentDescription = "Highlight Image",
-                            contentScale = ContentScale.Fit,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .heightIn(max = 220.dp)
-                                .padding(vertical = 4.dp)
-                                .clip(RoundedCornerShape(8.dp))
-                                .border(1.dp, tagBg, RoundedCornerShape(8.dp))
+                    .padding(start = 12.dp)
+                    .drawBehind {
+                        drawRect(
+                            color = hlColor,
+                            topLeft = Offset.Zero,
+                            size = Size(width = 4.dp.toPx(), height = size.height)
                         )
                     }
-                    Spacer(modifier = Modifier.height(8.dp))
-                }
-
-                if (cleanText.isNotEmpty()) {
-                    Text(
-                        text = cleanText,
-                        color = mainTextColor,
-                        fontSize = 13.sp,
-                        lineHeight = 18.sp,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(start = 12.dp)
-                            .drawBehind {
-                                drawRect(
-                                    color = hlColor,
-                                    topLeft = Offset.Zero,
-                                    size = Size(width = 4.dp.toPx(), height = size.height)
-                                )
-                            }
-                    )
-                }
+            ) {
+                HighlightContentWithImages(
+                    text = hl.text,
+                    textColor = mainTextColor,
+                    fontSize = 13.sp,
+                    lineHeight = 18.sp,
+                    tagBg = tagBg
+                )
+            }
             }
 
             if (isEditing) {
@@ -723,6 +699,83 @@ fun NotebookHighlightCard(
                             fontSize = 10.sp
                         )
                     }
+            }
+        }
+    }
+}
+
+sealed class HighlightBlock {
+    data class TextBlock(val text: String) : HighlightBlock()
+    data class ImageBlock(val url: String, val alt: String) : HighlightBlock()
+}
+
+@Composable
+fun HighlightContentWithImages(
+    text: String,
+    textColor: Color,
+    fontSize: androidx.compose.ui.unit.TextUnit = 13.sp,
+    lineHeight: androidx.compose.ui.unit.TextUnit = 18.sp,
+    fontWeight: FontWeight = FontWeight.Normal,
+    tagBg: Color = Color.Gray.copy(alpha = 0.2f),
+    modifier: Modifier = Modifier
+) {
+    val imageRegex = remember { Regex("""!\[([^]]*)]\(([^)]+)\)""") }
+    
+    val blocks = remember(text) {
+        val list = mutableListOf<HighlightBlock>()
+        var lastIndex = 0
+        imageRegex.findAll(text).forEach { match ->
+            val range = match.range
+            if (range.first > lastIndex) {
+                val textSegment = text.substring(lastIndex, range.first).trim()
+                if (textSegment.isNotEmpty()) {
+                    list.add(HighlightBlock.TextBlock(textSegment))
+                }
+            }
+            val alt = match.groups[1]?.value ?: "图片"
+            val url = match.groups[2]?.value ?: ""
+            if (url.isNotBlank()) {
+                list.add(HighlightBlock.ImageBlock(url = url, alt = alt))
+            }
+            lastIndex = range.last + 1
+        }
+        if (lastIndex < text.length) {
+            val remainingText = text.substring(lastIndex).trim()
+            if (remainingText.isNotEmpty()) {
+                list.add(HighlightBlock.TextBlock(remainingText))
+            }
+        }
+        if (list.isEmpty() && text.isNotBlank()) {
+            list.add(HighlightBlock.TextBlock(text.trim()))
+        }
+        list
+    }
+
+    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        blocks.forEach { block ->
+            when (block) {
+                is HighlightBlock.TextBlock -> {
+                    Text(
+                        text = block.text,
+                        color = textColor,
+                        fontSize = fontSize,
+                        lineHeight = lineHeight,
+                        fontWeight = fontWeight,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+                is HighlightBlock.ImageBlock -> {
+                    AsyncImage(
+                        model = block.url,
+                        contentDescription = block.alt,
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 240.dp)
+                            .padding(vertical = 2.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .border(1.dp, tagBg, RoundedCornerShape(8.dp))
+                    )
                 }
             }
         }
