@@ -124,9 +124,9 @@ fun AdaptiveMainScreen(
                                 horizontalArrangement = Arrangement.SpaceAround
                             ) {
                                 val tabs = listOf(
-                                    Triple("home", "首页", R.drawable.ic_inbox),
+                                    Triple("home", "首页", R.drawable.ic_tab_library),
                                     Triple("zen", "禅阅读", R.drawable.ic_cat_book),
-                                    Triple("library", "库", R.drawable.ic_tab_library),
+                                    Triple("library", "库", R.drawable.ic_inbox),
                                     Triple("notebook", "浏览", R.drawable.ic_tab_notebook),
                                     Triple("settings", "设置", R.drawable.ic_tab_settings)
                                 )
@@ -206,9 +206,9 @@ fun AdaptiveMainScreen(
                             tonalElevation = 0.dp
                         ) {
                             val tabs = listOf(
-                                Triple("home", "首页", R.drawable.ic_inbox),
+                                Triple("home", "首页", R.drawable.ic_tab_library),
                                 Triple("zen", "禅阅读", R.drawable.ic_cat_book),
-                                Triple("library", "库", R.drawable.ic_tab_library),
+                                Triple("library", "库", R.drawable.ic_inbox),
                                 Triple("notebook", "浏览", R.drawable.ic_tab_notebook),
                                 Triple("settings", "设置", R.drawable.ic_tab_settings)
                             )
