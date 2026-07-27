@@ -47,7 +47,10 @@ fun DailyReviewPane(
     viewModel: MainViewModel,
     onDocumentClick: (DocumentEntity) -> Unit
 ) {
-    val highlights by viewModel.reviewHighlights.collectAsState()
+    val rawHighlights by viewModel.reviewHighlights.collectAsState()
+    val highlights = remember(rawHighlights) {
+        rawHighlights.filter { it.text.trim().isNotEmpty() || !it.note.isNullOrBlank() }
+    }
     val currentIndex by viewModel.reviewCurrentIndex.collectAsState()
     val subTab by viewModel.reviewSubTab.collectAsState()
     val documents by viewModel.documents.collectAsState()
@@ -233,7 +236,11 @@ fun DailyReviewPane(
                             .padding(20.dp),
                         verticalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Column {
+                        Column(
+                            modifier = Modifier
+                                .weight(1f, fill = false)
+                                .verticalScroll(rememberScrollState())
+                        ) {
                             // 3.1 卡片头部：文章信息与操作组
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
@@ -295,7 +302,7 @@ fun DailyReviewPane(
                                 }
                             }
 
-                            Spacer(modifier = Modifier.height(20.dp))
+                            Spacer(modifier = Modifier.height(16.dp))
 
                             // 3.2 划线正文引用框 (典雅黄色边框指示)
                             Box(
@@ -309,7 +316,11 @@ fun DailyReviewPane(
                                     )
                                     .padding(16.dp)
                             ) {
-                                Row {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(IntrinsicSize.Min)
+                                ) {
                                     Box(
                                         modifier = Modifier
                                             .width(4.dp)
@@ -322,7 +333,8 @@ fun DailyReviewPane(
                                         textColor = textColor,
                                         fontSize = 16.sp,
                                         lineHeight = 24.sp,
-                                        fontWeight = FontWeight.Medium
+                                        fontWeight = FontWeight.Medium,
+                                        modifier = Modifier.weight(1f)
                                     )
                                 }
                             }

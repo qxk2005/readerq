@@ -316,7 +316,7 @@ fun AdaptiveMainScreen(
 
             if (isCompact) {
                 // --- Single Pane layout (Phone) ---
-                if (selectedDoc != null) {
+                if (selectedDoc != null && (currentTab == "library" || currentTab == "feed")) {
                     BackHandler {
                         viewModel.selectDocument(null)
                     }

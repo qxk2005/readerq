@@ -550,8 +550,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
             viewModelScope.launch(Dispatchers.IO) {
                 hlDao.getAllHighlights().collect { hls ->
-                    if (hls.isNotEmpty()) {
-                        _reviewHighlights.value = hls.shuffled().take(15)
+                    val validHls = hls.filter { it.text.trim().isNotEmpty() || !it.note.isNullOrBlank() }
+                    if (validHls.isNotEmpty()) {
+                        _reviewHighlights.value = validHls.shuffled().take(15)
                     } else {
                         _reviewHighlights.value = listOf(
                             HighlightEntity("hl_rev_1", "doc_1", "但即使更大的模型能够克服这个问题，它们也会更慢、更贵。换句话说，对于任何实际用途来说，它们都会太慢、太贵。这是 RAG 的实际状态。", "RAG思考", "yellow", 10, "rw_hl_1", "[\"RAG\", \"AI\"]"),
@@ -601,8 +602,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun changeTab(tab: String) {
         _currentTab.value = tab
-        if (tab != "library") {
+        if (tab != "library" && tab != "feed") {
             _selectedDoc.value = null
+        }
+        viewModelScope.launch(Dispatchers.IO) {
+            saveSetting("ui_current_tab", tab)
         }
     }
 
@@ -1725,6 +1729,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         location: Int = 0,
         images: List<HighlightImage> = emptyList()
     ) {
+        if (text.trim().isEmpty() && images.isEmpty()) return
         val doc = _selectedDoc.value ?: return
         val currentToken = _token.value ?: return
 
