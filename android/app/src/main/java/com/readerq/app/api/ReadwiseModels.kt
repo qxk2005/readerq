@@ -229,10 +229,23 @@ data class SubtitleSegment(
 // --- Review API Models (V2) ---
 
 @Serializable
+data class ReadwiseReviewHighlightDetail(
+    val id: Long? = null,
+    val text: String? = null,
+    val note: String? = null,
+    val color: String? = null,
+    val title: String? = null,
+    val author: String? = null,
+    val source_url: String? = null,
+    val image_url: String? = null,
+    val category: String? = null
+)
+
+@Serializable
 data class ReadwiseReviewItem(
     val id: Long? = null,
     val highlight_id: Long? = null,
-    val highlight: ReadwiseHighlightListItem? = null,
+    val highlight: ReadwiseReviewHighlightDetail? = null,
     val text: String? = null,
     val note: String? = null,
     val title: String? = null,

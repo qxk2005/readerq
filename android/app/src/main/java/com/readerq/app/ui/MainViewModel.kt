@@ -223,10 +223,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 val currentToken = settingDao.getSetting("readwise_api_token")?.replace("\"", "")
                 if (!currentToken.isNullOrBlank()) {
                     val client = ReadwiseClient(currentToken)
-                    val hlIdLong = highlight.id.toLongOrNull()
+                    val realIdStr = highlight.readwise_highlight_id ?: highlight.id.removePrefix("rw_")
+                    val hlIdLong = realIdStr.toLongOrNull()
                     if (hlIdLong != null) {
                         client.submitReviewAction(highlightId = hlIdLong, action = action, reviewId = _currentReviewId.value)
                         println("[Readwise Official Sync] 成功发送 Review Action ($action) for highlight $hlIdLong")
+                    } else {
+                        println("[Readwise Official Sync] 划线 ${highlight.id} 无有效的 Readwise 数字 ID，跳过 Action 发送")
                     }
                 }
             } catch (e: Exception) {
@@ -269,7 +272,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun restartReviewSession() {
         viewModelScope.launch(Dispatchers.IO) {
             _reviewCompleteSyncSuccess.value = null
-            // 尝试向 Readwise 官方 API 获取 Daily Review 会话 ID
+            var fetchedOfficialHls: List<HighlightEntity>? = null
+
+            // 1. 尝试向 Readwise 官方 API 获取当前用户专属的 15 条 Daily Review 划线
             try {
                 val currentToken = settingDao.getSetting("readwise_api_token")?.replace("\"", "")
                 if (!currentToken.isNullOrBlank()) {
@@ -278,38 +283,89 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         val officialReview = client.getDailyReview()
                         _currentReviewId.value = officialReview.review_id
                         println("[Readwise Official Sync] 获取到官方 Daily Review 会话 ID: ${officialReview.review_id}")
+
+                        val items = officialReview.review_items ?: officialReview.results
+                        if (!items.isNullOrEmpty()) {
+                            val docs = docDao.getAllDocumentsSync()
+                            val docsById = docs.associateBy { it.id }
+                            val docsByUrl = docs.mapNotNull { d -> 
+                                if (!d.source_url.isNullOrBlank()) d.source_url to d 
+                                else if (!d.url.isNullOrBlank()) d.url to d 
+                                else null 
+                            }.toMap()
+
+                            val officialMapped = items.mapNotNull { item ->
+                                val hlDetail = item.highlight
+                                val realHlId = (hlDetail?.id ?: item.highlight_id ?: item.id)?.toString() ?: return@mapNotNull null
+                                val text = hlDetail?.text ?: item.text ?: ""
+                                if (text.isBlank()) return@mapNotNull null
+
+                                val note = hlDetail?.note ?: item.note
+                                val title = hlDetail?.title ?: item.title
+                                val author = hlDetail?.author ?: item.author
+                                val docId = hlDetail?.source_url ?: item.source_url ?: "official_review_$realHlId"
+
+                                val matchedDoc = docsById[docId] ?: docsByUrl[docId]
+                                val finalTitle = if (!title.isNullOrBlank()) title else (matchedDoc?.title ?: "Readwise Review")
+                                val finalAuthor = if (!author.isNullOrBlank()) author else (matchedDoc?.author ?: matchedDoc?.site_name ?: "")
+
+                                HighlightEntity(
+                                    id = "rw_$realHlId",
+                                    document_id = matchedDoc?.id ?: docId,
+                                    text = text,
+                                    note = note,
+                                    color = hlDetail?.color ?: "yellow",
+                                    location = 0,
+                                    readwise_highlight_id = realHlId,
+                                    tags_json = "[]",
+                                    document_title = finalTitle,
+                                    author = finalAuthor
+                                )
+                            }
+
+                            if (officialMapped.isNotEmpty()) {
+                                fetchedOfficialHls = officialMapped
+                                println("[Readwise Official Sync] 成功提炼 Readwise 官方推荐的 ${officialMapped.size} 条复习划线！")
+                            }
+                        }
                     } catch (e: Exception) {
                         println("[Readwise Official Sync] 获取官方 Daily Review 会话失败: ${e.message}")
                     }
                 }
             } catch (e: Exception) {}
 
+            // 2. 如果官方 API 获取到了划线，优先使用官方划线；否则使用本地数据库 Smart Sample 抽样 15 条兜底
             try {
-                val allHls = hlDao.getAllHighlightsSync()
-                val docs = docDao.getAllDocumentsSync()
-                val docsById = docs.associateBy { it.id }
-                val docsByUrl = docs.mapNotNull { d -> 
-                    if (!d.source_url.isNullOrBlank()) d.source_url to d 
-                    else if (!d.url.isNullOrBlank()) d.url to d 
-                    else null 
-                }.toMap()
+                if (!fetchedOfficialHls.isNullOrEmpty()) {
+                    _reviewHighlights.value = fetchedOfficialHls!!
+                } else {
+                    val allHls = hlDao.getAllHighlightsSync()
+                    val docs = docDao.getAllDocumentsSync()
+                    val docsById = docs.associateBy { it.id }
+                    val docsByUrl = docs.mapNotNull { d -> 
+                        if (!d.source_url.isNullOrBlank()) d.source_url to d 
+                        else if (!d.url.isNullOrBlank()) d.url to d 
+                        else null 
+                    }.toMap()
 
-                val enrichedHls = allHls.map { hl ->
-                    val matchedDoc = docsById[hl.document_id] ?: docsByUrl[hl.document_id]
-                    val finalTitle = if (!hl.document_title.isNullOrBlank()) hl.document_title else matchedDoc?.title
-                    val finalAuthor = if (!hl.author.isNullOrBlank()) hl.author else (matchedDoc?.author ?: matchedDoc?.site_name)
-                    if (finalTitle != hl.document_title || finalAuthor != hl.author) {
-                        hl.copy(document_title = finalTitle, author = finalAuthor)
-                    } else {
-                        hl
+                    val enrichedHls = allHls.map { hl ->
+                        val matchedDoc = docsById[hl.document_id] ?: docsByUrl[hl.document_id]
+                        val finalTitle = if (!hl.document_title.isNullOrBlank()) hl.document_title else matchedDoc?.title
+                        val finalAuthor = if (!hl.author.isNullOrBlank()) hl.author else (matchedDoc?.author ?: matchedDoc?.site_name)
+                        if (finalTitle != hl.document_title || finalAuthor != hl.author) {
+                            hl.copy(document_title = finalTitle, author = finalAuthor)
+                        } else {
+                            hl
+                        }
+                    }
+
+                    val validHls = enrichedHls.filter { it.text.trim().isNotEmpty() || !it.note.isNullOrBlank() }
+                    if (validHls.isNotEmpty()) {
+                        _reviewHighlights.value = validHls.shuffled().take(15)
                     }
                 }
-
-                val validHls = enrichedHls.filter { it.text.trim().isNotEmpty() || !it.note.isNullOrBlank() }
-                if (validHls.isNotEmpty()) {
-                    _reviewHighlights.value = validHls.shuffled().take(15)
-                }
             } catch (e: Exception) {}
+
             _reviewCurrentIndex.value = 0
             _isReviewCompleted.value = false
         }
