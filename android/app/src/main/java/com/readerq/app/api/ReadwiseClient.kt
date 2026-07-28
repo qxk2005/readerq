@@ -438,9 +438,6 @@ class ReadwiseClient(private val token: String) {
     }
 
     // 16. 标记 Readwise 官方今日 Daily Review 全部打卡完成 (V2 API)
-    // 严格遵循官方文档: POST https://readwise.io/api/v2/review/complete/
-    // 官方文档明确指出此接口不需要 request body，只需 Authorization header。
-    // 桌面端 (readwise.js) 发送的是 body: JSON.stringify({}) 即空对象。
     suspend fun markDailyReviewComplete(reviewId: Long? = null): HttpResponse {
         val url = "https://readwise.io/api/v2/review/complete/"
         return executeWithRetry(url) {
@@ -452,4 +449,40 @@ class ReadwiseClient(private val token: String) {
             }
         }
     }
+
+    // 17. 从 Server API Endpoint 获取指定文档的完整博客文章响应
+    suspend fun fetchBlogFromServerFull(baseUrl: String, documentId: String): ServerBlogResponse? {
+        val cleanBaseUrl = baseUrl.trim().removeSuffix("/")
+        if (cleanBaseUrl.isBlank()) return null
+        val url = "$cleanBaseUrl/api/documents/$documentId/blog"
+        return try {
+            val response = client.get(url)
+            if (response.status.isSuccess()) {
+                response.body<ServerBlogResponse>()
+            } else null
+        } catch (e: Exception) { null }
+    }
+
+    // 18. 从 Server API Endpoint 获取指定文档的字幕文本
+    suspend fun fetchSubtitleFromServer(baseUrl: String, documentId: String): String? {
+        val cleanBaseUrl = baseUrl.trim().removeSuffix("/")
+        if (cleanBaseUrl.isBlank()) return null
+        val url = "$cleanBaseUrl/api/documents/$documentId/subtitles"
+        return try {
+            val response = client.get(url)
+            if (response.status.isSuccess()) {
+                val text = response.bodyAsText()
+                if (text.isBlank()) null else text
+            } else null
+        } catch (e: Exception) { null }
+    }
 }
+
+@kotlinx.serialization.Serializable
+data class ServerBlogResponse(
+    val exists: Boolean = false,
+    val blogContent: String? = null,
+    val source: String? = null,
+    val hasNewerVersion: Boolean = false,
+    val newerBlogContent: String? = null
+)

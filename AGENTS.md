@@ -45,3 +45,18 @@ This version has breaking changes — APIs, conventions, and file structure may 
      - GitHub Tag 版本；
      - 本地生成的 `app-release.aab` 内注入的版本号。
    - 确保桌面端 (Desktop) 与移动端 (Android) 客户端的版本号 100% 保持严格一致！
+
+# 🛡️ Android 模拟器调试安全规则 (Emulator Data Protection Policy)
+
+1. **严禁擅自清除应用数据 (Never Clear App Data)**：
+   - **绝对禁止**在调试过程中执行 `adb shell pm clear`、`adb shell am clear-data` 或任何会清除应用缓存/数据的命令！
+   - 清除应用数据会导致用户需要从头重新同步所有 Readwise 文章数据，**极其浪费时间**。
+   - **只有当用户在对话中明确指示"请清除应用数据"时**，才可以执行此操作。
+
+2. **仅更新应用本身 (Update APK Only)**：
+   - 调试时只使用 `./gradlew installDebug` 或 `adb install -r` 来更新应用代码，保留用户已同步的数据。
+   - 如果需要验证"首次安装"场景（如本地缓存为空），应通过**代码逻辑模拟**或**临时删除特定 key**的方式，而不是清除全部数据。
+
+3. **数据库操作谨慎 (Database Caution)**：
+   - 如需修改数据库中的特定条目用于调试，使用 `adb shell run-as readerq.qiuyang.ai` 进入应用沙盒后精确操作。
+   - 不要批量删除或重置数据库。

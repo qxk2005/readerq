@@ -2204,7 +2204,7 @@ fun VideoReadingContent(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
-                                Text("✨ 探查到云端已更新最新版本的视频博客", fontSize = 12.sp, color = MaterialTheme.colorScheme.onBackground, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
+                                Text("✨ 检测到云端已生成最新视频博客，是否下载？", fontSize = 12.sp, color = MaterialTheme.colorScheme.onBackground, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
                                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                     Button(
                                         onClick = { viewModel.applyNewerBlog(doc.id) },
@@ -2212,7 +2212,7 @@ fun VideoReadingContent(
                                         shape = RoundedCornerShape(6.dp),
                                         colors = ButtonDefaults.buttonColors(containerColor = accentColor)
                                     ) {
-                                        Text("切换最新", fontSize = 11.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                                        Text("📥 立即下载", fontSize = 11.sp, color = Color.White, fontWeight = FontWeight.Bold)
                                     }
                                     TextButton(
                                         onClick = { viewModel.ignoreNewerBlog() },

@@ -1207,31 +1207,42 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     _subtitleLoading.value = false
                 }
 
-                // 2. 探索云端 OSS 是否有最新字幕版本 (跨设备同步)
+                // 2. 探索云端 OSS 或 Server API 是否有最新字幕版本 (跨设备同步)
+                var remoteSrt: String? = null
                 val region = _ossRegion.value
                 val bucket = _ossBucket.value
                 val akId = _ossAccessKeyId.value
                 val akSecret = _ossAccessKeySecret.value
                 if (region.isNotBlank() && bucket.isNotBlank() && akId.isNotBlank() && akSecret.isNotBlank()) {
-                    val oss = com.readerq.app.api.OssClient(
-                        region, bucket, akId, akSecret,
-                        _ossCustomDomain.value, _ossPathPrefix.value
-                    )
-                    val remoteSrt = oss.downloadSubtitle(documentId)
-                    if (!remoteSrt.isNullOrBlank()) {
-                        val isLocalBilingual = _subtitles.value.any { !it.zh.isNullOrBlank() } || (localSrt?.contains("\"zh\"") == true)
-                        val isRemoteBilingual = remoteSrt.contains("\"zh\"") || remoteSrt.contains("zh:")
+                    try {
+                        val oss = com.readerq.app.api.OssClient(
+                            region, bucket, akId, akSecret,
+                            _ossCustomDomain.value, _ossPathPrefix.value
+                        )
+                        remoteSrt = oss.downloadSubtitle(documentId)
+                    } catch (e: Exception) { null }
+                }
 
-                        if (localSrt.isNullOrBlank()) {
-                            // 本地为空，自动同步并渲染
-                            settingDao.setSetting(SettingEntity("subtitle_$documentId", remoteSrt))
-                            _subtitleSrtContent.value = remoteSrt
-                            _subtitles.value = com.readerq.app.api.SrtParser.parseAnySubtitle(remoteSrt)
-                        } else if (localSrt.trim() != remoteSrt.trim() || (!isLocalBilingual && isRemoteBilingual)) {
-                            // 本地有字幕，但云端产生了最新双语版本/不同版本
-                            _newerSrtContent.value = remoteSrt
-                            _hasNewerSubtitleVersion.value = true
-                        }
+                if (remoteSrt.isNullOrBlank()) {
+                    val token = settingDao.getSetting("readwise_token")?.replace("\"", "") ?: ""
+                    val client = com.readerq.app.api.ReadwiseClient(token)
+                    val serverUrl = settingDao.getSetting("server_base_url") ?: "http://10.0.2.2:3000"
+                    remoteSrt = client.fetchSubtitleFromServer(serverUrl, documentId)
+                }
+
+                if (!remoteSrt.isNullOrBlank()) {
+                    val isLocalBilingual = _subtitles.value.any { !it.zh.isNullOrBlank() } || (localSrt?.contains("\"zh\"") == true)
+                    val isRemoteBilingual = remoteSrt.contains("\"zh\"") || remoteSrt.contains("zh:")
+
+                    if (localSrt.isNullOrBlank()) {
+                        // 本地为空，自动同步并渲染
+                        settingDao.setSetting(SettingEntity("subtitle_$documentId", remoteSrt))
+                        _subtitleSrtContent.value = remoteSrt
+                        _subtitles.value = com.readerq.app.api.SrtParser.parseAnySubtitle(remoteSrt)
+                    } else if (localSrt.trim() != remoteSrt.trim() || (!isLocalBilingual && isRemoteBilingual)) {
+                        // 本地有字幕，但云端产生了最新双语版本/不同版本
+                        _newerSrtContent.value = remoteSrt
+                        _hasNewerSubtitleVersion.value = true
                     }
                 }
             } catch (e: Exception) {
@@ -1282,31 +1293,75 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     _blogLoading.value = false
                 }
 
-                // 2. 探索云端 OSS 是否有最新博客版本 (跨设备同步)
-                val region = _ossRegion.value
-                val bucket = _ossBucket.value
-                val akId = _ossAccessKeyId.value
-                val akSecret = _ossAccessKeySecret.value
-                if (region.isNotBlank() && bucket.isNotBlank() && akId.isNotBlank() && akSecret.isNotBlank()) {
-                    val oss = com.readerq.app.api.OssClient(
-                        region, bucket, akId, akSecret,
-                        _ossCustomDomain.value, _ossPathPrefix.value
-                    )
-                    val remoteBlog = oss.downloadBlog(documentId)
-                    if (!remoteBlog.isNullOrBlank()) {
+                // 2. 从服务端 API 查询博客状态（直连桌面版 Next.js 服务器）
+                val token = settingDao.getSetting("readwise_token")?.replace("\"", "") ?: ""
+                val client = com.readerq.app.api.ReadwiseClient(token)
+                val serverUrl = settingDao.getSetting("server_base_url") ?: "http://10.0.2.2:3000"
+
+                val serverResp = try {
+                    client.fetchBlogFromServerFull(serverUrl, documentId)
+                } catch (e: Exception) {
+                    println("[loadBlog] Server API EXCEPTION: ${e.message}")
+                    null
+                }
+
+                println("[loadBlog] documentId=$documentId serverResp.exists=${serverResp?.exists} serverResp.hasNewerVersion=${serverResp?.hasNewerVersion} blogContent.len=${serverResp?.blogContent?.length ?: 0} newerBlogContent.len=${serverResp?.newerBlogContent?.length ?: 0}")
+
+                if (serverResp != null && serverResp.exists) {
+                    // 服务端有博客数据
+                    val bestBlog = serverResp.newerBlogContent ?: serverResp.blogContent
+
+                    if (!bestBlog.isNullOrBlank()) {
                         if (localBlog.isNullOrBlank()) {
-                            // 本地为空，自动同步并渲染
-                            settingDao.setSetting(SettingEntity("blog_$documentId", remoteBlog))
-                            _blogContent.value = remoteBlog
-                        } else if (localBlog.trim() != remoteBlog.trim()) {
-                            // 本地有博客，但云端产生了最新版本
-                            _newerBlogContent.value = remoteBlog
+                            // 本地完全没有博客 → 直接弹提醒让用户下载
+                            _blogContent.value = null // 保持空，显示"暂未生成"提示
+                            _newerBlogContent.value = bestBlog
                             _hasNewerBlogVersion.value = true
+                            println("[loadBlog] TRIGGER BANNER: local is empty, server has blog")
+                        } else {
+                            // 本地有博客 → 只要服务端内容与本地不同，或服务端明确标记有更新，就弹提醒
+                            val serverHasUpdate = serverResp.hasNewerVersion && !serverResp.newerBlogContent.isNullOrBlank()
+                            val contentDiffers = localBlog.trim() != bestBlog.trim()
+
+                            if (serverHasUpdate || contentDiffers) {
+                                _newerBlogContent.value = bestBlog
+                                _hasNewerBlogVersion.value = true
+                                println("[loadBlog] TRIGGER BANNER: serverHasUpdate=$serverHasUpdate contentDiffers=$contentDiffers")
+                            } else {
+                                println("[loadBlog] NO BANNER: content identical and no server update flag")
+                            }
+                        }
+                    }
+                } else {
+                    // 3. 服务端无响应时，回退到 OSS
+                    val region = _ossRegion.value
+                    val bucket = _ossBucket.value
+                    val akId = _ossAccessKeyId.value
+                    val akSecret = _ossAccessKeySecret.value
+                    if (region.isNotBlank() && bucket.isNotBlank() && akId.isNotBlank() && akSecret.isNotBlank()) {
+                        try {
+                            val oss = com.readerq.app.api.OssClient(
+                                region, bucket, akId, akSecret,
+                                _ossCustomDomain.value, _ossPathPrefix.value
+                            )
+                            val remoteBlog = oss.downloadBlog(documentId)
+                            if (!remoteBlog.isNullOrBlank()) {
+                                if (localBlog.isNullOrBlank()) {
+                                    _newerBlogContent.value = remoteBlog
+                                    _hasNewerBlogVersion.value = true
+                                } else if (localBlog.trim() != remoteBlog.trim()) {
+                                    _newerBlogContent.value = remoteBlog
+                                    _hasNewerBlogVersion.value = true
+                                }
+                            }
+                        } catch (e: Exception) {
+                            println("[loadBlog] OSS EXCEPTION: ${e.message}")
                         }
                     }
                 }
             } catch (e: Exception) {
-                // ignore
+                println("[loadBlog] TOP-LEVEL EXCEPTION: ${e.message}")
+                e.printStackTrace()
             } finally {
                 _blogLoading.value = false
             }
