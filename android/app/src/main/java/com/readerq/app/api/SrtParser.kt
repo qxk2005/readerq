@@ -44,25 +44,99 @@ object SrtParser {
 
             if (startTime < 0 || endTime < 0) continue
 
-            // 时间行之后的所有行是字幕文本
-            val text = lines.subList(timeLineIndex + 1, lines.size)
-                .joinToString("\n")
-                .trim()
-                // 移除 HTML 标签
-                .replace(Regex("<[^>]+>"), "")
+            val textLines = lines.subList(timeLineIndex + 1, lines.size)
+                .map { it.trim().replace(Regex("<[^>]+>"), "") }
+                .filter { it.isNotBlank() }
 
-            if (text.isNotBlank()) {
+            if (textLines.isNotEmpty()) {
+                val fullText = textLines.joinToString("\n")
+                var extractedZh: String? = null
+                var extractedEn: String? = null
+
+                if (textLines.size >= 2) {
+                    val hasChinese0 = textLines[0].contains(Regex("[\\u4e00-\\u9fa5]"))
+                    val hasChinese1 = textLines[1].contains(Regex("[\\u4e00-\\u9fa5]"))
+                    if (hasChinese0 && !hasChinese1) {
+                        extractedZh = textLines[0]
+                        extractedEn = textLines.subList(1, textLines.size).joinToString(" ")
+                    } else if (!hasChinese0 && hasChinese1) {
+                        extractedEn = textLines[0]
+                        extractedZh = textLines.subList(1, textLines.size).joinToString(" ")
+                    } else {
+                        extractedZh = textLines[0]
+                        extractedEn = textLines.subList(1, textLines.size).joinToString(" ")
+                    }
+                } else {
+                    val single = textLines[0]
+                    if (single.contains(Regex("[\\u4e00-\\u9fa5]"))) {
+                        extractedZh = single
+                    } else {
+                        extractedEn = single
+                    }
+                }
+
                 segments.add(
                     SubtitleSegment(
                         index = segments.size + 1,
                         startTime = startTime,
                         endTime = endTime,
-                        text = text
+                        text = fullText,
+                        zh = extractedZh,
+                        en = extractedEn
                     )
                 )
             }
         }
 
+        return segments
+    }
+
+    /**
+     * 智能解析任意字幕内容 (优先解析双语 JSON，若为 SRT 格式则解析 SRT)
+     */
+    fun parseAnySubtitle(rawContent: String): List<SubtitleSegment> {
+        val trimmed = rawContent.trim()
+        if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
+            val jsonSegments = parseBilingualJson(trimmed)
+            if (jsonSegments.isNotEmpty()) {
+                return jsonSegments
+            }
+        }
+        return parse(rawContent)
+    }
+
+    /**
+     * 解析前端/服务端传回的 bilingual_json 字符串
+     */
+    fun parseBilingualJson(jsonContent: String): List<SubtitleSegment> {
+        val segments = mutableListOf<SubtitleSegment>()
+        try {
+            val jsonArray = org.json.JSONArray(jsonContent)
+            for (i in 0 until jsonArray.length()) {
+                val obj = jsonArray.getJSONObject(i)
+                val time = obj.optDouble("time", 0.0)
+                val text = obj.optString("text", "")
+                val zh = obj.optString("zh", "")
+                val en = obj.optString("en", "")
+                val timeStr = obj.optString("timeStr", "")
+                val startTime = if (time > 0) time else parseTimestamp(timeStr)
+
+                if (text.isNotBlank() || zh.isNotBlank()) {
+                    segments.add(
+                        SubtitleSegment(
+                            index = i + 1,
+                            startTime = Math.max(0.0, startTime),
+                            endTime = Math.max(0.0, startTime) + 4.0,
+                            text = text.ifBlank { zh },
+                            zh = zh.ifBlank { null },
+                            en = en.ifBlank { null }
+                        )
+                    )
+                }
+            }
+        } catch (e: Exception) {
+            // ignore
+        }
         return segments
     }
 

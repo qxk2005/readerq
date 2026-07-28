@@ -1156,7 +1156,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    // --- Subtitle Methods ---
+    // --- Subtitle & Blog Multi-Device Sync States ---
 
     private val _subtitles = MutableStateFlow<List<com.readerq.app.api.SubtitleSegment>>(emptyList())
     val subtitles: StateFlow<List<com.readerq.app.api.SubtitleSegment>> = _subtitles.asStateFlow()
@@ -1164,24 +1164,50 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _subtitleLoading = MutableStateFlow(false)
     val subtitleLoading: StateFlow<Boolean> = _subtitleLoading.asStateFlow()
 
-    private val _subtitleSrtContent = MutableStateFlow<String?>(null) // 本地缓存的 SRT 原始内容
+    private val _subtitleSrtContent = MutableStateFlow<String?>(null)
+
+    // 跨设备最新字幕版本提醒
+    private val _hasNewerSubtitleVersion = MutableStateFlow(false)
+    val hasNewerSubtitleVersion: StateFlow<Boolean> = _hasNewerSubtitleVersion.asStateFlow()
+    private val _newerSrtContent = MutableStateFlow<String?>(null)
+
+    // 跨设备最新博客版本提醒
+    private val _hasNewerBlogVersion = MutableStateFlow(false)
+    val hasNewerBlogVersion: StateFlow<Boolean> = _hasNewerBlogVersion.asStateFlow()
+    private val _newerBlogContent = MutableStateFlow<String?>(null)
+
+    // 视频跳播全局事件
+    private val _videoSeekEvent = MutableSharedFlow<Float>(extraBufferCapacity = 1)
+    val videoSeekEvent: SharedFlow<Float> = _videoSeekEvent.asSharedFlow()
+
+    fun seekVideoTo(seconds: Float) {
+        viewModelScope.launch {
+            _videoSeekEvent.emit(seconds)
+        }
+    }
+
+    private var subtitleJob: Job? = null
+    private var blogJob: Job? = null
 
     fun loadSubtitles(documentId: String) {
+        subtitleJob?.cancel()
         _subtitles.value = emptyList()
         _subtitleSrtContent.value = null
-        viewModelScope.launch(Dispatchers.IO) {
+        _hasNewerSubtitleVersion.value = false
+        _newerSrtContent.value = null
+
+        subtitleJob = viewModelScope.launch(Dispatchers.IO) {
             _subtitleLoading.value = true
             try {
-                // 1. 尝试从本地 settings 加载
+                // 1. 尝试从本地加载
                 val localSrt = settingDao.getSetting("subtitle_$documentId")
                 if (!localSrt.isNullOrBlank()) {
                     _subtitleSrtContent.value = localSrt
-                    _subtitles.value = com.readerq.app.api.SrtParser.parse(localSrt)
+                    _subtitles.value = com.readerq.app.api.SrtParser.parseAnySubtitle(localSrt)
                     _subtitleLoading.value = false
-                    return@launch
                 }
 
-                // 2. 尝试从 OSS 下载
+                // 2. 探索云端 OSS 是否有最新字幕版本 (跨设备同步)
                 val region = _ossRegion.value
                 val bucket = _ossBucket.value
                 val akId = _ossAccessKeyId.value
@@ -1193,25 +1219,45 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     )
                     val remoteSrt = oss.downloadSubtitle(documentId)
                     if (!remoteSrt.isNullOrBlank()) {
-                        // 缓存到本地
-                        settingDao.setSetting(SettingEntity("subtitle_$documentId", remoteSrt))
-                        _subtitleSrtContent.value = remoteSrt
-                        _subtitles.value = com.readerq.app.api.SrtParser.parse(remoteSrt)
-                        _subtitleLoading.value = false
-                        return@launch
+                        val isLocalBilingual = _subtitles.value.any { !it.zh.isNullOrBlank() } || (localSrt?.contains("\"zh\"") == true)
+                        val isRemoteBilingual = remoteSrt.contains("\"zh\"") || remoteSrt.contains("zh:")
+
+                        if (localSrt.isNullOrBlank()) {
+                            // 本地为空，自动同步并渲染
+                            settingDao.setSetting(SettingEntity("subtitle_$documentId", remoteSrt))
+                            _subtitleSrtContent.value = remoteSrt
+                            _subtitles.value = com.readerq.app.api.SrtParser.parseAnySubtitle(remoteSrt)
+                        } else if (localSrt.trim() != remoteSrt.trim() || (!isLocalBilingual && isRemoteBilingual)) {
+                            // 本地有字幕，但云端产生了最新双语版本/不同版本
+                            _newerSrtContent.value = remoteSrt
+                            _hasNewerSubtitleVersion.value = true
+                        }
                     }
                 }
-
-                // 3. 无字幕
-                _subtitles.value = emptyList()
-                _subtitleSrtContent.value = null
             } catch (e: Exception) {
-                _subtitles.value = emptyList()
-                _subtitleSrtContent.value = null
+                // ignore
             } finally {
                 _subtitleLoading.value = false
             }
         }
+    }
+
+    /**
+     * 一键应用云端最新的字幕版本
+     */
+    fun applyNewerSubtitle(documentId: String) {
+        val newSrt = _newerSrtContent.value ?: return
+        viewModelScope.launch(Dispatchers.IO) {
+            settingDao.setSetting(SettingEntity("subtitle_$documentId", newSrt))
+            _subtitleSrtContent.value = newSrt
+            _subtitles.value = com.readerq.app.api.SrtParser.parseAnySubtitle(newSrt)
+            _hasNewerSubtitleVersion.value = false
+            _newerSrtContent.value = null
+        }
+    }
+
+    fun ignoreNewerSubtitle() {
+        _hasNewerSubtitleVersion.value = false
     }
 
     private val _blogContent = MutableStateFlow<String?>(null)
@@ -1221,19 +1267,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val blogLoading: StateFlow<Boolean> = _blogLoading.asStateFlow()
 
     fun loadBlog(documentId: String) {
+        blogJob?.cancel()
         _blogContent.value = null
-        viewModelScope.launch(Dispatchers.IO) {
+        _hasNewerBlogVersion.value = false
+        _newerBlogContent.value = null
+
+        blogJob = viewModelScope.launch(Dispatchers.IO) {
             _blogLoading.value = true
             try {
-                // 1. 尝试从本地 settings 加载
+                // 1. 尝试从本地加载
                 val localBlog = settingDao.getSetting("blog_$documentId")
                 if (!localBlog.isNullOrBlank()) {
                     _blogContent.value = localBlog
                     _blogLoading.value = false
-                    return@launch
                 }
 
-                // 2. 尝试从 OSS 下载
+                // 2. 探索云端 OSS 是否有最新博客版本 (跨设备同步)
                 val region = _ossRegion.value
                 val bucket = _ossBucket.value
                 val akId = _ossAccessKeyId.value
@@ -1245,21 +1294,40 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     )
                     val remoteBlog = oss.downloadBlog(documentId)
                     if (!remoteBlog.isNullOrBlank()) {
-                        // 缓存到本地
-                        settingDao.setSetting(SettingEntity("blog_$documentId", remoteBlog))
-                        _blogContent.value = remoteBlog
-                        _blogLoading.value = false
-                        return@launch
+                        if (localBlog.isNullOrBlank()) {
+                            // 本地为空，自动同步并渲染
+                            settingDao.setSetting(SettingEntity("blog_$documentId", remoteBlog))
+                            _blogContent.value = remoteBlog
+                        } else if (localBlog.trim() != remoteBlog.trim()) {
+                            // 本地有博客，但云端产生了最新版本
+                            _newerBlogContent.value = remoteBlog
+                            _hasNewerBlogVersion.value = true
+                        }
                     }
                 }
-
-                _blogContent.value = null
             } catch (e: Exception) {
-                _blogContent.value = null
+                // ignore
             } finally {
                 _blogLoading.value = false
             }
         }
+    }
+
+    /**
+     * 一键应用云端最新的博客版本
+     */
+    fun applyNewerBlog(documentId: String) {
+        val newBlog = _newerBlogContent.value ?: return
+        viewModelScope.launch(Dispatchers.IO) {
+            settingDao.setSetting(SettingEntity("blog_$documentId", newBlog))
+            _blogContent.value = newBlog
+            _hasNewerBlogVersion.value = false
+            _newerBlogContent.value = null
+        }
+    }
+
+    fun ignoreNewerBlog() {
+        _hasNewerBlogVersion.value = false
     }
 
     fun saveBlog(documentId: String, content: String) {

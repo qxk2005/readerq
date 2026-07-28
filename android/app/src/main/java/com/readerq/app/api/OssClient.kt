@@ -82,7 +82,13 @@ class OssClient(
     }
 
     private fun getSubtitleObjectKey(documentId: String): String {
-        return "${pathPrefix.trim().removeSuffix("/")}/subtitles/$documentId.srt"
+        val cleanPrefix = pathPrefix.trim().trim('/')
+        return if (cleanPrefix.isBlank()) "subtitles/$documentId.srt" else "$cleanPrefix/subtitles/$documentId.srt"
+    }
+
+    private fun getBlogObjectKey(documentId: String): String {
+        val cleanPrefix = pathPrefix.trim().trim('/')
+        return if (cleanPrefix.isBlank()) "blog/$documentId.md" else "$cleanPrefix/blog/$documentId.md"
     }
 
     /**
@@ -122,10 +128,21 @@ class OssClient(
      */
     suspend fun downloadSubtitle(documentId: String): String? {
         val objectKey = getSubtitleObjectKey(documentId)
-        val ossUrl = buildPublicUrl(objectKey)
+        val endpoint = "https://$bucket.$region.aliyuncs.com/$objectKey"
+
+        val sdf = SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss z", Locale.US)
+        sdf.timeZone = TimeZone.getTimeZone("GMT")
+        val dateStr = sdf.format(Date())
+
+        val resource = "/$bucket/$objectKey"
+        val signature = generateSignature("GET", "", dateStr, resource)
+        val authHeader = "OSS $accessKeyId:$signature"
 
         return try {
-            val response = client.get(ossUrl)
+            val response = client.get(endpoint) {
+                header("Authorization", authHeader)
+                header("Date", dateStr)
+            }
             if (response.status.isSuccess()) {
                 val text = response.bodyAsText()
                 if (text.isBlank()) null else text
@@ -160,10 +177,6 @@ class OssClient(
         } catch (e: Exception) {
             // 忽略删除失败（可能文件不存在）
         }
-    }
-
-    private fun getBlogObjectKey(documentId: String): String {
-        return "${pathPrefix.trim().removeSuffix("/")}/blogs/$documentId.md"
     }
 
     /**
@@ -203,10 +216,21 @@ class OssClient(
      */
     suspend fun downloadBlog(documentId: String): String? {
         val objectKey = getBlogObjectKey(documentId)
-        val ossUrl = buildPublicUrl(objectKey)
+        val endpoint = "https://$bucket.$region.aliyuncs.com/$objectKey"
+
+        val sdf = SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss z", Locale.US)
+        sdf.timeZone = TimeZone.getTimeZone("GMT")
+        val dateStr = sdf.format(Date())
+
+        val resource = "/$bucket/$objectKey"
+        val signature = generateSignature("GET", "", dateStr, resource)
+        val authHeader = "OSS $accessKeyId:$signature"
 
         return try {
-            val response = client.get(ossUrl)
+            val response = client.get(endpoint) {
+                header("Authorization", authHeader)
+                header("Date", dateStr)
+            }
             if (response.status.isSuccess()) {
                 val text = response.bodyAsText()
                 if (text.isBlank()) null else text

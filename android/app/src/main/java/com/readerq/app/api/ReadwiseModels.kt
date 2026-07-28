@@ -223,7 +223,9 @@ data class SubtitleSegment(
     val index: Int,
     val startTime: Double, // 秒
     val endTime: Double,   // 秒
-    val text: String
+    val text: String,
+    val zh: String? = null,
+    val en: String? = null
 )
 
 // --- Review API Models (V2) ---

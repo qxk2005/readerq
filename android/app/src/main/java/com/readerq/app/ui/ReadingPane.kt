@@ -21,6 +21,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -349,7 +352,7 @@ fun ReadingPane(
 
             val blogContent by viewModel.blogContent.collectAsState()
 
-            val articleContent = @Composable { articleModifier: Modifier ->
+            val articleContent = @Composable { articleModifier: Modifier, seekCb: ((Float) -> Unit)? ->
                 Box(
                     modifier = articleModifier
                 ) {
@@ -376,6 +379,7 @@ fun ReadingPane(
                     docId = currentDoc.id,
                     viewModel = viewModel,
                     onWebViewCreated = { webViewRefState = it },
+                    onSeekTo = seekCb,
                     onTextSelected = { text, images ->
                         selectedTextForHighlight = text
                         selectedImagesForHighlight = images
@@ -675,7 +679,7 @@ fun ReadingPane(
                     )
                 }
             } else {
-                articleContent(Modifier.fillMaxWidth().weight(1f))
+                articleContent(Modifier.fillMaxWidth().weight(1f), null)
             }
 
             // --- TTS 播放控制条 ---
@@ -959,7 +963,8 @@ fun HtmlContentViewer(
     onProgressChanged: (Float) -> Unit = {},
     initialProgress: Float = 0f,
     isVideo: Boolean = false,
-    onWebViewCreated: (WebView) -> Unit = {}
+    onWebViewCreated: (WebView) -> Unit = {},
+    onSeekTo: ((Float) -> Unit)? = null
 ) {
     // 防抖定时器用于延迟持久化进度
     val progressSaveJob = remember { mutableStateOf<Job?>(null) }
@@ -1062,6 +1067,28 @@ fun HtmlContentViewer(
                 }
 
                 webViewClient = object : WebViewClient() {
+                    override fun shouldOverrideUrlLoading(view: WebView?, request: android.webkit.WebResourceRequest?): Boolean {
+                        val urlStr = request?.url?.toString() ?: ""
+                        if (urlStr.startsWith("seekto:")) {
+                            val secs = urlStr.removePrefix("seekto:").toFloatOrNull() ?: 0f
+                            viewModel.seekVideoTo(secs)
+                            onSeekTo?.invoke(secs)
+                            return true
+                        }
+                        return super.shouldOverrideUrlLoading(view, request)
+                    }
+
+                    @Deprecated("Deprecated in Java")
+                    override fun shouldOverrideUrlLoading(view: WebView?, urlStr: String?): Boolean {
+                        if (urlStr != null && urlStr.startsWith("seekto:")) {
+                            val secs = urlStr.removePrefix("seekto:").toFloatOrNull() ?: 0f
+                            viewModel.seekVideoTo(secs)
+                            onSeekTo?.invoke(secs)
+                            return true
+                        }
+                        return super.shouldOverrideUrlLoading(view, urlStr)
+                    }
+
                     override fun onPageFinished(view: WebView?, url: String?) {
                         super.onPageFinished(view, url)
                         view?.loadUrl(
@@ -1114,6 +1141,14 @@ fun HtmlContentViewer(
                     fun onPageReady() {
                         post {
                             pageReady.value = true
+                        }
+                    }
+
+                    @JavascriptInterface
+                    fun seekTo(seconds: Float) {
+                        post {
+                            viewModel.seekVideoTo(seconds)
+                            onSeekTo?.invoke(seconds)
                         }
                     }
 
@@ -1866,6 +1901,19 @@ fun DocumentInfoView(doc: DocumentEntity) {
     }
 }
 
+private fun parseTimestampSeconds(timeStr: String): Double {
+    val parts = timeStr.split(":")
+    return try {
+        when (parts.size) {
+            3 -> parts[0].trim().toInt() * 3600.0 + parts[1].trim().toInt() * 60.0 + parts[2].trim().toDouble()
+            2 -> parts[0].trim().toInt() * 60.0 + parts[1].trim().toDouble()
+            else -> 0.0
+        }
+    } catch (e: Exception) {
+        0.0
+    }
+}
+
 private fun markdownToHtml(markdown: String): String {
     var html = markdown
     val lines = html.split("\n")
@@ -1878,9 +1926,13 @@ private fun markdownToHtml(markdown: String): String {
             val level = trimmed.takeWhile { it == '#' }.length
             val text = trimmed.drop(level).trim()
             sb.append("<h$level>$text</h$level>\n")
-        } else if (trimmed.startsWith("-") || trimmed.startsWith("*")) {
-            if (!inList) { sb.append("</ul>\n"); inList = true }
-            val text = trimmed.drop(1).trim()
+        } else if (trimmed.matches(Regex("^([-*_]\\s*){3,}$"))) {
+            // 标准 Markdown 分割线 (--- / *** / ___)
+            if (inList) { sb.append("</ul>\n"); inList = false }
+            sb.append("<hr style=\"border:none;border-top:1px solid rgba(156,163,175,0.3);margin:24px 0;\"/>\n")
+        } else if (trimmed.startsWith("- ") || trimmed.startsWith("* ")) {
+            if (!inList) { sb.append("<ul>\n"); inList = true }
+            val text = trimmed.drop(2).trim()
             sb.append("<li>$text</li>\n")
         } else if (trimmed.isEmpty()) {
             if (inList) { sb.append("</ul>\n"); inList = false }
@@ -1896,6 +1948,15 @@ private fun markdownToHtml(markdown: String): String {
     html = html.replace(Regex("\\*\\*(.*?)\\*\\*"), "<strong>$1</strong>")
     html = html.replace(Regex("\\*(.*?)\\*"), "<em>$1</em>")
     html = html.replace(Regex("\\[(.*?)\\]\\((.*?)\\)"), "<a href=\"$2\">$1</a>")
+
+    // 智能提取时间戳 (如 01:01 / 00:00) 并转换为可跳播的晶莹 Badge 按钮
+    val timestampRegex = Regex("(?:▶\\s*)?\\[?(\\d{1,2}:\\d{2}(?::\\d{2})?)\\]?")
+    html = html.replace(timestampRegex) { matchResult ->
+        val timeStr = matchResult.groupValues[1]
+        val seconds = parseTimestampSeconds(timeStr)
+        "<a href=\"javascript:void(0);\" onclick=\"if(window.AndroidBridge && window.AndroidBridge.seekTo){window.AndroidBridge.seekTo($seconds);}else{location.href='seekto:$seconds';}\" style=\"display:inline-block;margin:0 2px;padding:2px 8px;background:rgba(59,130,246,0.15);color:#3B82F6;border-radius:12px;text-decoration:none;font-weight:600;font-size:12px;\">▶ $timeStr</a>"
+    }
+
     return html
 }
 
@@ -1917,7 +1978,7 @@ fun MetadataRow(label: String, value: String) {
 fun VideoReadingContent(
     doc: DocumentEntity,
     viewModel: MainViewModel,
-    articleContent: @Composable (Modifier) -> Unit,
+    articleContent: @Composable (Modifier, ((Float) -> Unit)?) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val subtitles by viewModel.subtitles.collectAsState()
@@ -1939,123 +2000,168 @@ fun VideoReadingContent(
         extractYouTubeVideoId(doc.source_url ?: doc.url)
     }
 
-    Column(
-        modifier = modifier.fillMaxSize()
-    ) {
-        // YouTube 播放器区域
-        if (videoId != null) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .aspectRatio(16f / 9f)
-                    .background(Color.Black)
-            ) {
-                AndroidView(
-                    factory = { ctx ->
-                        WebView(ctx).apply {
-                            layoutParams = android.view.ViewGroup.LayoutParams(
-                                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
-                                android.view.ViewGroup.LayoutParams.MATCH_PARENT
-                            )
-                            webView = this
-                            settings.javaScriptEnabled = true
-                            settings.domStorageEnabled = true
-                            settings.mediaPlaybackRequiresUserGesture = false
-                            
-                            // 借鉴桌面版思路：移除 User-Agent 中的 "wv" 标识，防止 Google 阻断 WebView
-                            val defaultUa = settings.userAgentString
-                            settings.userAgentString = defaultUa.replace("; wv", "")
-                            
-                            webViewClient = WebViewClient()
-                            webChromeClient = android.webkit.WebChromeClient()
-                            
-                            // 开启 GPU 硬件加速以支持 HTML5 / YouTube 视频 Surface 贴图渲染，防止黑屏
-                            setLayerType(android.view.View.LAYER_TYPE_HARDWARE, null)
-                            
-                            addJavascriptInterface(object : Any() {
-                                @android.webkit.JavascriptInterface
-                                fun updateTime(time: Float) {
-                                    currentTime = time
-                                }
-                            }, "AndroidApp")
+    var videoHeightRatio by remember { mutableStateOf(0.38f) }
+
+    BoxWithConstraints(modifier = modifier.fillMaxSize()) {
+        val totalHeight = maxHeight
+        val density = LocalDensity.current
+        val totalHeightPx = with(density) { totalHeight.toPx() }
+        val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
+
+        Column(
+            modifier = Modifier.fillMaxSize()
+        ) {
+            // YouTube 播放器区域 (按拖拽比例动态调整高度)
+            val currentVideoHeight = totalHeight * videoHeightRatio
+            if (videoId != null) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(currentVideoHeight)
+                        .background(Color.Black)
+                ) {
+                    AndroidView(
+                        factory = { ctx ->
+                            WebView(ctx).apply {
+                                layoutParams = android.view.ViewGroup.LayoutParams(
+                                    android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                                    android.view.ViewGroup.LayoutParams.MATCH_PARENT
+                                )
+                                webView = this
+                                settings.javaScriptEnabled = true
+                                settings.domStorageEnabled = true
+                                settings.mediaPlaybackRequiresUserGesture = false
+                                
+                                // 借鉴桌面版思路：移除 User-Agent 中的 "wv" 标识，防止 Google 阻断 WebView
+                                val defaultUa = settings.userAgentString
+                                settings.userAgentString = defaultUa.replace("; wv", "")
+                                
+                                webViewClient = WebViewClient()
+                                webChromeClient = android.webkit.WebChromeClient()
+                                
+                                // 开启 GPU 硬件加速以支持 HTML5 / YouTube 视频 Surface 贴图渲染，防止黑屏
+                                setLayerType(android.view.View.LAYER_TYPE_HARDWARE, null)
+                                
+                                addJavascriptInterface(object : Any() {
+                                    @android.webkit.JavascriptInterface
+                                    fun updateTime(time: Float) {
+                                        currentTime = time
+                                    }
+                                }, "AndroidApp")
+                            }
+                        },
+                        modifier = Modifier.fillMaxSize().alpha(0.99f)
+                    )
+                    
+                    // 监听全局跳播事件 (来自博客章节点击或字幕点击)
+                    LaunchedEffect(viewModel, webView) {
+                        viewModel.videoSeekEvent.collect { seconds ->
+                            webView?.evaluateJavascript("if (typeof seekTo === 'function') { seekTo($seconds); }", null)
                         }
-                    },
-                    modifier = Modifier.fillMaxSize().alpha(0.99f)
-                )
-                
-                LaunchedEffect(videoId, webView) {
-                    if (videoId != null && webView != null) {
-                        val embedHtml = """
-                            <!DOCTYPE html>
-                            <html><head>
-                            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                            <style>
-                                * { margin: 0; padding: 0; }
-                                body { background: #000; }
-                                #player { width: 100%; height: 100%; position: absolute; top: 0; left: 0; }
-                            </style>
-                            </head><body>
-                            <div id="player"></div>
-                            <script>
-                                var player;
-                                function onYouTubeIframeAPIReady() {
-                                    player = new YT.Player('player', {
-                                        videoId: '$videoId',
-                                        host: 'https://www.youtube.com',
-                                        playerVars: { 'playsinline': 1, 'autoplay': 0, 'modestbranding': 1, 'rel': 0, 'enablejsapi': 1, 'origin': 'https://readerq.app' }
-                                    });
-                                    setInterval(function() {
-                                        if (player && typeof player.getCurrentTime === 'function') {
-                                            var time = player.getCurrentTime();
-                                            if (window.AndroidApp && window.AndroidApp.updateTime) {
-                                                window.AndroidApp.updateTime(time);
+                    }
+                    
+                    LaunchedEffect(videoId, webView) {
+                        if (videoId != null && webView != null) {
+                            val embedHtml = """
+                                <!DOCTYPE html>
+                                <html><head>
+                                <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                                <style>
+                                    * { margin: 0; padding: 0; }
+                                    body { background: #000; }
+                                    #player { width: 100%; height: 100%; position: absolute; top: 0; left: 0; }
+                                </style>
+                                </head><body>
+                                <div id="player"></div>
+                                <script>
+                                    var player;
+                                    function onYouTubeIframeAPIReady() {
+                                        player = new YT.Player('player', {
+                                            videoId: '$videoId',
+                                            host: 'https://www.youtube.com',
+                                            playerVars: { 'playsinline': 1, 'autoplay': 0, 'modestbranding': 1, 'rel': 0, 'enablejsapi': 1, 'origin': 'https://readerq.app' }
+                                        });
+                                        setInterval(function() {
+                                            if (player && typeof player.getCurrentTime === 'function') {
+                                                var time = player.getCurrentTime();
+                                                if (window.AndroidApp && window.AndroidApp.updateTime) {
+                                                    window.AndroidApp.updateTime(time);
+                                                }
+                                            }
+                                        }, 250);
+                                    }
+                                    window.seekTo = function(time) {
+                                        var secs = parseFloat(time);
+                                        if (!isNaN(secs) && player && typeof player.seekTo === 'function') {
+                                            player.seekTo(secs, true);
+                                            if (typeof player.playVideo === 'function') {
+                                                player.playVideo();
                                             }
                                         }
-                                    }, 250);
-                                }
-                                function seekTo(time) {
-                                    if (player && typeof player.seekTo === 'function') {
-                                        player.seekTo(time, true);
-                                    }
-                                }
-                                var tag = document.createElement('script');
-                                tag.src = "https://www.youtube.com/iframe_api";
-                                var firstScriptTag = document.getElementsByTagName('script')[0];
-                                firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
-                            </script>
-                            </body></html>
-                        """.trimIndent()
-                        webView?.loadDataWithBaseURL(
-                            "https://readerq.app",
-                            embedHtml,
-                            "text/html",
-                            "UTF-8",
-                            null
-                        )
+                                    };
+                                    var tag = document.createElement('script');
+                                    tag.src = "https://www.youtube.com/iframe_api";
+                                    var firstScriptTag = document.getElementsByTagName('script')[0];
+                                    firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
+                                </script>
+                                </body></html>
+                            """.trimIndent()
+                            webView?.loadDataWithBaseURL(
+                                "https://readerq.app",
+                                embedHtml,
+                                "text/html",
+                                "UTF-8",
+                                null
+                            )
+                        }
                     }
                 }
+            } else {
+                // 无法识别视频 ID
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(200.dp)
+                        .background(Color(0xFF1a1a2e)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "无法识别视频链接",
+                        color = Color.White.copy(alpha = 0.7f),
+                        fontSize = 14.sp
+                    )
+                }
             }
-        } else {
-            // 无法识别视频 ID
+
+            // ↕️ 上下高度物理拖拽分隔条 (Draggable Handle)
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(200.dp)
-                    .background(Color(0xFF1a1a2e)),
+                    .height(14.dp)
+                    .background(if (isDark) Color(0xFF16162A) else Color(0xFFE2E4ED))
+                    .pointerInput(Unit) {
+                        detectDragGestures { change, dragAmount ->
+                            change.consume()
+                            if (totalHeightPx > 0) {
+                                val deltaRatio = dragAmount.y / totalHeightPx
+                                videoHeightRatio = (videoHeightRatio + deltaRatio).coerceIn(0.18f, 0.75f)
+                            }
+                        }
+                    },
                 contentAlignment = Alignment.Center
             ) {
-                Text(
-                    text = "无法识别视频链接",
-                    color = Color.White.copy(alpha = 0.7f),
-                    fontSize = 14.sp
+                Box(
+                    modifier = Modifier
+                        .width(42.dp)
+                        .height(4.dp)
+                        .clip(RoundedCornerShape(2.dp))
+                        .background(MaterialTheme.colorScheme.onBackground.copy(alpha = 0.35f))
                 )
             }
-        }
 
-        // TabRow
-        val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
-        androidx.compose.material3.TabRow(
-            selectedTabIndex = if (selectedTab == "字幕") 0 else 1,
+            // TabRow
+            androidx.compose.material3.TabRow(
+                selectedTabIndex = if (selectedTab == "字幕") 0 else 1,
             containerColor = if (isDark) Color(0xFF16162A) else Color(0xFFEEEFF5),
             contentColor = MaterialTheme.colorScheme.primary,
             indicator = { tabPositions ->
@@ -2080,9 +2186,50 @@ fun VideoReadingContent(
         // 面板区域
         Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
             // 博客
-            articleContent(
-                if (selectedTab == "博客") Modifier.fillMaxSize() else Modifier.height(0.dp)
-            )
+            val hasNewerBlog by viewModel.hasNewerBlogVersion.collectAsState()
+            if (selectedTab == "博客") {
+                Column(modifier = Modifier.fillMaxSize()) {
+                    if (hasNewerBlog) {
+                        val accentColor = Color(0xFF3B82F6)
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 12.dp, vertical = 6.dp),
+                            shape = RoundedCornerShape(10.dp),
+                            color = accentColor.copy(alpha = 0.12f),
+                            border = BorderStroke(1.dp, accentColor.copy(alpha = 0.3f))
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text("✨ 探查到云端已更新最新版本的视频博客", fontSize = 12.sp, color = MaterialTheme.colorScheme.onBackground, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
+                                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    Button(
+                                        onClick = { viewModel.applyNewerBlog(doc.id) },
+                                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                        shape = RoundedCornerShape(6.dp),
+                                        colors = ButtonDefaults.buttonColors(containerColor = accentColor)
+                                    ) {
+                                        Text("切换最新", fontSize = 11.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                                    }
+                                    TextButton(
+                                        onClick = { viewModel.ignoreNewerBlog() },
+                                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp)
+                                    ) {
+                                        Text("忽略", fontSize = 11.sp, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f))
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    articleContent(
+                        Modifier.fillMaxSize().weight(1f),
+                        { time -> webView?.evaluateJavascript("seekTo($time)", null) }
+                    )
+                }
+            }
             
             // 字幕
             if (selectedTab == "字幕") {
@@ -2100,6 +2247,7 @@ fun VideoReadingContent(
             }
         }
     }
+}
 }
 
 /**
@@ -2199,6 +2347,48 @@ fun SubtitlePanelComposable(
 
         Divider(color = borderColor, thickness = 0.5.dp)
 
+        // 跨设备最新字幕版本提醒 Banner
+        val hasNewerSubtitle by viewModel.hasNewerSubtitleVersion.collectAsState()
+        if (hasNewerSubtitle) {
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                shape = RoundedCornerShape(10.dp),
+                color = accentColor.copy(alpha = 0.12f),
+                border = BorderStroke(1.dp, accentColor.copy(alpha = 0.3f))
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("✨ 探查到云端已更新最新版本的双语字幕", fontSize = 12.sp, color = textColor, fontWeight = FontWeight.Medium)
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Button(
+                            onClick = { viewModel.applyNewerSubtitle(doc.id) },
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                            shape = RoundedCornerShape(6.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = accentColor)
+                        ) {
+                            Text("切换最新", fontSize = 11.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                        }
+                        TextButton(
+                            onClick = { viewModel.ignoreNewerSubtitle() },
+                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp)
+                        ) {
+                            Text("忽略", fontSize = 11.sp, color = textColor.copy(alpha = 0.6f))
+                        }
+                    }
+                }
+            }
+        }
+
         // 字幕内容
         if (isLoading) {
             Box(
@@ -2250,7 +2440,7 @@ fun SubtitlePanelComposable(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(horizontal = 12.dp, vertical = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
+                verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 items(subtitles.size) { index ->
                     val segment = subtitles[index]
@@ -2258,10 +2448,13 @@ fun SubtitlePanelComposable(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(6.dp))
+                            .clip(RoundedCornerShape(8.dp))
                             .background(if (isActive) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f) else Color.Transparent)
-                            .clickable { onSeekTo?.invoke(segment.startTime.toFloat()) }
-                            .padding(horizontal = 8.dp, vertical = 4.dp),
+                            .clickable {
+                                viewModel.seekVideoTo(segment.startTime.toFloat())
+                                onSeekTo?.invoke(segment.startTime.toFloat())
+                            }
+                            .padding(horizontal = 10.dp, vertical = 6.dp),
                         verticalAlignment = Alignment.Top,
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
@@ -2270,15 +2463,40 @@ fun SubtitlePanelComposable(
                             fontSize = 11.sp,
                             color = if (isActive) MaterialTheme.colorScheme.primary else accentColor,
                             fontWeight = if (isActive) FontWeight.Bold else FontWeight.Medium,
-                            modifier = Modifier.width(40.dp)
+                            modifier = Modifier.width(42.dp)
                         )
-                        Text(
-                            text = segment.text,
-                            fontSize = 13.sp,
-                            color = if (isActive) MaterialTheme.colorScheme.primary else textColor.copy(alpha = 0.85f),
-                            lineHeight = 18.sp,
-                            fontWeight = if (isActive) FontWeight.Medium else FontWeight.Normal
-                        )
+                        Column(modifier = Modifier.weight(1f)) {
+                            if (!segment.zh.isNullOrBlank()) {
+                                // 有中文翻译：上面中文，下面英文
+                                Text(
+                                    text = segment.zh,
+                                    fontSize = 13.5.sp,
+                                    color = if (isActive) MaterialTheme.colorScheme.primary else textColor.copy(alpha = 0.9f),
+                                    lineHeight = 19.sp,
+                                    fontWeight = if (isActive) FontWeight.Bold else FontWeight.Medium
+                                )
+                                val enText = segment.en ?: segment.text
+                                if (enText.isNotBlank() && enText != segment.zh) {
+                                    Spacer(modifier = Modifier.height(3.dp))
+                                    Text(
+                                        text = enText,
+                                        fontSize = 12.sp,
+                                        color = if (isActive) MaterialTheme.colorScheme.primary.copy(alpha = 0.8f) else textColor.copy(alpha = 0.55f),
+                                        lineHeight = 16.sp,
+                                        fontWeight = FontWeight.Normal
+                                    )
+                                }
+                            } else {
+                                // 只有单语言：上面英文/原文
+                                Text(
+                                    text = segment.text,
+                                    fontSize = 13.5.sp,
+                                    color = if (isActive) MaterialTheme.colorScheme.primary else textColor.copy(alpha = 0.9f),
+                                    lineHeight = 19.sp,
+                                    fontWeight = if (isActive) FontWeight.Bold else FontWeight.Medium
+                                )
+                            }
+                        }
                     }
                 }
             }
