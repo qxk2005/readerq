@@ -234,13 +234,14 @@ export async function* convertToBlogStream(transcript, title, customPrompt) {
 
 ## 要求：
 1. **输出语言**：必须使用简体中文撰写，无论原始字幕是何种语言，都必须翻译为简体中文
-2. **文章结构**：使用 Markdown 格式，包含标题（使用 ##）、段落、要点列表、表格等
-3. **内容质量**：保留原视频的核心观点和论述逻辑，但重新组织为适合阅读的文章形式
-4. **语言风格**：专业但易读，类似 InfoQ、少数派、36Kr 等技术媒体的行文风格
-5. **去除口语化**：将口语化的表达转换为书面语，去除语气词、重复内容和离题闲聊
-6. **保留关键信息**：确保原视频中的数据、案例、技术细节等关键信息不丢失
-7. **适当补充**：可以适当补充背景知识或上下文，使文章更加完整
-8. **长度控制**：文章长度应与原始字幕内容的信息密度相匹配，不要过度压缩
+2. **文章结构**：使用 Markdown 格式，包含标题（使用 ## 和 ###）、段落、要点列表、表格等
+3. **时间线对齐（非常重要）**：
+   - 在每一个 Markdown 章节标题（如 ## 或 ###）的结尾，必须标注对应视频的时间戳标记 \`[MM:SS]\` 或 \`[HH:MM:SS]\`，例如 \`## 一、背景介绍 [01:25]\` 或 \`### 1.1 自动化流程 [04:30]\`。
+   - 在正文中的核心观点或要点段落开头，也可附带对应的时间戳标记如 \`[08:15]\`，方便读者点击跳转观看原视频重点。
+4. **内容质量**：保留原视频的核心观点和论述逻辑，重新组织为适合阅读的文章形式
+5. **语言风格**：专业但易读，类似 InfoQ、少数派、36Kr 等技术媒体的行文风格
+6. **去除口语化**：将口语化的表达转换为书面语，去除语气词、重复内容和离题闲聊
+7. **保留关键信息**：确保原视频中的数据、案例、技术细节等关键信息不丢失
 
 ## 输出格式：
 直接输出简体中文 Markdown 格式的博客文章，不需要额外的说明或注释。`;
@@ -255,7 +256,7 @@ export async function* convertToBlogStream(transcript, title, customPrompt) {
       { role: 'system', content: systemPrompt },
       {
         role: 'user',
-        content: `请将以下视频字幕转译为一篇简体中文博客文章。无论原始字幕是什么语言，输出必须全部使用简体中文。\n\n视频标题：${title}\n\n字幕内容：\n${transcript}`,
+        content: `请将以下视频字幕转译为一篇简体中文博客文章。无论原始字幕是什么语言，输出必须全部使用简体中文，并在每个章节标题结尾必须带上对应的时间戳 [MM:SS]。\n\n视频标题：${title}\n\n字幕内容：\n${transcript}`,
       }
     ],
     temperature: 0.4,
@@ -290,5 +291,75 @@ function extractAIResponse(choice) {
   }
   
   return '';
+}
+
+/**
+ * 将字幕段落 AI 翻译为中英文双语对照结构
+ * @param {Array<{time: number, timeStr: string, text: string}>} segments
+ * @returns {Promise<Array<{time: number, timeStr: string, text: string, zh: string, en: string}>>}
+ */
+export async function translateSubtitlesToBilingual(segments) {
+  if (!segments || segments.length === 0) return [];
+  const client = createAIClient();
+  const model = getModelName();
+
+  const formattedInput = segments.map((s, idx) => ({
+    id: idx,
+    text: s.text,
+  }));
+
+  const prompt = `你是一位资深的高精中英双语字幕翻译大师。
+你的核心任务是将传入的视频字幕段落列表翻译为流畅、准确、通顺的简体中文。
+
+输出格式要求：
+请必须返回 JSON 格式，结构为：
+{
+  "subtitles": [
+    { "id": 0, "zh": "准确的简体中文翻译" }
+  ]
+}`;
+
+  try {
+    const response = await client.chat.completions.create({
+      model,
+      messages: [
+        { role: 'system', content: prompt },
+        { role: 'user', content: JSON.stringify(formattedInput) }
+      ],
+      temperature: 0.2,
+    });
+
+    const choice = response.choices[0];
+    const content = extractAIResponse(choice);
+    let parsed = [];
+    try {
+      const data = JSON.parse(content);
+      parsed = Array.isArray(data) ? data : (data.subtitles || data.items || data.results || []);
+    } catch {
+      const jsonMatch = content.match(/\[[\s\S]*\]/);
+      if (jsonMatch) parsed = JSON.parse(jsonMatch[0]);
+    }
+
+    const resultMap = new Map((parsed || []).map(item => [item.id, item]));
+
+    return segments.map((seg, idx) => {
+      const item = resultMap.get(idx);
+      const rawEnglishText = (seg.text || '').trim();
+      const zhTranslation = item?.zh ? item.zh.trim() : rawEnglishText;
+
+      return {
+        ...seg,
+        zh: zhTranslation,
+        en: rawEnglishText, // 🎯 关键：死死锁定原视频英文原文顺序，严禁篡改或倒装单词！
+      };
+    });
+  } catch (err) {
+    console.error('AI 字幕双语翻译失败，使用回退原文本:', err);
+    return segments.map(seg => ({
+      ...seg,
+      zh: seg.text,
+      en: seg.text,
+    }));
+  }
 }
 

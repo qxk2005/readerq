@@ -80,8 +80,11 @@ export default function VideoReadingPane({ selectedDoc, articleRef, updateDocume
 
   // 字幕点击跳转
   const handleSeek = useCallback((seconds) => {
-    if (playerRef.current && typeof playerRef.current.seekTo === 'function') {
-      playerRef.current.seekTo(seconds);
+    if (typeof seconds === 'number' && !isNaN(seconds)) {
+      setCurrentTime(seconds);
+      if (playerRef.current && typeof playerRef.current.seekTo === 'function') {
+        playerRef.current.seekTo(seconds);
+      }
     }
   }, []);
 

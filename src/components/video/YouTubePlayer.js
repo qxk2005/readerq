@@ -18,18 +18,36 @@ export default function YouTubePlayer({ videoId, onTimeUpdate, onStateChange, su
   const [isReady, setIsReady] = useState(false);
   const [useIframeFallback, setUseIframeFallback] = useState(false);
 
-  // 跳转到指定时间
+  // 跳转到指定时间并开始播放
   const seekTo = useCallback((seconds) => {
+    if (typeof seconds !== 'number' || isNaN(seconds)) return;
+
     if (internalPlayerRef.current && typeof internalPlayerRef.current.seekTo === 'function') {
-      internalPlayerRef.current.seekTo(seconds, true);
+      try {
+        const duration = typeof internalPlayerRef.current.getDuration === 'function' ? internalPlayerRef.current.getDuration() : 0;
+        // 如果给出的时间戳超过了视频总时长，进行安全钳位
+        const targetTime = (duration > 0 && seconds >= duration) ? Math.max(0, duration - 2) : seconds;
+        
+        internalPlayerRef.current.seekTo(targetTime, true);
+        if (typeof internalPlayerRef.current.playVideo === 'function') {
+          internalPlayerRef.current.playVideo();
+        }
+      } catch (e) {
+        console.warn('SeekTo error:', e);
+      }
     } else {
-      // 原生 iframe 模式下通过 postMessage 尝试 seekTo
+      // 原生 iframe 模式下通过 postMessage 尝试 seekTo & playVideo
       const iframe = document.getElementById('youtube-fallback-iframe');
       if (iframe && iframe.contentWindow) {
         iframe.contentWindow.postMessage(JSON.stringify({
           event: 'command',
           func: 'seekTo',
           args: [seconds, true]
+        }), '*');
+        iframe.contentWindow.postMessage(JSON.stringify({
+          event: 'command',
+          func: 'playVideo',
+          args: []
         }), '*');
       }
     }

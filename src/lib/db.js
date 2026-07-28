@@ -106,9 +106,11 @@ function initSchema(db) {
     CREATE TABLE IF NOT EXISTS subtitles (
       document_id TEXT PRIMARY KEY,
       srt_content TEXT NOT NULL,
+      bilingual_json TEXT,
       created_at TEXT,
       FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE CASCADE
     );
+    try { db.exec('ALTER TABLE subtitles ADD COLUMN bilingual_json TEXT;'); } catch { /* ignore */ }
 
     CREATE TABLE IF NOT EXISTS daily_reviews (
       id TEXT PRIMARY KEY,
@@ -853,26 +855,58 @@ export function deleteDocuments(ids) {
 }
 
 /**
- * 保存用户上传的 SRT 字幕
+ * 确保 subtitles 表存在 bilingual_json 列
+ */
+function ensureBilingualColumn(db) {
+  try {
+    const columns = db.prepare("PRAGMA table_info(subtitles)").all();
+    const hasBilingual = columns.some(col => col.name === 'bilingual_json');
+    if (!hasBilingual) {
+      db.exec("ALTER TABLE subtitles ADD COLUMN bilingual_json TEXT;");
+    }
+  } catch (e) {
+    console.warn("PRAGMA check/ALTER TABLE subtitles failed:", e.message);
+  }
+}
+
+/**
+ * 保存用户上传的 SRT 字幕与双语 JSON 结构
  * @param {string} documentId - 文档 ID
  * @param {string} srtContent - 原始 SRT 文件内容
+ * @param {Array|string} [bilingualJson] - AI 翻译生成的中英文双语结构
  */
-export function saveSubtitle(documentId, srtContent) {
+export function saveSubtitle(documentId, srtContent, bilingualJson = null) {
   const db = getDatabase();
-  db.prepare(`
-    INSERT OR REPLACE INTO subtitles (document_id, srt_content, created_at)
-    VALUES (?, ?, ?)
-  `).run(documentId, srtContent, new Date().toISOString());
+  ensureBilingualColumn(db);
+
+  const jsonStr = bilingualJson ? (typeof bilingualJson === 'string' ? bilingualJson : JSON.stringify(bilingualJson)) : null;
+
+  try {
+    db.prepare(`
+      INSERT OR REPLACE INTO subtitles (document_id, srt_content, bilingual_json, created_at)
+      VALUES (?, ?, ?, ?)
+    `).run(documentId, srtContent, jsonStr, new Date().toISOString());
+  } catch (err) {
+    console.warn("[saveSubtitle] 4列写入失败，降级回退3列保存:", err.message);
+    db.prepare(`
+      INSERT OR REPLACE INTO subtitles (document_id, srt_content, created_at)
+      VALUES (?, ?, ?)
+    `).run(documentId, srtContent, new Date().toISOString());
+  }
 }
 
 /**
  * 获取文档的用户上传字幕
  * @param {string} documentId - 文档 ID
- * @returns {{ srt_content: string, created_at: string } | null}
+ * @returns {{ srt_content: string, bilingual_json: string, created_at: string } | null}
  */
 export function getSubtitle(documentId) {
   const db = getDatabase();
-  return db.prepare('SELECT srt_content, created_at FROM subtitles WHERE document_id = ?').get(documentId) || null;
+  try {
+    return db.prepare('SELECT srt_content, bilingual_json, created_at FROM subtitles WHERE document_id = ?').get(documentId) || null;
+  } catch {
+    return db.prepare('SELECT srt_content, created_at FROM subtitles WHERE document_id = ?').get(documentId) || null;
+  }
 }
 
 /**

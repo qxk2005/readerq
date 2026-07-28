@@ -259,7 +259,134 @@ export function parseSRT(srtContent) {
     }
   }
 
-  return segments;
+  // 🎯 智能合并分段：确保段落阅读流畅，且单段时长严格不超过 10 秒
+  return mergeSubtitlesSmartly(segments, 10);
+}
+
+/**
+ * 智能合并字幕段落
+ * 规则：
+ * 1. 单个合并段落的时长不超过 maxDuration (默认 10 秒)
+ * 2. 保留第一条句子的精准起始时间 time 和 timeStr
+ * 3. 避免单句过于碎片化，提高阅读体验
+ * 
+ * @param {Array<{time: number, timeStr: string, text: string, duration?: number}>} segments - 原始字幕段落
+ * @param {number} [maxDuration=10] - 单个段落的最大秒数限制
+ * @returns {Array<{time: number, timeStr: string, text: string, duration?: number}>} 合并后的字幕段落
+ */
+export function mergeSubtitlesSmartly(segments, maxDuration = 10) {
+  if (!segments || segments.length === 0) return [];
+
+  // 🎯 核心排序保障：先按时间戳升序严格排序，防止原始数据倒序或错乱
+  const sortedInput = [...segments].sort((a, b) => (a.time || 0) - (b.time || 0));
+  
+  const merged = [];
+  let currentGroup = [];
+  let groupStartTime = null;
+
+  for (let i = 0; i < sortedInput.length; i++) {
+    const seg = sortedInput[i];
+    const segTime = typeof seg.time === 'number' ? seg.time : parseTimestamp(seg.timeStr);
+    
+    if (currentGroup.length === 0) {
+      currentGroup.push(seg);
+      groupStartTime = segTime;
+    } else {
+      const durationSpan = segTime - groupStartTime;
+      const lastSegInGroup = currentGroup[currentGroup.length - 1];
+      const lastText = lastSegInGroup.text.trim();
+      const sentenceEnded = /[。！？.!?]$/.test(lastText);
+
+      // 如果加进当前句后时长超过 10 秒，或者前一句已经是完整句子且当前组合已包含足够内容，则封包当前组
+      if (durationSpan >= maxDuration || (sentenceEnded && durationSpan >= 5)) {
+        merged.push({
+          time: currentGroup[0].time,
+          timeStr: currentGroup[0].timeStr || formatTimestamp(currentGroup[0].time),
+          text: currentGroup.map(s => s.text.trim()).join(' '),
+          zh: currentGroup.map(s => s.zh || '').filter(Boolean).join(' ') || undefined,
+          en: currentGroup.map(s => s.en || '').filter(Boolean).join(' ') || undefined,
+          duration: segTime - currentGroup[0].time
+        });
+        currentGroup = [seg];
+        groupStartTime = segTime;
+      } else {
+        currentGroup.push(seg);
+      }
+    }
+  }
+
+  if (currentGroup.length > 0) {
+    merged.push({
+      time: currentGroup[0].time,
+      timeStr: currentGroup[0].timeStr || formatTimestamp(currentGroup[0].time),
+      text: currentGroup.map(s => s.text.trim()).join(' '),
+      zh: currentGroup.map(s => s.zh || '').filter(Boolean).join(' ') || undefined,
+      en: currentGroup.map(s => s.en || '').filter(Boolean).join(' ') || undefined,
+      duration: Math.max(2, (currentGroup[currentGroup.length - 1].time || 0) - currentGroup[0].time + 3)
+    });
+  }
+
+  // 🎯 强制二次拆分：如果某段文字超过 120 个字符，二次切分为易读小段
+  return splitLongSegments(merged, 120);
+}
+
+/**
+ * 将超长段落按标点符号或字符长度 (上限 120 字符) 进行安全二次拆分
+ * 避免大段文本挤在一个卡片中，并确保拆分后前半段绝对锁定初始时间戳 seg.time
+ */
+export function splitLongSegments(segments, maxChars = 120) {
+  if (!segments || segments.length === 0) return [];
+  const result = [];
+
+  for (const seg of segments) {
+    const text = (seg.text || '').trim();
+    if (text.length <= maxChars) {
+      result.push(seg);
+      continue;
+    }
+
+    // 超过 maxChars 时按标点符号 (。！？.!?\n) 拆分
+    const sentences = text.match(/[^。！？.!?\n]+[。！？.!?\n]?/g) || [text];
+    let currentChunk = '';
+    let chunkStartTime = typeof seg.time === 'number' ? seg.time : parseTimestamp(seg.timeStr);
+    let totalTextLen = text.length;
+    let processedLen = 0;
+
+    for (let i = 0; i < sentences.length; i++) {
+      const sentence = sentences[i];
+      if ((currentChunk + sentence).length > maxChars && currentChunk.length > 0) {
+        // 保存前半段 chunk (时间绝对保持 chunkStartTime)
+        result.push({
+          ...seg,
+          time: chunkStartTime,
+          timeStr: formatTimestamp(chunkStartTime),
+          text: currentChunk.trim(),
+        });
+
+        // 推进已处理文本长度，并为下一段计算准确递增的时间戳
+        processedLen += currentChunk.length;
+        const ratio = processedLen / totalTextLen;
+        const timeOffset = (seg.duration || 10) * ratio;
+        chunkStartTime = Math.round(((seg.time || 0) + timeOffset) * 10) / 10;
+
+        currentChunk = sentence;
+      } else {
+        currentChunk += sentence;
+      }
+    }
+
+    if (currentChunk.trim().length > 0) {
+      result.push({
+        ...seg,
+        time: chunkStartTime,
+        timeStr: formatTimestamp(chunkStartTime),
+        text: currentChunk.trim(),
+      });
+    }
+  }
+
+  result.sort((a, b) => (a.time || 0) - (b.time || 0));
+  return result;
 }
 
 /**

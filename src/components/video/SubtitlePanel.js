@@ -1,25 +1,90 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { formatTimestamp, formatSubtitlesForAI } from '@/lib/subtitleParser';
+import { formatTimestamp, formatSubtitlesForAI, parseTimestamp } from '@/lib/subtitleParser';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Loader2, FileText, BookOpen, RefreshCw, Sparkles, Upload, Trash2, CheckCircle } from 'lucide-react';
+import { Loader2, FileText, BookOpen, RefreshCw, Sparkles, Upload, Trash2, CheckCircle, Play, Languages } from 'lucide-react';
+
+// 动态解析包含时间戳的节点，并将时间戳转化为可点击跳转的跳播 Badge
+const renderTextWithTimestamps = (textNode, onSeek) => {
+  if (typeof textNode !== 'string') return textNode;
+
+  const timestampRegex = /\[?(\d{1,2}:\d{2}(?::\d{2})?)\]?/g;
+  const parts = [];
+  let lastIdx = 0;
+  let match;
+
+  while ((match = timestampRegex.exec(textNode)) !== null) {
+    const startIdx = match.index;
+    const timeStr = match[1];
+    const fullMatch = match[0];
+
+    if (startIdx > lastIdx) {
+      parts.push(textNode.substring(lastIdx, startIdx));
+    }
+
+    const seconds = parseTimestamp(timeStr);
+
+    parts.push(
+      <span
+        key={`${startIdx}_${timeStr}`}
+        className="blog-timestamp-badge"
+        onClick={(e) => {
+          e.stopPropagation();
+          if (onSeek) onSeek(seconds);
+        }}
+        title={`点击跳转到视频 ${timeStr} 处播放`}
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: '3px',
+          padding: '1px 7px',
+          margin: '0 4px',
+          borderRadius: '12px',
+          backgroundColor: 'rgba(0, 122, 255, 0.12)',
+          color: 'var(--color-accent, #007aff)',
+          fontSize: '12px',
+          fontWeight: '600',
+          cursor: 'pointer',
+          border: '1px solid rgba(0, 122, 255, 0.25)',
+          userSelect: 'none',
+          verticalAlign: 'middle',
+          transition: 'all 0.15s ease',
+        }}
+      >
+        <Play size={10} fill="currentColor" />
+        {timeStr}
+      </span>
+    );
+
+    lastIdx = startIdx + fullMatch.length;
+  }
+
+  if (lastIdx < textNode.length) {
+    parts.push(textNode.substring(lastIdx));
+  }
+
+  return parts.length > 0 ? parts : textNode;
+};
+
+const processChildrenForTimestamps = (children, onSeek) => {
+  if (typeof children === 'string') {
+    return renderTextWithTimestamps(children, onSeek);
+  }
+  if (Array.isArray(children)) {
+    return children.map((child, idx) =>
+      typeof child === 'string'
+        ? <span key={idx}>{renderTextWithTimestamps(child, onSeek)}</span>
+        : child
+    );
+  }
+  return children;
+};
 
 /**
  * 字幕面板组件
  * 支持字幕视图（自动滚动同步）和博客视图（AI 转译）
- * 
- * @param {Array} subtitles - 解析后的字幕段落数组
- * @param {number} currentTime - 当前播放时间（秒）
- * @param {function} onSeek - 跳转到指定时间的回调
- * @param {boolean} autoScroll - 是否自动滚动
- * @param {string} title - 视频标题
- * @param {string} blogPrompt - 用户自定义的博客转译提示词
- * @param {string} documentId - 文档 ID，用于上传字幕
- * @param {boolean} isUsingUploadedSubtitles - 是否正在使用用户上传的字幕
- * @param {function} onSubtitleUploaded - 字幕上传成功回调
- * @param {function} onSubtitleDeleted - 字幕删除成功回调
  */
 export default function SubtitlePanel({ 
   subtitles, currentTime, onSeek, autoScroll = true, title, blogPrompt,
@@ -289,6 +354,28 @@ export default function SubtitlePanel({
   };
 
 
+  const [isTranslatingBilingual, setIsTranslatingBilingual] = useState(false);
+
+  const handleTranslateBilingual = useCallback(async () => {
+    if (!subtitles || subtitles.length === 0 || !documentId) return;
+    setIsTranslatingBilingual(true);
+    try {
+      const res = await fetch(`/api/documents/${documentId}/subtitles`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ srtContent: formatSubtitlesForAI(subtitles) }),
+      });
+      const data = await res.json();
+      if (res.ok && data.subtitles) {
+        onSubtitleUploaded?.(data.subtitles);
+      }
+    } catch (err) {
+      console.error('翻译中英双语失败:', err);
+    } finally {
+      setIsTranslatingBilingual(false);
+    }
+  }, [subtitles, documentId, onSubtitleUploaded]);
+
   return (
     <div className="subtitle-panel">
       {/* 工具栏 */}
@@ -310,6 +397,20 @@ export default function SubtitlePanel({
           </button>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          {/* 生成双语按钮 */}
+          {mode === 'subtitle' && subtitles && subtitles.length > 0 && (
+            <button
+              className="btn btn-ghost btn-sm"
+              onClick={handleTranslateBilingual}
+              disabled={isTranslatingBilingual}
+              title="调用 AI 翻译生成上面中文、下面英文的双语字幕"
+              style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: 'var(--text-xs)', color: 'var(--color-accent)' }}
+            >
+              {isTranslatingBilingual ? <Loader2 size={14} className="spin" /> : <Languages size={14} />}
+              {isTranslatingBilingual ? '翻译中...' : '生成双语'}
+            </button>
+          )}
+
           {/* 字幕来源标识 */}
           {mode === 'subtitle' && isUsingUploadedSubtitles && (
             <span style={{
@@ -422,8 +523,9 @@ export default function SubtitlePanel({
 
       {/* 内容区域 */}
       <div className="subtitle-content" ref={scrollContainerRef}>
+
         {mode === 'subtitle' ? (
-          /* 字幕视图 */
+          /* 字幕视图 (支持中英文双语) */
           subtitles && subtitles.length > 0 ? (
             <div className="subtitle-segments">
               {subtitles.map((seg, index) => (
@@ -432,13 +534,29 @@ export default function SubtitlePanel({
                   ref={index === activeIndex ? activeSegmentRef : null}
                   className={`subtitle-segment ${index === activeIndex ? 'active' : ''}`}
                   onClick={() => onSeek && onSeek(seg.time)}
+                  style={{ display: 'flex', gap: '12px', alignItems: 'flex-start' }}
                 >
                   {!seg.estimated && (
-                    <span className="subtitle-timestamp">
+                    <span className="subtitle-timestamp" style={{ cursor: 'pointer', flexShrink: 0, marginTop: '2px' }}>
                       {seg.timeStr}
                     </span>
                   )}
-                  <span className="subtitle-text">{seg.text}</span>
+                  <div className="subtitle-bilingual-content" style={{ display: 'flex', flexDirection: 'column', gap: '3px', flex: 1 }}>
+                    {/* 上面：中文 */}
+                    <div className="subtitle-text-zh" style={{ fontWeight: '500', color: 'var(--color-text-primary)', fontSize: '14px', lineHeight: '1.5' }}>
+                      {seg.zh || seg.text}
+                    </div>
+                    {/* 下面：英文 (只要源文本包含英文或拥有 seg.en，统一规范呈现下面英文) */}
+                    {(() => {
+                      const enText = seg.en || (/[a-zA-Z]{2,}/.test(seg.text) ? seg.text : '');
+                      if (!enText || enText === seg.zh) return null;
+                      return (
+                        <div className="subtitle-text-en" style={{ fontSize: '12px', color: 'var(--color-text-tertiary)', lineHeight: '1.4' }}>
+                          {enText}
+                        </div>
+                      );
+                    })()}
+                  </div>
                 </div>
               ))}
             </div>
@@ -466,14 +584,14 @@ export default function SubtitlePanel({
                     拖拽 SRT 字幕文件到此处，或点击上传
                   </p>
                   <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-tertiary)', marginTop: '4px' }}>
-                    支持通过 ASR 工具提取的标准 SRT 格式字幕
+                    上传后将自动进行 ≤10秒 智能段落合并与 AI 中英文双语化
                   </p>
                 </>
               )}
             </div>
           )
         ) : (
-          /* 博客视图 */
+          /* 博客视图 (支持章节与文本时间戳跳播) */
           <div className="blog-article-container">
             {blogError && (
               <div className="blog-error">
@@ -483,14 +601,24 @@ export default function SubtitlePanel({
             )}
             {blogContent ? (
               <div className="blog-article reading-article-body" ref={articleRef}>
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                <ReactMarkdown
+                  remarkPlugins={[remarkGfm]}
+                  components={{
+                    h1: ({ children }) => <h1>{processChildrenForTimestamps(children, onSeek)}</h1>,
+                    h2: ({ children }) => <h2>{processChildrenForTimestamps(children, onSeek)}</h2>,
+                    h3: ({ children }) => <h3>{processChildrenForTimestamps(children, onSeek)}</h3>,
+                    h4: ({ children }) => <h4>{processChildrenForTimestamps(children, onSeek)}</h4>,
+                    p: ({ children }) => <p>{processChildrenForTimestamps(children, onSeek)}</p>,
+                    li: ({ children }) => <li>{processChildrenForTimestamps(children, onSeek)}</li>,
+                  }}
+                >
                   {blogContent}
                 </ReactMarkdown>
               </div>
             ) : !isBlogLoading ? (
               <div className="subtitle-empty">
                 <Sparkles size={32} />
-                <p>点击上方「生成博客」按钮，AI 将把字幕转译为 InfoQ 风格的博客文章</p>
+                <p>点击上方「生成博客」按钮，AI 将把字幕转译为带章节时间戳的博客文章</p>
               </div>
             ) : (
               <div className="subtitle-empty">
