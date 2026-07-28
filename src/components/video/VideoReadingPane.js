@@ -46,6 +46,7 @@ export default function VideoReadingPane({ selectedDoc, articleRef, updateDocume
   const [hasNewerSubtitleVersion, setHasNewerSubtitleVersion] = useState(false);
   const [newerSrtContent, setNewerSrtContent] = useState('');
   const [isApplyingNewerSubtitles, setIsApplyingNewerSubtitles] = useState(false);
+  const [subtitleVersionInfo, setSubtitleVersionInfo] = useState({ localUpdatedAt: null, ossUpdatedAt: null });
 
   // 加载用户上传的字幕并对比云端 OSS 最新版本
   useEffect(() => {
@@ -57,9 +58,24 @@ export default function VideoReadingPane({ selectedDoc, articleRef, updateDocume
         if (data.exists && data.subtitles?.length > 0) {
           setUploadedSubtitles(data.subtitles);
 
+          // 保存版本时间信息
+          setSubtitleVersionInfo({
+            localUpdatedAt: data.localUpdatedAt || null,
+            ossUpdatedAt: data.ossUpdatedAt || null,
+          });
+
           if (data.hasNewerVersion && data.newerSrtContent) {
-            setHasNewerSubtitleVersion(true);
-            setNewerSrtContent(data.newerSrtContent);
+            // 检查是否已被忽略（sessionStorage 持久化）
+            const ignoredKey = `ignored_subtitle_${selectedDoc.id}`;
+            const ignoredOssTime = sessionStorage.getItem(ignoredKey);
+            if (ignoredOssTime && data.ossUpdatedAt && ignoredOssTime === data.ossUpdatedAt) {
+              // 同一云端版本已被忽略，不再提醒
+              setHasNewerSubtitleVersion(false);
+              setNewerSrtContent('');
+            } else {
+              setHasNewerSubtitleVersion(true);
+              setNewerSrtContent(data.newerSrtContent);
+            }
           } else {
             setHasNewerSubtitleVersion(false);
             setNewerSrtContent('');
@@ -83,20 +99,32 @@ export default function VideoReadingPane({ selectedDoc, articleRef, updateDocume
       const res = await fetch(`/api/documents/${selectedDoc.id}/subtitles`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ srtContent: newerSrtContent }),
+        body: JSON.stringify({
+          srtContent: newerSrtContent,
+          // 传入云端时间戳，确保本地 updated_at >= 云端时间，消除版本差异
+          ossTimestamp: subtitleVersionInfo.ossUpdatedAt || new Date().toISOString(),
+        }),
       });
       const data = await res.json();
       if (res.ok && data.subtitles) {
         setUploadedSubtitles(data.subtitles);
         setHasNewerSubtitleVersion(false);
         setNewerSrtContent('');
+        // 清除忽略记录
+        sessionStorage.removeItem(`ignored_subtitle_${selectedDoc.id}`);
+        // 更新本地版本时间为云端时间
+        setSubtitleVersionInfo(prev => ({
+          ...prev,
+          localUpdatedAt: prev.ossUpdatedAt || new Date().toISOString(),
+        }));
       }
     } catch (e) {
       console.error('切换最新双语字幕失败:', e);
     } finally {
       setIsApplyingNewerSubtitles(false);
     }
-  }, [newerSrtContent, selectedDoc?.id]);
+  }, [newerSrtContent, selectedDoc?.id, subtitleVersionInfo.ossUpdatedAt]);
+
 
   // 最终使用的字幕：优先用户上传 > html_content 解析
   const subtitles = useMemo(() => {
@@ -268,7 +296,14 @@ export default function VideoReadingPane({ selectedDoc, articleRef, updateDocume
         hasNewerSubtitleVersion={hasNewerSubtitleVersion}
         onApplyNewerSubtitles={handleApplyNewerSubtitles}
         isApplyingNewerSubtitles={isApplyingNewerSubtitles}
-        onIgnoreNewerSubtitles={() => setHasNewerSubtitleVersion(false)}
+        onIgnoreNewerSubtitles={() => {
+          setHasNewerSubtitleVersion(false);
+          // 持久化忽略：记录当前被忽略的云端版本时间戳，同一版本不再提醒
+          if (subtitleVersionInfo.ossUpdatedAt && selectedDoc?.id) {
+            sessionStorage.setItem(`ignored_subtitle_${selectedDoc.id}`, subtitleVersionInfo.ossUpdatedAt);
+          }
+        }}
+        subtitleVersionInfo={subtitleVersionInfo}
       />
       </div>
     </div>

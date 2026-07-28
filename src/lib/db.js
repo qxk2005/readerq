@@ -864,6 +864,10 @@ function ensureBilingualColumn(db) {
     if (!hasBilingual) {
       db.exec("ALTER TABLE subtitles ADD COLUMN bilingual_json TEXT;");
     }
+    const hasUpdatedAt = columns.some(col => col.name === 'updated_at');
+    if (!hasUpdatedAt) {
+      db.exec("ALTER TABLE subtitles ADD COLUMN updated_at TEXT;");
+    }
   } catch (e) {
     console.warn("PRAGMA check/ALTER TABLE subtitles failed:", e.message);
   }
@@ -875,23 +879,33 @@ function ensureBilingualColumn(db) {
  * @param {string} srtContent - 原始 SRT 文件内容
  * @param {Array|string} [bilingualJson] - AI 翻译生成的中英文双语结构
  */
-export function saveSubtitle(documentId, srtContent, bilingualJson = null) {
+export function saveSubtitle(documentId, srtContent, bilingualJson = null, updatedAt = null) {
   const db = getDatabase();
   ensureBilingualColumn(db);
 
   const jsonStr = bilingualJson ? (typeof bilingualJson === 'string' ? bilingualJson : JSON.stringify(bilingualJson)) : null;
+  const now = new Date().toISOString();
+  const effectiveUpdatedAt = updatedAt || now;
 
   try {
     db.prepare(`
-      INSERT OR REPLACE INTO subtitles (document_id, srt_content, bilingual_json, created_at)
-      VALUES (?, ?, ?, ?)
-    `).run(documentId, srtContent, jsonStr, new Date().toISOString());
+      INSERT OR REPLACE INTO subtitles (document_id, srt_content, bilingual_json, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(documentId, srtContent, jsonStr, now, effectiveUpdatedAt);
   } catch (err) {
-    console.warn("[saveSubtitle] 4列写入失败，降级回退3列保存:", err.message);
-    db.prepare(`
-      INSERT OR REPLACE INTO subtitles (document_id, srt_content, created_at)
-      VALUES (?, ?, ?)
-    `).run(documentId, srtContent, new Date().toISOString());
+    console.warn("[saveSubtitle] 5列写入失败，降级回退:", err.message);
+    try {
+      db.prepare(`
+        INSERT OR REPLACE INTO subtitles (document_id, srt_content, bilingual_json, created_at)
+        VALUES (?, ?, ?, ?)
+      `).run(documentId, srtContent, jsonStr, now);
+    } catch (err2) {
+      console.warn("[saveSubtitle] 4列写入也失败，降级回退3列保存:", err2.message);
+      db.prepare(`
+        INSERT OR REPLACE INTO subtitles (document_id, srt_content, created_at)
+        VALUES (?, ?, ?)
+      `).run(documentId, srtContent, now);
+    }
   }
 }
 
@@ -903,9 +917,13 @@ export function saveSubtitle(documentId, srtContent, bilingualJson = null) {
 export function getSubtitle(documentId) {
   const db = getDatabase();
   try {
-    return db.prepare('SELECT srt_content, bilingual_json, created_at FROM subtitles WHERE document_id = ?').get(documentId) || null;
+    return db.prepare('SELECT srt_content, bilingual_json, created_at, updated_at FROM subtitles WHERE document_id = ?').get(documentId) || null;
   } catch {
-    return db.prepare('SELECT srt_content, created_at FROM subtitles WHERE document_id = ?').get(documentId) || null;
+    try {
+      return db.prepare('SELECT srt_content, bilingual_json, created_at FROM subtitles WHERE document_id = ?').get(documentId) || null;
+    } catch {
+      return db.prepare('SELECT srt_content, created_at FROM subtitles WHERE document_id = ?').get(documentId) || null;
+    }
   }
 }
 

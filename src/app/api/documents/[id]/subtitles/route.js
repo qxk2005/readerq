@@ -17,9 +17,24 @@ function isOssAvailable() {
 }
 
 /**
+ * 格式化 ISO 日期为人类可读的本地时间
+ */
+function formatVersionTime(isoStr) {
+  if (!isoStr) return null;
+  try {
+    const d = new Date(isoStr);
+    if (isNaN(d.getTime())) return null;
+    return d.toISOString();
+  } catch {
+    return null;
+  }
+}
+
+/**
  * GET /api/documents/[id]/subtitles
  * 获取指定文档的用户上传字幕
  * 优先从本地数据库获取；如本地无数据且 OSS 已配置，尝试从 OSS 回退获取
+ * 使用时间戳对比（而非纯内容对比）判断是否有更新版本
  */
 export async function GET(request, { params }) {
   try {
@@ -40,15 +55,19 @@ export async function GET(request, { params }) {
       }
     }
 
+    // 本地版本时间：优先 updated_at，回退到 created_at
+    const localUpdatedAt = localSubtitle?.updated_at || localSubtitle?.created_at || null;
+
     // 2. 如果配置了 OSS，探索云端 OSS 是否包含最新上传/替换的字幕
     if (isOssAvailable()) {
       try {
         const ossResult = await downloadSubtitleFromOss(id);
         if (ossResult.success && ossResult.srtContent) {
           const ossSrt = ossResult.srtContent;
+          const ossUpdatedAt = ossResult.lastModified || null;
 
           if (!localSubtitle) {
-            // 本地无数据，云端有：自动同步入库
+            // 本地无数据，云端有：自动同步入库（使用云端时间戳作为 updated_at）
             let segments = [];
             if (ossSrt.trim().startsWith('[')) {
               try { segments = JSON.parse(ossSrt); } catch { /* ignore */ }
@@ -57,19 +76,33 @@ export async function GET(request, { params }) {
               const rawSegments = parseSRT(ossSrt);
               segments = mergeSubtitlesSmartly(rawSegments, 10);
             }
-            saveSubtitle(id, ossSrt, segments);
+            saveSubtitle(id, ossSrt, segments, ossUpdatedAt);
             return NextResponse.json({
               exists: true,
               subtitles: segments,
               source: 'oss',
               hasNewerVersion: false,
+              localUpdatedAt: formatVersionTime(ossUpdatedAt),
+              ossUpdatedAt: formatVersionTime(ossUpdatedAt),
             });
           } else {
-            const localHasZh = Array.isArray(localSegments) && localSegments.some(s => s.zh);
-            const ossHasZh = ossSrt.includes('"zh"') || ossSrt.includes('zh:');
-            
-            if ((localSubtitle.srt_content || '').trim() !== ossSrt.trim() || (!localHasZh && ossHasZh)) {
-              // 本地有字幕，但云端产生了最新双语版本/不同版本
+            // 本地有数据，通过时间戳判断云端是否更新
+            // 策略：如果 OSS 有时间戳且 > 本地时间戳 → 有新版本
+            //       如果 OSS 无时间戳 → 回退到内容对比
+            let hasNewer = false;
+            if (ossUpdatedAt && localUpdatedAt) {
+              const ossTime = new Date(ossUpdatedAt).getTime();
+              const localTime = new Date(localUpdatedAt).getTime();
+              // 云端时间比本地晚 2 秒以上才算有新版本（避免时间精度误差）
+              hasNewer = ossTime > localTime + 2000;
+            } else {
+              // 回退：时间戳缺失时用内容对比
+              const localHasZh = Array.isArray(localSegments) && localSegments.some(s => s.zh);
+              const ossHasZh = ossSrt.includes('"zh"') || ossSrt.includes('zh:');
+              hasNewer = (localSubtitle.srt_content || '').trim() !== ossSrt.trim() || (!localHasZh && ossHasZh);
+            }
+
+            if (hasNewer) {
               return NextResponse.json({
                 exists: true,
                 subtitles: localSegments,
@@ -77,6 +110,8 @@ export async function GET(request, { params }) {
                 source: 'local',
                 hasNewerVersion: true,
                 newerSrtContent: ossSrt,
+                localUpdatedAt: formatVersionTime(localUpdatedAt),
+                ossUpdatedAt: formatVersionTime(ossUpdatedAt),
               });
             }
           }
@@ -93,6 +128,8 @@ export async function GET(request, { params }) {
         createdAt: localSubtitle.created_at,
         source: 'local',
         hasNewerVersion: false,
+        localUpdatedAt: formatVersionTime(localUpdatedAt),
+        ossUpdatedAt: null,
       });
     }
 
@@ -110,6 +147,10 @@ export async function GET(request, { params }) {
  * POST /api/documents/[id]/subtitles
  * 上传 SRT 字幕文件内容
  * 保存到本地数据库，进行 ≤10s 智能分段合并与 AI 中英文双语翻译，并在 OSS 可用时同步到 OSS 实现跨客户端共享
+ * 
+ * 支持额外参数：
+ * - ossTimestamp: 当从云端切换最新字幕时，传入 OSS 版本时间戳作为 updated_at，
+ *   确保本地时间戳 >= 云端时间戳，消除版本差异
  */
 export async function POST(request, { params }) {
   try {
@@ -118,6 +159,7 @@ export async function POST(request, { params }) {
     const contentType = request.headers.get('content-type') || '';
 
     let srtContent;
+    let ossTimestamp = null;
 
     if (contentType.includes('multipart/form-data')) {
       // 处理文件上传
@@ -131,6 +173,7 @@ export async function POST(request, { params }) {
       // 处理 JSON body
       const body = await request.json();
       srtContent = body.srtContent;
+      ossTimestamp = body.ossTimestamp || null;
     }
 
     if (!srtContent || typeof srtContent !== 'string' || srtContent.trim().length === 0) {
@@ -155,7 +198,8 @@ export async function POST(request, { params }) {
     }
 
     // 保存到本地数据库 (传入完整的双语结构)
-    saveSubtitle(id, srtContent, bilingualSegments);
+    // 如果是从 OSS 切换最新字幕，使用 ossTimestamp 作为 updated_at
+    saveSubtitle(id, srtContent, bilingualSegments, ossTimestamp);
 
     // 同步到 OSS（后台执行，不阻塞响应）
     let ossSynced = false;

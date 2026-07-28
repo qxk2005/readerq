@@ -91,8 +91,18 @@ export default function SubtitlePanel({
   documentId, isUsingUploadedSubtitles, onSubtitleUploaded, onSubtitleDeleted,
   articleRef, selectedDoc, onBlogUpdated,
   mode, onModeChange,
-  hasNewerSubtitleVersion, onApplyNewerSubtitles, isApplyingNewerSubtitles, onIgnoreNewerSubtitles
+  hasNewerSubtitleVersion, onApplyNewerSubtitles, isApplyingNewerSubtitles, onIgnoreNewerSubtitles,
+  subtitleVersionInfo
 }) {
+  // 格式化 ISO 时间为人类可读的本地时间
+  const formatTime = (isoStr) => {
+    if (!isoStr) return '未知';
+    try {
+      const d = new Date(isoStr);
+      if (isNaN(d.getTime())) return '未知';
+      return d.toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+    } catch { return '未知'; }
+  };
   const [blogContent, setBlogContent] = useState('');
   const [isBlogLoading, setIsBlogLoading] = useState(false);
   const [blogError, setBlogError] = useState(null);
@@ -167,6 +177,7 @@ export default function SubtitlePanel({
   const [hasNewerBlogVersion, setHasNewerBlogVersion] = useState(false);
   const [newerBlogContent, setNewerBlogContent] = useState('');
   const [blogSuccessNotice, setBlogSuccessNotice] = useState('');
+  const [blogVersionInfo, setBlogVersionInfo] = useState({ localUpdatedAt: null, ossUpdatedAt: null });
 
   // 监听文档切换，自动加载博客内容并对比云端 OSS 最新版本
   useEffect(() => {
@@ -187,9 +198,23 @@ export default function SubtitlePanel({
           setBlogContent(data.blogContent);
           onBlogUpdated?.(data.blogContent);
 
+          // 保存版本时间信息
+          setBlogVersionInfo({
+            localUpdatedAt: data.localUpdatedAt || null,
+            ossUpdatedAt: data.ossUpdatedAt || null,
+          });
+
           if (data.hasNewerVersion && data.newerBlogContent) {
-            setHasNewerBlogVersion(true);
-            setNewerBlogContent(data.newerBlogContent);
+            // 检查是否已被忽略（sessionStorage 持久化）
+            const ignoredKey = `ignored_blog_${documentId}`;
+            const ignoredOssTime = sessionStorage.getItem(ignoredKey);
+            if (ignoredOssTime && data.ossUpdatedAt && ignoredOssTime === data.ossUpdatedAt) {
+              setHasNewerBlogVersion(false);
+              setNewerBlogContent('');
+            } else {
+              setHasNewerBlogVersion(true);
+              setNewerBlogContent(data.newerBlogContent);
+            }
           } else {
             setHasNewerBlogVersion(false);
             setNewerBlogContent('');
@@ -213,18 +238,26 @@ export default function SubtitlePanel({
     setBlogContent(newerBlogContent);
     setHasNewerBlogVersion(false);
     
-    await saveBlogToServer(documentId, newerBlogContent);
+    // 传入 ossTimestamp 确保本地版本时间 >= 云端
+    await saveBlogToServer(documentId, newerBlogContent, blogVersionInfo.ossUpdatedAt);
+    // 清除忽略记录
+    sessionStorage.removeItem(`ignored_blog_${documentId}`);
+    // 更新本地版本时间
+    setBlogVersionInfo(prev => ({
+      ...prev,
+      localUpdatedAt: prev.ossUpdatedAt || new Date().toISOString(),
+    }));
     setBlogSuccessNotice('已成功切换并同步为最新云端博客版本！');
     setTimeout(() => setBlogSuccessNotice(''), 3500);
   };
 
   // 新增保存博客的辅助函数
-  const saveBlogToServer = async (id, content) => {
+  const saveBlogToServer = async (id, content, ossTimestamp = null) => {
     try {
       const res = await fetch(`/api/documents/${id}/blog`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ blogContent: content }),
+        body: JSON.stringify({ blogContent: content, ossTimestamp }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -560,32 +593,38 @@ export default function SubtitlePanel({
                 background: 'linear-gradient(135deg, rgba(0, 122, 255, 0.08), rgba(52, 199, 89, 0.08))',
                 border: '1px solid rgba(0, 122, 255, 0.25)',
                 display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                gap: '12px',
+                flexDirection: 'column',
+                gap: '8px',
                 boxShadow: '0 4px 12px rgba(0, 122, 255, 0.05)'
               }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: 'var(--color-text-primary)', fontWeight: '500' }}>
-                  <Sparkles size={16} style={{ color: 'var(--color-accent)', flexShrink: 0 }} />
-                  <span>检测到此视频已在其他设备更新了最新版本的双语字幕</span>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: 'var(--color-text-primary)', fontWeight: '500' }}>
+                    <Sparkles size={16} style={{ color: 'var(--color-accent)', flexShrink: 0 }} />
+                    <span>检测到此视频已在其他设备更新了最新版本的双语字幕</span>
+                  </div>
+                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexShrink: 0 }}>
+                    <button
+                      className="btn btn-primary btn-sm"
+                      onClick={onApplyNewerSubtitles}
+                      disabled={isApplyingNewerSubtitles}
+                      style={{ fontSize: '12px', padding: '5px 14px', borderRadius: '8px', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '4px' }}
+                    >
+                      {isApplyingNewerSubtitles ? <Loader2 size={13} className="spin" /> : <RefreshCw size={13} />}
+                      {isApplyingNewerSubtitles ? '正在同步...' : '切换为最新字幕'}
+                    </button>
+                    <button
+                      className="btn btn-ghost btn-sm"
+                      onClick={onIgnoreNewerSubtitles}
+                      style={{ fontSize: '12px', padding: '4px 8px', color: 'var(--color-text-tertiary)' }}
+                    >
+                      忽略
+                    </button>
+                  </div>
                 </div>
-                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexShrink: 0 }}>
-                  <button
-                    className="btn btn-primary btn-sm"
-                    onClick={onApplyNewerSubtitles}
-                    disabled={isApplyingNewerSubtitles}
-                    style={{ fontSize: '12px', padding: '5px 14px', borderRadius: '8px', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '4px' }}
-                  >
-                    {isApplyingNewerSubtitles ? <Loader2 size={13} className="spin" /> : <RefreshCw size={13} />}
-                    {isApplyingNewerSubtitles ? '正在同步...' : '切换为最新字幕'}
-                  </button>
-                  <button
-                    className="btn btn-ghost btn-sm"
-                    onClick={onIgnoreNewerSubtitles}
-                    style={{ fontSize: '12px', padding: '4px 8px', color: 'var(--color-text-tertiary)' }}
-                  >
-                    忽略
-                  </button>
+                {/* 版本时间信息 */}
+                <div style={{ fontSize: '11px', color: 'var(--color-text-tertiary)', display: 'flex', gap: '16px', paddingLeft: '24px' }}>
+                  <span>📍 本地版本: {formatTime(subtitleVersionInfo?.localUpdatedAt)}</span>
+                  <span>☁️ 云端版本: {formatTime(subtitleVersionInfo?.ossUpdatedAt)}</span>
                 </div>
               </div>
             )}
@@ -667,30 +706,42 @@ export default function SubtitlePanel({
                 background: 'linear-gradient(135deg, rgba(0, 122, 255, 0.08), rgba(52, 199, 89, 0.08))',
                 border: '1px solid rgba(0, 122, 255, 0.25)',
                 display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                gap: '12px',
+                flexDirection: 'column',
+                gap: '8px',
                 boxShadow: '0 4px 12px rgba(0, 122, 255, 0.05)'
               }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: 'var(--color-text-primary)', fontWeight: '500' }}>
-                  <Sparkles size={16} style={{ color: 'var(--color-accent)', flexShrink: 0 }} />
-                  <span>检测到此视频已在其他设备生成了最新版本的博客文章</span>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: 'var(--color-text-primary)', fontWeight: '500' }}>
+                    <Sparkles size={16} style={{ color: 'var(--color-accent)', flexShrink: 0 }} />
+                    <span>检测到此视频已在其他设备生成了最新版本的博客文章</span>
+                  </div>
+                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexShrink: 0 }}>
+                    <button
+                      className="btn btn-primary btn-sm"
+                      onClick={handleApplyNewerBlog}
+                      style={{ fontSize: '12px', padding: '5px 14px', borderRadius: '8px', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '4px' }}
+                    >
+                      <RefreshCw size={13} /> 切换为最新版本
+                    </button>
+                    <button
+                      className="btn btn-ghost btn-sm"
+                      onClick={() => {
+                        setHasNewerBlogVersion(false);
+                        // 持久化忽略：记录当前被忽略的云端版本时间戳
+                        if (blogVersionInfo.ossUpdatedAt && documentId) {
+                          sessionStorage.setItem(`ignored_blog_${documentId}`, blogVersionInfo.ossUpdatedAt);
+                        }
+                      }}
+                      style={{ fontSize: '12px', padding: '4px 8px', color: 'var(--color-text-tertiary)' }}
+                    >
+                      忽略
+                    </button>
+                  </div>
                 </div>
-                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexShrink: 0 }}>
-                  <button
-                    className="btn btn-primary btn-sm"
-                    onClick={handleApplyNewerBlog}
-                    style={{ fontSize: '12px', padding: '5px 14px', borderRadius: '8px', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '4px' }}
-                  >
-                    <RefreshCw size={13} /> 切换为最新版本
-                  </button>
-                  <button
-                    className="btn btn-ghost btn-sm"
-                    onClick={() => setHasNewerBlogVersion(false)}
-                    style={{ fontSize: '12px', padding: '4px 8px', color: 'var(--color-text-tertiary)' }}
-                  >
-                    忽略
-                  </button>
+                {/* 版本时间信息 */}
+                <div style={{ fontSize: '11px', color: 'var(--color-text-tertiary)', display: 'flex', gap: '16px', paddingLeft: '24px' }}>
+                  <span>📍 本地版本: {formatTime(blogVersionInfo?.localUpdatedAt)}</span>
+                  <span>☁️ 云端版本: {formatTime(blogVersionInfo?.ossUpdatedAt)}</span>
                 </div>
               </div>
             )}

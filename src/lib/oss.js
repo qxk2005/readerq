@@ -543,7 +543,11 @@ export async function downloadSubtitleFromOss(documentId, ossConfig = null) {
       return { success: false, notFound: true };
     }
 
-    return { success: true, srtContent };
+    // 提取 Last-Modified 时间戳作为云端版本时间
+    const lastModifiedHeader = response.headers.get('Last-Modified') || response.headers.get('last-modified');
+    const lastModified = lastModifiedHeader ? new Date(lastModifiedHeader).toISOString() : null;
+
+    return { success: true, srtContent, lastModified };
   } catch (err) {
     return { success: false, error: `字幕下载 OSS 异常: ${err.message}` };
   }
@@ -702,7 +706,11 @@ export async function downloadBlogFromOss(documentId, ossConfig = null) {
       return { success: false, notFound: true };
     }
 
-    return { success: true, blogContent };
+    // 提取 Last-Modified 时间戳作为云端版本时间
+    const lastModifiedHeader = response.headers.get('Last-Modified') || response.headers.get('last-modified');
+    const lastModified = lastModifiedHeader ? new Date(lastModifiedHeader).toISOString() : null;
+
+    return { success: true, blogContent, lastModified };
   } catch (err) {
     return { success: false, error: `博客下载 OSS 异常: ${err.message}` };
   }
