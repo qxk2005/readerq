@@ -108,9 +108,9 @@ function initSchema(db) {
       srt_content TEXT NOT NULL,
       bilingual_json TEXT,
       created_at TEXT,
+      updated_at TEXT,
       FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE CASCADE
     );
-    try { db.exec('ALTER TABLE subtitles ADD COLUMN bilingual_json TEXT;'); } catch { /* ignore */ }
 
     CREATE TABLE IF NOT EXISTS daily_reviews (
       id TEXT PRIMARY KEY,
@@ -173,6 +173,18 @@ function initSchema(db) {
     }
   } catch (e) {
     console.error('Migration error (documents columns):', e);
+  }
+
+  try {
+    const tableInfo = db.prepare('PRAGMA table_info(subtitles)').all();
+    if (!tableInfo.find(c => c.name === 'bilingual_json')) {
+      db.prepare("ALTER TABLE subtitles ADD COLUMN bilingual_json TEXT").run();
+    }
+    if (!tableInfo.find(c => c.name === 'updated_at')) {
+      db.prepare("ALTER TABLE subtitles ADD COLUMN updated_at TEXT").run();
+    }
+  } catch (e) {
+    console.error('Migration error (subtitles columns):', e);
   }
 }
 

@@ -2191,6 +2191,8 @@ fun VideoReadingContent(
                 Column(modifier = Modifier.fillMaxSize()) {
                     if (hasNewerBlog) {
                         val accentColor = Color(0xFF3B82F6)
+                        val blogLocalVer by viewModel.blogLocalVersion.collectAsState()
+                        val blogCloudVer by viewModel.blogCloudVersion.collectAsState()
                         Surface(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -2199,27 +2201,36 @@ fun VideoReadingContent(
                             color = accentColor.copy(alpha = 0.12f),
                             border = BorderStroke(1.dp, accentColor.copy(alpha = 0.3f))
                         ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Text("✨ 检测到云端已生成最新视频博客，是否下载？", fontSize = 12.sp, color = MaterialTheme.colorScheme.onBackground, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-                                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                    Button(
-                                        onClick = { viewModel.applyNewerBlog(doc.id) },
-                                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                                        shape = RoundedCornerShape(6.dp),
-                                        colors = ButtonDefaults.buttonColors(containerColor = accentColor)
-                                    ) {
-                                        Text("📥 立即下载", fontSize = 11.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                            Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text("✨ 检测到云端已生成最新视频博客，是否下载？", fontSize = 12.sp, color = MaterialTheme.colorScheme.onBackground, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        Button(
+                                            onClick = { viewModel.applyNewerBlog(doc.id) },
+                                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                            shape = RoundedCornerShape(6.dp),
+                                            colors = ButtonDefaults.buttonColors(containerColor = accentColor)
+                                        ) {
+                                            Text("📥 立即下载", fontSize = 11.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                                        }
+                                        TextButton(
+                                            onClick = { viewModel.ignoreNewerBlog() },
+                                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp)
+                                        ) {
+                                            Text("忽略", fontSize = 11.sp, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f))
+                                        }
                                     }
-                                    TextButton(
-                                        onClick = { viewModel.ignoreNewerBlog() },
-                                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp)
-                                    ) {
-                                        Text("忽略", fontSize = 11.sp, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f))
-                                    }
+                                }
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                                ) {
+                                    Text("📍 本地版本: ${blogLocalVer ?: "未生成 / 暂无"}", fontSize = 10.sp, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f))
+                                    Text("☁️ 云端版本: ${blogCloudVer ?: "最新视频博客"}", fontSize = 10.sp, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f))
                                 }
                             }
                         }
@@ -2350,6 +2361,8 @@ fun SubtitlePanelComposable(
         // 跨设备最新字幕版本提醒 Banner
         val hasNewerSubtitle by viewModel.hasNewerSubtitleVersion.collectAsState()
         if (hasNewerSubtitle) {
+            val subLocalVer by viewModel.subtitleLocalVersion.collectAsState()
+            val subCloudVer by viewModel.subtitleCloudVersion.collectAsState()
             Surface(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -2358,32 +2371,36 @@ fun SubtitlePanelComposable(
                 color = accentColor.copy(alpha = 0.12f),
                 border = BorderStroke(1.dp, accentColor.copy(alpha = 0.3f))
             ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
+                Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
                     Row(
+                        modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.weight(1f)
+                        horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Text("✨ 探查到云端已更新最新版本的双语字幕", fontSize = 12.sp, color = textColor, fontWeight = FontWeight.Medium)
+                        Text("✨ 探查到云端已更新最新版本的双语字幕", fontSize = 12.sp, color = textColor, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Button(
+                                onClick = { viewModel.applyNewerSubtitle(doc.id) },
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                shape = RoundedCornerShape(6.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = accentColor)
+                            ) {
+                                Text("切换最新", fontSize = 11.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                            }
+                            TextButton(
+                                onClick = { viewModel.ignoreNewerSubtitle() },
+                                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp)
+                            ) {
+                                Text("忽略", fontSize = 11.sp, color = textColor.copy(alpha = 0.6f))
+                            }
+                        }
                     }
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Button(
-                            onClick = { viewModel.applyNewerSubtitle(doc.id) },
-                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                            shape = RoundedCornerShape(6.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = accentColor)
-                        ) {
-                            Text("切换最新", fontSize = 11.sp, color = Color.White, fontWeight = FontWeight.Bold)
-                        }
-                        TextButton(
-                            onClick = { viewModel.ignoreNewerSubtitle() },
-                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp)
-                        ) {
-                            Text("忽略", fontSize = 11.sp, color = textColor.copy(alpha = 0.6f))
-                        }
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        Text("📍 本地版本: ${subLocalVer ?: "单语/无"}", fontSize = 10.sp, color = textColor.copy(alpha = 0.6f))
+                        Text("☁️ 云端版本: ${subCloudVer ?: "最新双语"}", fontSize = 10.sp, color = textColor.copy(alpha = 0.6f))
                     }
                 }
             }

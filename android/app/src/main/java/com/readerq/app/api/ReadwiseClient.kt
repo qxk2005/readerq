@@ -450,20 +450,71 @@ class ReadwiseClient(private val token: String) {
         }
     }
 
-    // 17. 从 Server API Endpoint 获取指定文档的完整博客文章响应
+    // 17. 从 Server API Endpoint 获取指定文档的完整博客文章响应（带 502 重试）
     suspend fun fetchBlogFromServerFull(baseUrl: String, documentId: String): ServerBlogResponse? {
         val cleanBaseUrl = baseUrl.trim().removeSuffix("/")
         if (cleanBaseUrl.isBlank()) return null
         val url = "$cleanBaseUrl/api/documents/$documentId/blog"
-        return try {
-            val response = client.get(url)
-            if (response.status.isSuccess()) {
-                response.body<ServerBlogResponse>()
-            } else null
-        } catch (e: Exception) { null }
+        val maxRetries = 3
+        for (attempt in 1..maxRetries) {
+            try {
+                val response = client.get(url)
+                if (response.status.isSuccess()) {
+                    return response.body<ServerBlogResponse>()
+                } else if (response.status.value in listOf(502, 503) && attempt < maxRetries) {
+                    println("[fetchBlogFromServerFull] HTTP ${response.status.value}, retry $attempt/$maxRetries...")
+                    delay(1000L * attempt)
+                    continue
+                } else {
+                    println("[fetchBlogFromServerFull] HTTP ${response.status.value} for $url (attempt $attempt)")
+                    return null
+                }
+            } catch (e: Exception) {
+                if (attempt < maxRetries) {
+                    println("[fetchBlogFromServerFull] EXCEPTION (attempt $attempt): ${e.javaClass.simpleName}: ${e.message}, retrying...")
+                    delay(1000L * attempt)
+                } else {
+                    println("[fetchBlogFromServerFull] EXCEPTION (final): ${e.javaClass.simpleName}: ${e.message}")
+                    return null
+                }
+            }
+        }
+        return null
     }
 
-    // 18. 从 Server API Endpoint 获取指定文档的字幕文本
+    // 18. 从 Server API Endpoint 获取指定文档的字幕结构化响应（带 502 重试）
+    suspend fun fetchSubtitleFromServerFull(baseUrl: String, documentId: String): ServerSubtitleResponse? {
+        val cleanBaseUrl = baseUrl.trim().removeSuffix("/")
+        if (cleanBaseUrl.isBlank()) return null
+        val url = "$cleanBaseUrl/api/documents/$documentId/subtitles"
+        val maxRetries = 3
+        for (attempt in 1..maxRetries) {
+            try {
+                val response = client.get(url)
+                if (response.status.isSuccess()) {
+                    return response.body<ServerSubtitleResponse>()
+                } else if (response.status.value in listOf(502, 503) && attempt < maxRetries) {
+                    println("[fetchSubtitleFromServerFull] HTTP ${response.status.value}, retry $attempt/$maxRetries...")
+                    delay(1000L * attempt)
+                    continue
+                } else {
+                    println("[fetchSubtitleFromServerFull] HTTP ${response.status.value} for $url (attempt $attempt)")
+                    return null
+                }
+            } catch (e: Exception) {
+                if (attempt < maxRetries) {
+                    println("[fetchSubtitleFromServerFull] EXCEPTION (attempt $attempt): ${e.javaClass.simpleName}: ${e.message}, retrying...")
+                    delay(1000L * attempt)
+                } else {
+                    println("[fetchSubtitleFromServerFull] EXCEPTION (final): ${e.javaClass.simpleName}: ${e.message}")
+                    return null
+                }
+            }
+        }
+        return null
+    }
+
+    // 18b. 兼容旧方法（返回原始文本）
     suspend fun fetchSubtitleFromServer(baseUrl: String, documentId: String): String? {
         val cleanBaseUrl = baseUrl.trim().removeSuffix("/")
         if (cleanBaseUrl.isBlank()) return null
@@ -474,7 +525,10 @@ class ReadwiseClient(private val token: String) {
                 val text = response.bodyAsText()
                 if (text.isBlank()) null else text
             } else null
-        } catch (e: Exception) { null }
+        } catch (e: Exception) {
+            println("[fetchSubtitleFromServer] EXCEPTION: ${e.javaClass.simpleName}: ${e.message}")
+            null
+        }
     }
 }
 
@@ -484,5 +538,19 @@ data class ServerBlogResponse(
     val blogContent: String? = null,
     val source: String? = null,
     val hasNewerVersion: Boolean = false,
-    val newerBlogContent: String? = null
+    val newerBlogContent: String? = null,
+    val localUpdatedAt: String? = null,
+    val ossUpdatedAt: String? = null
+)
+
+@kotlinx.serialization.Serializable
+data class ServerSubtitleResponse(
+    val exists: Boolean = false,
+    val subtitles: kotlinx.serialization.json.JsonElement? = null,
+    val source: String? = null,
+    val hasNewerVersion: Boolean = false,
+    val newerSrtContent: String? = null,
+    val localUpdatedAt: String? = null,
+    val ossUpdatedAt: String? = null,
+    val createdAt: String? = null
 )

@@ -88,7 +88,7 @@ class OssClient(
 
     private fun getBlogObjectKey(documentId: String): String {
         val cleanPrefix = pathPrefix.trim().trim('/')
-        return if (cleanPrefix.isBlank()) "blog/$documentId.md" else "$cleanPrefix/blog/$documentId.md"
+        return if (cleanPrefix.isBlank()) "blogs/$documentId.md" else "$cleanPrefix/blogs/$documentId.md"
     }
 
     /**
