@@ -127,7 +127,7 @@ fun AdaptiveMainScreen(
                             ) {
                                 val tabs = listOf(
                                     Triple("home", "首页", R.drawable.ic_tab_library),
-                                    Triple("review", "每日回顾", R.drawable.ic_cat_book),
+                                    Triple("review", "每日回顾", R.drawable.ic_tab_review),
                                     Triple("zen", "禅阅读", R.drawable.ic_cat_book),
                                     Triple("library", "库", R.drawable.ic_inbox),
                                     Triple("notebook", "浏览", R.drawable.ic_tab_notebook),
@@ -208,7 +208,7 @@ fun AdaptiveMainScreen(
                         ) {
                             val tabs = listOf(
                                 Triple("home", "首页", R.drawable.ic_tab_library),
-                                Triple("review", "每日回顾", R.drawable.ic_cat_book),
+                                Triple("review", "每日回顾", R.drawable.ic_tab_review),
                                 Triple("zen", "禅阅读", R.drawable.ic_cat_book),
                                 Triple("library", "库", R.drawable.ic_inbox),
                                 Triple("notebook", "浏览", R.drawable.ic_tab_notebook),

@@ -988,10 +988,13 @@ export default function DailyReviewView({ onBackToArticles }) {
                             display: 'flex',
                             alignItems: 'center',
                             gap: '8px',
+                            backgroundColor: currentIndex === highlights.length - 1 ? '#34c759' : '#007aff',
+                            color: '#ffffff',
+                            border: 'none',
                             boxShadow: '0 4px 14px rgba(0, 122, 255, 0.3)'
                           }}
                         >
-                          已复习 / 下一条 (Space) <ChevronRight size={16} />
+                          {currentIndex === highlights.length - 1 ? '🎉 完成每日回顾' : '已复习 / 下一条 (Space)'} <ChevronRight size={16} />
                         </button>
                       </div>
                     )}

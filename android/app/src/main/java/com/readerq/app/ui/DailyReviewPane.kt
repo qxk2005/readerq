@@ -770,16 +770,18 @@ fun DailyReviewPane(
 
                             // 已复习 / 下一条 - 同步 Readwise
                             val isLastCard = currentIndex == highlights.size - 1
+                            val mainBtnColor = if (isLastCard) Color(0xFF34C759) else Color(0xFF007AFF)
                             Button(
                                 onClick = { viewModel.nextReviewCard() },
                                 modifier = Modifier.weight(1.8f),
                                 shape = RoundedCornerShape(14.dp),
                                 colors = ButtonDefaults.buttonColors(
-                                    containerColor = if (isLastCard) Color(0xFF34C759) else MaterialTheme.colorScheme.primary
+                                    containerColor = mainBtnColor,
+                                    contentColor = Color.White
                                 )
                             ) {
                                 Text(
-                                    text = if (isLastCard) "🎉 完成复习 ›" else "下一条 ›",
+                                    text = if (isLastCard) "🎉 完成复习 ›" else "已复习 / 下一条 ›",
                                     color = Color.White,
                                     fontSize = 13.sp,
                                     fontWeight = FontWeight.Bold
