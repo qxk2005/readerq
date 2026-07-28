@@ -23,34 +23,55 @@ export async function GET(request, { params }) {
   try {
     const { id } = await params;
 
-    // 1. 优先从本地数据库获取
+    // 1. 读取本地数据库的博客内容
     const doc = getCachedDocument(id);
-    if (doc && doc.blog_content) {
-      return NextResponse.json({
-        exists: true,
-        blogContent: doc.blog_content,
-        source: 'local',
-      });
-    }
+    const localBlogContent = doc?.blog_content || null;
 
-    // 2. 本地无数据，尝试从 OSS 获取
+    // 2. 如果配置了 OSS，尝试拉取云端 OSS 最新博客进行版本对比
     if (isOssAvailable()) {
-      const ossResult = await downloadBlogFromOss(id);
-      if (ossResult.success && ossResult.blogContent) {
-        // 从 OSS 成功拉取博客，写入本地数据库
-        if (doc) {
-          doc.blog_content = ossResult.blogContent;
-          upsertDocument(doc);
+      try {
+        const ossResult = await downloadBlogFromOss(id);
+        if (ossResult.success && ossResult.blogContent) {
+          const ossBlogContent = ossResult.blogContent;
+
+          if (!localBlogContent) {
+            // 本地无数据但云端有：自动同步入库
+            if (doc) {
+              doc.blog_content = ossBlogContent;
+              upsertDocument(doc);
+            }
+            return NextResponse.json({
+              exists: true,
+              blogContent: ossBlogContent,
+              source: 'oss',
+              hasNewerVersion: false,
+            });
+          } else if (localBlogContent.trim() !== ossBlogContent.trim()) {
+            // 本地有数据，但云端为不同/最新版本：返回当前内容并带有 hasNewerVersion 提醒
+            return NextResponse.json({
+              exists: true,
+              blogContent: localBlogContent,
+              source: 'local',
+              hasNewerVersion: true,
+              newerBlogContent: ossBlogContent,
+            });
+          }
         }
-        return NextResponse.json({
-          exists: true,
-          blogContent: ossResult.blogContent,
-          source: 'oss',
-        });
+      } catch (ossErr) {
+        console.warn('[博客版本比对] 拉取 OSS 失败:', ossErr.message);
       }
     }
 
-    return NextResponse.json({ exists: false, blogContent: '' });
+    if (localBlogContent) {
+      return NextResponse.json({
+        exists: true,
+        blogContent: localBlogContent,
+        source: 'local',
+        hasNewerVersion: false,
+      });
+    }
+
+    return NextResponse.json({ exists: false, blogContent: '', hasNewerVersion: false });
   } catch (error) {
     console.error('获取博客文章失败:', error);
     return NextResponse.json(

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { formatTimestamp, formatSubtitlesForAI, parseTimestamp } from '@/lib/subtitleParser';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -90,7 +90,8 @@ export default function SubtitlePanel({
   subtitles, currentTime, onSeek, autoScroll = true, title, blogPrompt,
   documentId, isUsingUploadedSubtitles, onSubtitleUploaded, onSubtitleDeleted,
   articleRef, selectedDoc, onBlogUpdated,
-  mode, onModeChange
+  mode, onModeChange,
+  hasNewerSubtitleVersion, onApplyNewerSubtitles, isApplyingNewerSubtitles, onIgnoreNewerSubtitles
 }) {
   const [blogContent, setBlogContent] = useState('');
   const [isBlogLoading, setIsBlogLoading] = useState(false);
@@ -162,25 +163,37 @@ export default function SubtitlePanel({
     }
   }, [activeIndex, mode, autoScroll]);
 
-  // 监听文档切换，自动加载博客内容
+  // 跨客户端博客最新版本提醒控制 State
+  const [hasNewerBlogVersion, setHasNewerBlogVersion] = useState(false);
+  const [newerBlogContent, setNewerBlogContent] = useState('');
+  const [blogSuccessNotice, setBlogSuccessNotice] = useState('');
+
+  // 监听文档切换，自动加载博客内容并对比云端 OSS 最新版本
   useEffect(() => {
     if (!documentId) return;
     
     if (selectedDoc?.blog_content) {
       setBlogContent(selectedDoc.blog_content);
-      return;
     }
 
-    setIsBlogLoading(true);
+    setIsBlogLoading(!selectedDoc?.blog_content);
     setBlogError(null);
-    setBlogContent('');
 
+    // 始终发起 API 获取与版本对比，探测云端 OSS 是否产生了跨客户端更新
     fetch(`/api/documents/${documentId}/blog`)
       .then(res => res.json())
       .then(data => {
         if (data.exists && data.blogContent) {
           setBlogContent(data.blogContent);
           onBlogUpdated?.(data.blogContent);
+
+          if (data.hasNewerVersion && data.newerBlogContent) {
+            setHasNewerBlogVersion(true);
+            setNewerBlogContent(data.newerBlogContent);
+          } else {
+            setHasNewerBlogVersion(false);
+            setNewerBlogContent('');
+          }
         } else {
           setBlogContent('');
         }
@@ -192,7 +205,18 @@ export default function SubtitlePanel({
       .finally(() => {
         setIsBlogLoading(false);
       });
-  }, [documentId, selectedDoc?.blog_content, onBlogUpdated]);
+  }, [documentId]);
+
+  // 应用跨客户端最新的博客版本
+  const handleApplyNewerBlog = async () => {
+    if (!newerBlogContent || !documentId) return;
+    setBlogContent(newerBlogContent);
+    setHasNewerBlogVersion(false);
+    
+    await saveBlogToServer(documentId, newerBlogContent);
+    setBlogSuccessNotice('已成功切换并同步为最新云端博客版本！');
+    setTimeout(() => setBlogSuccessNotice(''), 3500);
+  };
 
   // 新增保存博客的辅助函数
   const saveBlogToServer = async (id, content) => {
@@ -526,8 +550,48 @@ export default function SubtitlePanel({
 
         {mode === 'subtitle' ? (
           /* 字幕视图 (支持中英文双语) */
-          subtitles && subtitles.length > 0 ? (
-            <div className="subtitle-segments">
+          <React.Fragment>
+            {/* 📢 跨端最新双语字幕提醒 Banner */}
+            {hasNewerSubtitleVersion && (
+              <div style={{
+                margin: '12px 16px 16px',
+                padding: '12px 16px',
+                borderRadius: '12px',
+                background: 'linear-gradient(135deg, rgba(0, 122, 255, 0.08), rgba(52, 199, 89, 0.08))',
+                border: '1px solid rgba(0, 122, 255, 0.25)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: '12px',
+                boxShadow: '0 4px 12px rgba(0, 122, 255, 0.05)'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: 'var(--color-text-primary)', fontWeight: '500' }}>
+                  <Sparkles size={16} style={{ color: 'var(--color-accent)', flexShrink: 0 }} />
+                  <span>检测到此视频已在其他设备更新了最新版本的双语字幕</span>
+                </div>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexShrink: 0 }}>
+                  <button
+                    className="btn btn-primary btn-sm"
+                    onClick={onApplyNewerSubtitles}
+                    disabled={isApplyingNewerSubtitles}
+                    style={{ fontSize: '12px', padding: '5px 14px', borderRadius: '8px', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '4px' }}
+                  >
+                    {isApplyingNewerSubtitles ? <Loader2 size={13} className="spin" /> : <RefreshCw size={13} />}
+                    {isApplyingNewerSubtitles ? '正在同步...' : '切换为最新字幕'}
+                  </button>
+                  <button
+                    className="btn btn-ghost btn-sm"
+                    onClick={onIgnoreNewerSubtitles}
+                    style={{ fontSize: '12px', padding: '4px 8px', color: 'var(--color-text-tertiary)' }}
+                  >
+                    忽略
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {subtitles && subtitles.length > 0 ? (
+              <div className="subtitle-segments">
               {subtitles.map((seg, index) => (
                 <div
                   key={index}
@@ -589,10 +653,68 @@ export default function SubtitlePanel({
                 </>
               )}
             </div>
-          )
-        ) : (
+          )}
+        </React.Fragment>
+      ) : (
           /* 博客视图 (支持章节与文本时间戳跳播) */
           <div className="blog-article-container">
+            {/* 📢 跨端最新博客版本提醒 Banner */}
+            {hasNewerBlogVersion && (
+              <div style={{
+                margin: '0 0 16px',
+                padding: '12px 16px',
+                borderRadius: '12px',
+                background: 'linear-gradient(135deg, rgba(0, 122, 255, 0.08), rgba(52, 199, 89, 0.08))',
+                border: '1px solid rgba(0, 122, 255, 0.25)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: '12px',
+                boxShadow: '0 4px 12px rgba(0, 122, 255, 0.05)'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: 'var(--color-text-primary)', fontWeight: '500' }}>
+                  <Sparkles size={16} style={{ color: 'var(--color-accent)', flexShrink: 0 }} />
+                  <span>检测到此视频已在其他设备生成了最新版本的博客文章</span>
+                </div>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexShrink: 0 }}>
+                  <button
+                    className="btn btn-primary btn-sm"
+                    onClick={handleApplyNewerBlog}
+                    style={{ fontSize: '12px', padding: '5px 14px', borderRadius: '8px', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '4px' }}
+                  >
+                    <RefreshCw size={13} /> 切换为最新版本
+                  </button>
+                  <button
+                    className="btn btn-ghost btn-sm"
+                    onClick={() => setHasNewerBlogVersion(false)}
+                    style={{ fontSize: '12px', padding: '4px 8px', color: 'var(--color-text-tertiary)' }}
+                  >
+                    忽略
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* 成功更新成功通知 */}
+            {blogSuccessNotice && (
+              <div style={{
+                margin: '0 0 16px',
+                padding: '10px 14px',
+                borderRadius: '10px',
+                backgroundColor: 'rgba(34, 197, 94, 0.1)',
+                border: '1px solid rgba(34, 197, 94, 0.25)',
+                color: 'var(--color-success)',
+                fontSize: '12.5px',
+                fontWeight: '500',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px'
+              }}>
+                <CheckCircle size={14} />
+                <span>{blogSuccessNotice}</span>
+              </div>
+            )}
+
             {blogError && (
               <div className="blog-error">
                 <p>博客转译失败: {blogError}</p>

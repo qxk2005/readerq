@@ -42,7 +42,12 @@ export default function VideoReadingPane({ selectedDoc, articleRef, updateDocume
     return parseSubtitles(selectedDoc?.html_content);
   }, [selectedDoc?.html_content]);
 
-  // 加载用户上传的字幕
+  // 跨客户端字幕/双语最新版本提醒控制 State
+  const [hasNewerSubtitleVersion, setHasNewerSubtitleVersion] = useState(false);
+  const [newerSrtContent, setNewerSrtContent] = useState('');
+  const [isApplyingNewerSubtitles, setIsApplyingNewerSubtitles] = useState(false);
+
+  // 加载用户上传的字幕并对比云端 OSS 最新版本
   useEffect(() => {
     if (!selectedDoc?.id) return;
     setIsLoadingSubtitles(true);
@@ -51,6 +56,14 @@ export default function VideoReadingPane({ selectedDoc, articleRef, updateDocume
       .then(data => {
         if (data.exists && data.subtitles?.length > 0) {
           setUploadedSubtitles(data.subtitles);
+
+          if (data.hasNewerVersion && data.newerSrtContent) {
+            setHasNewerSubtitleVersion(true);
+            setNewerSrtContent(data.newerSrtContent);
+          } else {
+            setHasNewerSubtitleVersion(false);
+            setNewerSrtContent('');
+          }
         } else {
           setUploadedSubtitles([]);
         }
@@ -61,6 +74,29 @@ export default function VideoReadingPane({ selectedDoc, articleRef, updateDocume
       })
       .finally(() => setIsLoadingSubtitles(false));
   }, [selectedDoc?.id]);
+
+  // 切换为云端最新版本的双语字幕
+  const handleApplyNewerSubtitles = useCallback(async () => {
+    if (!newerSrtContent || !selectedDoc?.id) return;
+    setIsApplyingNewerSubtitles(true);
+    try {
+      const res = await fetch(`/api/documents/${selectedDoc.id}/subtitles`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ srtContent: newerSrtContent }),
+      });
+      const data = await res.json();
+      if (res.ok && data.subtitles) {
+        setUploadedSubtitles(data.subtitles);
+        setHasNewerSubtitleVersion(false);
+        setNewerSrtContent('');
+      }
+    } catch (e) {
+      console.error('切换最新双语字幕失败:', e);
+    } finally {
+      setIsApplyingNewerSubtitles(false);
+    }
+  }, [newerSrtContent, selectedDoc?.id]);
 
   // 最终使用的字幕：优先用户上传 > html_content 解析
   const subtitles = useMemo(() => {
@@ -229,6 +265,10 @@ export default function VideoReadingPane({ selectedDoc, articleRef, updateDocume
         }}
         mode={videoTabMode}
         onModeChange={onVideoTabChange}
+        hasNewerSubtitleVersion={hasNewerSubtitleVersion}
+        onApplyNewerSubtitles={handleApplyNewerSubtitles}
+        isApplyingNewerSubtitles={isApplyingNewerSubtitles}
+        onIgnoreNewerSubtitles={() => setHasNewerSubtitleVersion(false)}
       />
       </div>
     </div>

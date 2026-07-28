@@ -25,44 +25,78 @@ export async function GET(request, { params }) {
   try {
     const { id } = await params;
 
-    // 1. 优先从本地数据库获取
+    // 1. 读取本地数据库的字幕
     const localSubtitle = getSubtitle(id);
+    let localSegments = [];
     if (localSubtitle) {
-      let segments = [];
       if (localSubtitle.bilingual_json) {
         try {
-          segments = JSON.parse(localSubtitle.bilingual_json);
+          localSegments = JSON.parse(localSubtitle.bilingual_json);
         } catch { /* ignore */ }
       }
-      if (!segments || segments.length === 0) {
+      if (!localSegments || localSegments.length === 0) {
         const rawSegments = parseSRT(localSubtitle.srt_content);
-        segments = mergeSubtitlesSmartly(rawSegments, 10);
+        localSegments = mergeSubtitlesSmartly(rawSegments, 10);
       }
+    }
+
+    // 2. 如果配置了 OSS，探索云端 OSS 是否包含最新上传/替换的字幕
+    if (isOssAvailable()) {
+      try {
+        const ossResult = await downloadSubtitleFromOss(id);
+        if (ossResult.success && ossResult.srtContent) {
+          const ossSrt = ossResult.srtContent;
+
+          if (!localSubtitle) {
+            // 本地无数据，云端有：自动同步入库
+            let segments = [];
+            if (ossSrt.trim().startsWith('[')) {
+              try { segments = JSON.parse(ossSrt); } catch { /* ignore */ }
+            }
+            if (!segments || segments.length === 0) {
+              const rawSegments = parseSRT(ossSrt);
+              segments = mergeSubtitlesSmartly(rawSegments, 10);
+            }
+            saveSubtitle(id, ossSrt, segments);
+            return NextResponse.json({
+              exists: true,
+              subtitles: segments,
+              source: 'oss',
+              hasNewerVersion: false,
+            });
+          } else {
+            const localHasZh = Array.isArray(localSegments) && localSegments.some(s => s.zh);
+            const ossHasZh = ossSrt.includes('"zh"') || ossSrt.includes('zh:');
+            
+            if ((localSubtitle.srt_content || '').trim() !== ossSrt.trim() || (!localHasZh && ossHasZh)) {
+              // 本地有字幕，但云端产生了最新双语版本/不同版本
+              return NextResponse.json({
+                exists: true,
+                subtitles: localSegments,
+                createdAt: localSubtitle.created_at,
+                source: 'local',
+                hasNewerVersion: true,
+                newerSrtContent: ossSrt,
+              });
+            }
+          }
+        }
+      } catch (ossErr) {
+        console.warn('[字幕版本比对] 拉取 OSS 失败:', ossErr.message);
+      }
+    }
+
+    if (localSubtitle) {
       return NextResponse.json({
         exists: true,
-        subtitles: segments,
+        subtitles: localSegments,
         createdAt: localSubtitle.created_at,
         source: 'local',
+        hasNewerVersion: false,
       });
     }
 
-    // 2. 本地无数据，尝试从 OSS 回退
-    if (isOssAvailable()) {
-      const ossResult = await downloadSubtitleFromOss(id);
-      if (ossResult.success && ossResult.srtContent) {
-        // 从 OSS 获取成功，缓存到本地数据库
-        const rawSegments = parseSRT(ossResult.srtContent);
-        const segments = mergeSubtitlesSmartly(rawSegments, 10);
-        saveSubtitle(id, ossResult.srtContent, segments);
-        return NextResponse.json({
-          exists: true,
-          subtitles: segments,
-          source: 'oss',
-        });
-      }
-    }
-
-    return NextResponse.json({ exists: false, subtitles: [] });
+    return NextResponse.json({ exists: false, subtitles: [], hasNewerVersion: false });
   } catch (error) {
     console.error('获取字幕失败:', error);
     return NextResponse.json(
@@ -127,7 +161,12 @@ export async function POST(request, { params }) {
     let ossSynced = false;
     if (isOssAvailable()) {
       try {
-        const ossResult = await uploadSubtitleToOss(id, srtContent);
+        // 💡 优先将包含中英文双语的 JSON 结构同步保存到 OSS，让 Android / 移动端拉取时能直接获得双语
+        const contentToUpload = (Array.isArray(bilingualSegments) && bilingualSegments.some(s => s.zh))
+          ? JSON.stringify(bilingualSegments)
+          : srtContent;
+
+        const ossResult = await uploadSubtitleToOss(id, contentToUpload);
         ossSynced = ossResult.success;
         if (!ossResult.success) {
           console.warn('[字幕OSS同步] 上传失败:', ossResult.error);
