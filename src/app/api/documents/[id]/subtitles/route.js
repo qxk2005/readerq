@@ -180,30 +180,53 @@ export async function POST(request, { params }) {
       return NextResponse.json({ error: '字幕内容不能为空' }, { status: 400 });
     }
 
-    // 验证是否为有效的 SRT 内容（至少能解析出 1 条字幕）
-    const rawSegments = parseSRT(srtContent);
-    if (rawSegments.length === 0) {
-      return NextResponse.json({ error: '无法解析出有效的 SRT 字幕，请检查文件格式是否正确' }, { status: 400 });
+    // 检测内容格式：JSON 双语结构 vs SRT 原始字幕
+    const trimmedContent = srtContent.trim();
+    const isJsonBilingual = trimmedContent.startsWith('[');
+
+    let bilingualSegments;
+
+    if (isJsonBilingual) {
+      // ✅ 来自 OSS 的 JSON 双语结构（切换最新字幕场景）
+      // 直接解析使用，无需 parseSRT 和 AI 翻译
+      try {
+        bilingualSegments = JSON.parse(trimmedContent);
+        if (!Array.isArray(bilingualSegments) || bilingualSegments.length === 0) {
+          return NextResponse.json({ error: '无法解析双语字幕 JSON 数据' }, { status: 400 });
+        }
+      } catch (parseErr) {
+        return NextResponse.json({ error: '字幕 JSON 格式错误: ' + parseErr.message }, { status: 400 });
+      }
+
+      // 直接保存到本地数据库（使用 ossTimestamp 作为 updated_at）
+      saveSubtitle(id, srtContent, bilingualSegments, ossTimestamp);
+
+    } else {
+      // 原始 SRT 格式（用户上传场景）
+      const rawSegments = parseSRT(srtContent);
+      if (rawSegments.length === 0) {
+        return NextResponse.json({ error: '无法解析出有效的 SRT 字幕，请检查文件格式是否正确' }, { status: 400 });
+      }
+
+      // 1. 智能分段合并 (约束单段时长 ≤ 10 秒)
+      const mergedSegments = mergeSubtitlesSmartly(rawSegments, 10);
+
+      // 2. 调用 AI 大模型生成中英文双语对照 (上面中文，下面英文)
+      bilingualSegments = mergedSegments;
+      try {
+        bilingualSegments = await translateSubtitlesToBilingual(mergedSegments);
+      } catch (err) {
+        console.warn('[字幕双语化] AI 翻译失败，保留合并单语字幕:', err.message);
+      }
+
+      // 保存到本地数据库
+      saveSubtitle(id, srtContent, bilingualSegments, ossTimestamp);
     }
-
-    // 1. 智能分段合并 (约束单段时长 ≤ 10 秒)
-    const mergedSegments = mergeSubtitlesSmartly(rawSegments, 10);
-
-    // 2. 调用 AI 大模型生成中英文双语对照 (上面中文，下面英文)
-    let bilingualSegments = mergedSegments;
-    try {
-      bilingualSegments = await translateSubtitlesToBilingual(mergedSegments);
-    } catch (err) {
-      console.warn('[字幕双语化] AI 翻译失败，保留合并单语字幕:', err.message);
-    }
-
-    // 保存到本地数据库 (传入完整的双语结构)
-    // 如果是从 OSS 切换最新字幕，使用 ossTimestamp 作为 updated_at
-    saveSubtitle(id, srtContent, bilingualSegments, ossTimestamp);
 
     // 同步到 OSS（后台执行，不阻塞响应）
+    // 注意：如果是从 OSS 切换过来的，不需要重复上传回 OSS
     let ossSynced = false;
-    if (isOssAvailable()) {
+    if (isOssAvailable() && !ossTimestamp) {
       try {
         // 💡 优先将包含中英文双语的 JSON 结构同步保存到 OSS，让 Android / 移动端拉取时能直接获得双语
         const contentToUpload = (Array.isArray(bilingualSegments) && bilingualSegments.some(s => s.zh))
