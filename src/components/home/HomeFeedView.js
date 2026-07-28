@@ -3,122 +3,7 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useApp } from '@/context/AppContext';
 import { Sparkles, Clock, BookOpen, User, Tag, Highlighter, Calendar, ArrowRight, RefreshCw, FileText, Video, Rss, Mail, Bookmark, Layers, Inbox } from 'lucide-react';
-
-/**
- * 艺术感备用封面生成组件（当文章没有封面图或加载失败时使用）
- */
-function FallbackCover({ title, category, siteName }) {
-  const gradient = useMemo(() => {
-    const gradients = [
-      'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)',
-      'linear-gradient(135deg, #1e3a5f 0%, #0d1b2a 100%)',
-      'linear-gradient(135deg, #2b1055 0%, #7597de 100%)',
-      'linear-gradient(135deg, #0f2027 0%, #203a43 50%, #2c5364 100%)',
-      'linear-gradient(135deg, #373b44 0%, #4286f4 100%)',
-      'linear-gradient(135deg, #111827 0%, #1f2937 100%)',
-      'linear-gradient(135deg, #1e1b4b 0%, #312e81 100%)',
-      'linear-gradient(135deg, #064e3b 0%, #022c22 100%)',
-    ];
-    let hash = 0;
-    const str = title || 'ReaderQ';
-    for (let i = 0; i < str.length; i++) {
-      hash = str.charCodeAt(i) + ((hash << 5) - hash);
-    }
-    const index = Math.abs(hash) % gradients.length;
-    return gradients[index];
-  }, [title]);
-
-  const CategoryIcon = useMemo(() => {
-    switch (category) {
-      case 'video': return Video;
-      case 'rss': return Rss;
-      case 'email': return Mail;
-      case 'pdf': return FileText;
-      default: return BookOpen;
-    }
-  }, [category]);
-
-  return (
-    <div style={{
-      width: '100%',
-      height: '160px',
-      background: gradient,
-      position: 'relative',
-      overflow: 'hidden',
-      display: 'flex',
-      flexDirection: 'column',
-      justifyContent: 'space-between',
-      padding: '16px',
-      boxSizing: 'border-box',
-      borderTopLeftRadius: 'var(--radius-lg)',
-      borderTopRightRadius: 'var(--radius-lg)',
-    }}>
-      {/* 几何阴影背景图案 */}
-      <div style={{
-        position: 'absolute',
-        top: '-20%',
-        right: '-10%',
-        width: '140px',
-        height: '140px',
-        borderRadius: '50%',
-        background: 'rgba(255, 255, 255, 0.05)',
-        pointerEvents: 'none',
-      }} />
-      <div style={{
-        position: 'absolute',
-        bottom: '-30%',
-        left: '-10%',
-        width: '180px',
-        height: '180px',
-        borderRadius: '50%',
-        background: 'rgba(255, 255, 255, 0.03)',
-        pointerEvents: 'none',
-      }} />
-
-      {/* 顶部 Badge */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', zIndex: 1 }}>
-        <span style={{
-          display: 'inline-flex',
-          alignItems: 'center',
-          gap: '4px',
-          padding: '4px 10px',
-          borderRadius: '20px',
-          background: 'rgba(255, 255, 255, 0.15)',
-          backdropFilter: 'blur(8px)',
-          WebkitBackdropFilter: 'blur(8px)',
-          color: '#ffffff',
-          fontSize: '11px',
-          fontWeight: '600',
-          letterSpacing: '0.02em'
-        }}>
-          <CategoryIcon size={12} />
-          {category?.toUpperCase() || 'ARTICLE'}
-        </span>
-        {siteName && (
-          <span style={{ fontSize: '11px', color: 'rgba(255, 255, 255, 0.65)', fontWeight: '500' }}>
-            {siteName}
-          </span>
-        )}
-      </div>
-
-      {/* 底部文字印记 */}
-      <div style={{
-        fontSize: '13px',
-        fontWeight: '600',
-        color: 'rgba(255, 255, 255, 0.9)',
-        lineHeight: '1.4',
-        display: '-webkit-box',
-        WebkitLineClamp: 2,
-        WebkitBoxOrient: 'vertical',
-        overflow: 'hidden',
-        zIndex: 1,
-        textShadow: '0 2px 4px rgba(0,0,0,0.3)'
-      }}>
-        {title}
-      </div>
-    </div>
-  );
-}
+import ArticleCoverPlaceholder from '@/components/common/ArticleCoverPlaceholder';
 
 export default function HomeFeedView() {
   const { setSelectedDoc, selectedDoc, isSyncing } = useApp();
@@ -684,11 +569,7 @@ export default function HomeFeedView() {
                       }}>
                         {/* 加载完成前以艺术封面垫底作平滑过渡 */}
                         {!loadedCovers.has(doc.id) && (
-                          <FallbackCover
-                            title={doc.title}
-                            category={doc.category}
-                            siteName={doc.site_name || doc.source}
-                          />
+                          <ArticleCoverPlaceholder doc={doc} mode="card" />
                         )}
                         <img
                           src={doc.image_url}
@@ -709,11 +590,7 @@ export default function HomeFeedView() {
                         />
                       </div>
                     ) : (
-                      <FallbackCover
-                        title={doc.title}
-                        category={doc.category}
-                        siteName={doc.site_name || doc.source}
-                      />
+                      <ArticleCoverPlaceholder doc={doc} mode="card" />
                     )
                   )}
 

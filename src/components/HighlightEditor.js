@@ -1,26 +1,35 @@
 import { useState, useEffect, useRef } from 'react';
 import TagInput from './TagInput';
 
+const computeEditorPosition = (rect) => {
+  if (!rect) {
+    return { top: 120, left: typeof window !== 'undefined' ? window.innerWidth / 2 - 125 : 300 };
+  }
+  let computedLeft = (rect.left || 0) + (rect.width || 0) / 2;
+  let computedTop = (rect.bottom || 0) + 8;
+
+  if (typeof window !== 'undefined') {
+    computedLeft = Math.max(20, Math.min(window.innerWidth - 270, computedLeft - 125));
+    // 桌面客户端顶部拖拽区域保护：Top 绝不低于 96px
+    computedTop = Math.max(96, Math.min(window.innerHeight - 240, computedTop));
+  }
+  return { top: computedTop, left: computedLeft };
+};
+
 export default function HighlightEditor({ highlight, onUpdate, onDelete, onClose, allTags = [] }) {
   const [note, setNote] = useState(highlight.note || '');
   const [tags, setTags] = useState(highlight.tags ? Object.keys(highlight.tags) : []);
   
-  const [position, setPosition] = useState(() => {
-    if (!highlight || !highlight.rect) {
-      return { top: 120, left: typeof window !== 'undefined' ? window.innerWidth / 2 - 125 : 300 };
-    }
-    const rect = highlight.rect;
-    let computedLeft = (rect.left || 0) + (rect.width || 0) / 2;
-    let computedTop = (rect.bottom || 0) + 8;
-
-    if (typeof window !== 'undefined') {
-      computedLeft = Math.max(20, Math.min(window.innerWidth - 270, computedLeft - 125));
-      computedTop = Math.max(70, Math.min(window.innerHeight - 220, computedTop));
-    }
-    return { top: computedTop, left: computedLeft };
-  });
+  const [position, setPosition] = useState(() => computeEditorPosition(highlight?.rect));
   const [isDragging, setIsDragging] = useState(false);
   const dragStartRef = useRef({ x: 0, y: 0, top: 0, left: 0 });
+
+  // 正文滚动或选区位置变动时，实时同步更新坐标（非手动拖拽状态下）
+  useEffect(() => {
+    if (!isDragging && highlight?.rect) {
+      setPosition(computeEditorPosition(highlight.rect));
+    }
+  }, [highlight?.rect, isDragging]);
 
   useEffect(() => {
     if (isDragging) {

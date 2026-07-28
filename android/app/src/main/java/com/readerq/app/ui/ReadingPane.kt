@@ -290,6 +290,23 @@ fun ReadingPane(
                                         onBack?.invoke()
                                     }
                                 )
+                            } else if (currentDoc.location == "archive") {
+                                DropdownMenuItem(
+                                    text = { Text("恢复至收件箱", color = MaterialTheme.colorScheme.primary) },
+                                    onClick = {
+                                        showOverflowMenu = false
+                                        viewModel.restoreDocument(currentDoc.id)
+                                        onBack?.invoke()
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("移入垃圾箱", color = Color.Red) },
+                                    onClick = {
+                                        showOverflowMenu = false
+                                        viewModel.deleteDocument(currentDoc.id)
+                                        onBack?.invoke()
+                                    }
+                                )
                             } else {
                                 DropdownMenuItem(
                                     text = { Text("归档文章", color = MaterialTheme.colorScheme.primary) },

@@ -281,12 +281,13 @@ fun DocumentListPane(
         ) {
             items(documents, key = { it.id }) { doc ->
                 val isSelected = selectedDoc?.id == doc.id
+                val isArchiveOrTrash = currentView == "trash" || currentView == "archive" || doc.location == "archive" || doc.location == "trash"
                 
                 val dismissState = rememberDismissState(
                     confirmValueChange = { dismissValue ->
                         when (dismissValue) {
                             DismissValue.DismissedToEnd -> {
-                                if (currentView == "trash") {
+                                if (isArchiveOrTrash) {
                                     viewModel.restoreDocument(doc.id)
                                 } else {
                                     viewModel.archiveDocument(doc.id)
@@ -320,7 +321,7 @@ fun DocumentListPane(
                         val direction = dismissState.dismissDirection ?: return@SwipeToDismiss
                         val color = when (direction) {
                             DismissDirection.StartToEnd -> {
-                                if (currentView == "trash") Color(0xFF3B82F6) else Color(0xFF22C55E)
+                                if (isArchiveOrTrash) Color(0xFF3B82F6) else Color(0xFF22C55E)
                             }
                             DismissDirection.EndToStart -> Color(0xFFEF4444)
                         }
@@ -329,7 +330,7 @@ fun DocumentListPane(
                             DismissDirection.EndToStart -> Alignment.CenterEnd
                         }
                         val iconText = when (direction) {
-                            DismissDirection.StartToEnd -> if (currentView == "trash") "恢复" else "归档"
+                            DismissDirection.StartToEnd -> if (isArchiveOrTrash) "恢复" else "归档"
                             DismissDirection.EndToStart -> if (currentView == "trash") "彻底删除" else "删除"
                         }
                         Box(

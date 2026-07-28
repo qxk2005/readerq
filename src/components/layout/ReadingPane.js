@@ -278,6 +278,58 @@ export default function ReadingPane() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedDoc?.id, updateDocumentLocally]);
 
+  // --- 正文滚动时防外层容器偏移 & 实时同步高亮浮条坐标 ---
+  useEffect(() => {
+    const scrollContainer = document.getElementById('article-scroll-container');
+    if (!scrollContainer) return;
+
+    const handleScrollAndSyncFloating = () => {
+      // 1. 确保 window 与外层 app-layout 绝对归零，防止拖选大段落导致顶部 Header 被推到视口上方（解决问题 1）
+      if (typeof window !== 'undefined' && window.scrollY !== 0) {
+        window.scrollTo(0, 0);
+      }
+      const appLayout = document.querySelector('.app-layout');
+      if (appLayout && appLayout.scrollTop !== 0) {
+        appLayout.scrollTop = 0;
+      }
+      const readingPanel = document.querySelector('.reading-panel');
+      if (readingPanel && readingPanel.scrollTop !== 0) {
+        readingPanel.scrollTop = 0;
+      }
+
+      // 2. 如果存在选中文本（selection），从当前浏览器 Range 重新获取最新的 clientRect 坐标（解决问题 2）
+      const sel = window.getSelection();
+      if (sel && !sel.isCollapsed && sel.rangeCount > 0) {
+        const range = sel.getRangeAt(0);
+        const rect = range.getBoundingClientRect();
+        setSelection(prev => prev ? {
+          ...prev,
+          rect: { top: rect.top, bottom: rect.bottom, left: rect.left, width: rect.width }
+        } : null);
+      }
+
+      // 3. 如果正在编辑某个高亮（editingHighlight），重新获取正文中对应 mark 元素的坐标
+      if (editingHighlight?.id) {
+        const articleContainer = selectedDoc?.category === 'video'
+          ? document.querySelector('.blog-article')
+          : articleRef.current;
+        const mark = articleContainer?.querySelector(`mark[data-highlight-id="${editingHighlight.id}"]`);
+        if (mark) {
+          const rect = mark.getBoundingClientRect();
+          setEditingHighlight(prev => prev ? {
+            ...prev,
+            rect: { top: rect.top, bottom: rect.bottom, left: rect.left, width: rect.width }
+          } : null);
+        }
+      }
+    };
+
+    scrollContainer.addEventListener('scroll', handleScrollAndSyncFloating, { passive: true });
+    return () => {
+      scrollContainer.removeEventListener('scroll', handleScrollAndSyncFloating);
+    };
+  }, [editingHighlight?.id, selectedDoc?.category]);
+
   // 加载文档的标签和备注
   useEffect(() => {
     if (selectedDoc) {
@@ -1041,6 +1093,43 @@ export default function ReadingPane() {
     }
   };
 
+  // 🎯 选中文本高亮工具栏智能定位计算 (智能翻转 + 避开客户端 Titlebar/Header Drag 区域)
+  const selectionToolbarStyle = useMemo(() => {
+    if (!selection?.rect || typeof window === 'undefined') {
+      return { top: '120px', left: '300px', transform: 'translate(-50%, -100%)' };
+    }
+    
+    const width = window.innerWidth;
+    const height = window.innerHeight;
+    const rect = selection.rect;
+    
+    let left = Math.max(120, Math.min(width - 120, (rect.left || 0) + (rect.width || 0) / 2));
+    
+    // 选区 Safe Top 最少需要 96px（Header 52px + Titlebar 38px + 6px padding）
+    // 带有 transform: translate(-50%, -100%) 时，目标 top 至少为 96 + 48 = 144px
+    const minSafeTopForTopMode = 144;
+    let top = (rect.top || 0) - 10;
+    let isFlipped = false;
+    
+    // 如果选区顶部靠上或大段落划选起点滚出屏幕上方 (top < minSafeTopForTopMode)
+    if (top < minSafeTopForTopMode) {
+      // 优先翻转显示在选区底部下方
+      if (rect.bottom && rect.bottom + 50 < height - 60) {
+        top = rect.bottom + 10;
+        isFlipped = true;
+      } else {
+        // 大段落选区贯穿整个视口时，锁定在 Safe Top 96px 之下
+        top = minSafeTopForTopMode;
+      }
+    }
+    
+    return {
+      top: `${top}px`,
+      left: `${left}px`,
+      transform: isFlipped ? 'translate(-50%, 0)' : 'translate(-50%, -100%)'
+    };
+  }, [selection?.rect]);
+
   if (!selectedDoc) {
     return (
       <div className="reading-panel">
@@ -1074,8 +1163,7 @@ export default function ReadingPane() {
           margin-top: 8px;
         }
         .selection-toolbar {
-          transform: translate(-50%, -100%) !important;
-          margin-top: -10px !important;
+          margin-top: 0px !important;
         }
         .highlight-color-btn {
           width: 24px;
@@ -1115,10 +1203,7 @@ export default function ReadingPane() {
       {selection && (
         <div 
           className="highlight-toolbar selection-toolbar" 
-          style={{ 
-            top: Math.max(70, (selection.rect?.top || 0) - 48), 
-            left: Math.max(100, Math.min(typeof window !== 'undefined' ? window.innerWidth - 120 : 600, (selection.rect?.left || 0) + (selection.rect?.width || 0) / 2)) 
-          }}
+          style={selectionToolbarStyle}
           onMouseUp={(e) => e.stopPropagation()}
         >
           <button 

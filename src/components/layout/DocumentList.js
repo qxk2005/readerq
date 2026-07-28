@@ -7,9 +7,16 @@ import { LOCATION_LABELS, formatDate, truncateText, extractDomain } from '@/lib/
 import { CATEGORY_ICONS_SVG, getCategoryIcon } from '@/components/ui/icons';
 import { Search, Inbox, Clock, Archive, RefreshCw, FileText, Tag, Trash2, RotateCcw } from 'lucide-react';
 
+import ArticleCoverPlaceholder from '@/components/common/ArticleCoverPlaceholder';
+
 function DocumentCard({ doc, index, isActive, onClick, isSelectionMode, isSelected, onToggleSelect, onMoveDoc, onDeleteDoc, currentView }) {
   const { docListElements } = useTheme();
   const { switchTag } = useApp();
+  const [imgFailed, setImgFailed] = useState(false);
+
+  useEffect(() => {
+    setImgFailed(false);
+  }, [doc.image_url]);
 
   // 前 2 篇文档距离顶部较近，Popover 智能向下弹出；其余篇目向上弹出
   const isTopItem = index !== undefined && index <= 1;
@@ -60,18 +67,16 @@ function DocumentCard({ doc, index, isActive, onClick, isSelectionMode, isSelect
             <input type="checkbox" checked={isSelected} readOnly style={{ width: '16px', height: '16px', accentColor: 'var(--color-primary)', pointerEvents: 'none' }} />
           </div>
         )}
-        {doc.image_url ? (
+        {doc.image_url && !imgFailed ? (
           <img
             className="doc-card-image"
             src={doc.image_url}
             alt=""
             loading="lazy"
-            onError={(e) => { e.target.style.display = 'none'; }}
+            onError={() => setImgFailed(true)}
           />
         ) : (
-          <div className="doc-card-image-placeholder">
-            {CATEGORY_ICONS_SVG[doc.category] || <FileText size={24} />}
-          </div>
+          <ArticleCoverPlaceholder doc={doc} mode="thumb" />
         )}
         <div className="doc-card-info">
           <div className="doc-card-title">{doc.title || '无标题'}</div>
