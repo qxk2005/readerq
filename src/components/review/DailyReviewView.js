@@ -87,18 +87,99 @@ export default function DailyReviewView({ onBackToArticles }) {
   const [newTagInput, setNewTagInput] = useState('');
   const [saveLoading, setSaveLoading] = useState(false);
   const [allSystemTags, setAllSystemTags] = useState([]);
+  const [detailedTags, setDetailedTags] = useState([]);
 
-  // 加载系统现有全量标签 (用于编辑标签自动完成)
+  // 加载系统现有全量标签及详细统计信息 (用于编辑标签智能推荐与自动完成)
   useEffect(() => {
-    fetch('/api/tags')
+    fetch('/api/tags?detailed=true')
       .then(res => res.json())
       .then(data => {
         if (data.tags && Array.isArray(data.tags)) {
+          setDetailedTags(data.tags);
           setAllSystemTags(data.tags.map(t => typeof t === 'string' ? t : t.name).filter(Boolean));
         }
       })
       .catch(() => {});
   }, []);
+
+  // 🏷️ 智能标签推荐与三级加权排序工具函数:
+  // 1. 这篇文章最贴切的标签 (isArticleTag)
+  // 2. 最近使用的标签 (lastUsedAt 倒序)
+  // 3. 最多使用的标签 (totalCount 降序)
+  const getSortedSuggestedTags = (query = '', currentTags = []) => {
+    const currentTagsLower = (currentTags || []).map(t => (typeof t === 'string' ? t : t.name || '').toLowerCase());
+
+    // 收集当前文章关联的标签 (从 currentHl、同文章划线及 drawerHighlights 中汇总)
+    const articleTagSet = new Set();
+    if (currentHl) {
+      if (Array.isArray(currentHl.tags)) {
+        currentHl.tags.forEach(t => articleTagSet.add(String(t).toLowerCase()));
+      }
+      const sameArticleHls = (highlights || []).filter(h => 
+        (h.document_title && currentHl.document_title && h.document_title === currentHl.document_title) ||
+        (h.document_id && currentHl.document_id && h.document_id === currentHl.document_id)
+      );
+      sameArticleHls.forEach(h => {
+        if (Array.isArray(h.tags)) {
+          h.tags.forEach(t => articleTagSet.add(String(t).toLowerCase()));
+        }
+      });
+    }
+    if (typeof drawerHighlights !== 'undefined' && Array.isArray(drawerHighlights)) {
+      drawerHighlights.forEach(h => {
+        if (Array.isArray(h.tags)) {
+          h.tags.forEach(t => articleTagSet.add(String(t).toLowerCase()));
+        }
+      });
+    }
+
+    const tagStatsMap = new Map();
+
+    (detailedTags || []).forEach(t => {
+      if (!t) return;
+      const tagName = typeof t === 'string' ? t : t.name || t.key;
+      if (!tagName) return;
+      const keyLower = tagName.toLowerCase();
+      tagStatsMap.set(keyLower, {
+        name: tagName,
+        totalCount: typeof t === 'object' ? (t.total_count || t.highlight_count || 0) : 0,
+        lastUsedAt: typeof t === 'object' && t.last_used_at ? new Date(t.last_used_at).getTime() : 0,
+        isArticleTag: articleTagSet.has(keyLower),
+      });
+    });
+
+    (allSystemTags || []).forEach(t => {
+      const tagName = typeof t === 'string' ? t : t.name || t.key;
+      if (tagName && !tagStatsMap.has(tagName.toLowerCase())) {
+        const keyLower = tagName.toLowerCase();
+        tagStatsMap.set(keyLower, {
+          name: tagName,
+          totalCount: 0,
+          lastUsedAt: 0,
+          isArticleTag: articleTagSet.has(keyLower),
+        });
+      }
+    });
+
+    const candidateList = Array.from(tagStatsMap.values()).filter(
+      item => !currentTagsLower.includes(item.name.toLowerCase())
+    );
+
+    const trimmedQuery = query.trim().toLowerCase().replace(/^#/, '');
+    const filteredList = trimmedQuery
+      ? candidateList.filter(item => item.name.toLowerCase().includes(trimmedQuery))
+      : candidateList;
+
+    return filteredList.sort((a, b) => {
+      const isAArticle = a.isArticleTag ? 1 : 0;
+      const isBArticle = b.isArticleTag ? 1 : 0;
+
+      if (isAArticle !== isBArticle) return isBArticle - isAArticle;
+      if (b.lastUsedAt !== a.lastUsedAt) return b.lastUsedAt - a.lastUsedAt;
+      if (b.totalCount !== a.totalCount) return b.totalCount - a.totalCount;
+      return a.name.localeCompare(b.name, 'zh-CN');
+    });
+  };
 
   // 本文章全部高亮 Drawer 面板状态
   const [showDrawer, setShowDrawer] = useState(false);
@@ -712,52 +793,50 @@ export default function DailyReviewView({ onBackToArticles }) {
                               </button>
                             </div>
 
-                            {/* 标签自动完成匹配下拉列表 */}
-                            {newTagInput.trim() && (
-                              <div style={{
-                                position: 'absolute',
-                                top: '100%',
-                                left: 0,
-                                right: 0,
-                                marginTop: '4px',
-                                backgroundColor: 'var(--color-bg-card)',
-                                border: '1px solid var(--color-border)',
-                                borderRadius: '12px',
-                                boxShadow: 'var(--shadow-md)',
-                                zIndex: 100,
-                                maxHeight: '160px',
-                                overflowY: 'auto',
-                                padding: '6px'
-                              }}>
-                                {allSystemTags
-                                  .filter(t => t.toLowerCase().includes(newTagInput.trim().toLowerCase()) && !editingTags.includes(t))
-                                  .slice(0, 8)
-                                  .map(suggestedTag => (
-                                    <div
-                                      key={suggestedTag}
-                                      onClick={() => {
-                                        setEditingTags(prev => [...prev, suggestedTag]);
-                                        setNewTagInput('');
-                                      }}
-                                      style={{
-                                        padding: '8px 12px',
-                                        borderRadius: '8px',
-                                        fontSize: '12px',
-                                        color: 'var(--color-text-primary)',
-                                        cursor: 'pointer',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: '6px',
-                                        transition: 'background 0.15s'
-                                      }}
-                                      onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--color-bg-hover)'}
-                                      onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-                                    >
-                                      <Tag size={12} style={{ color: 'var(--color-accent)' }} /> #{suggestedTag} (点击选中)
-                                    </div>
-                                  ))}
+                            {/* 智能标签自动完成与快捷推荐下拉列表 (按本文贴切 -> 最近使用 -> 最多使用) */}
+                            <div style={{ marginTop: '10px' }}>
+                              <div style={{ fontSize: '11px', color: 'var(--color-text-tertiary)', marginBottom: '6px', fontWeight: '600' }}>
+                                💡 智能推荐标签 (按本文贴切、最近使用、最多使用自动排序):
                               </div>
-                            )}
+                              <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', maxHeight: '120px', overflowY: 'auto' }}>
+                                {getSortedSuggestedTags(newTagInput, editingTags).slice(0, 10).map(tagObj => (
+                                  <button
+                                    key={tagObj.name}
+                                    type="button"
+                                    onClick={() => {
+                                      if (!editingTags.includes(tagObj.name)) {
+                                        setEditingTags(prev => [...prev, tagObj.name]);
+                                        setNewTagInput('');
+                                      }
+                                    }}
+                                    style={{
+                                      fontSize: '11px',
+                                      padding: '4px 10px',
+                                      borderRadius: '8px',
+                                      border: '1px solid var(--color-border)',
+                                      backgroundColor: tagObj.isArticleTag 
+                                        ? 'rgba(0, 122, 255, 0.12)' 
+                                        : tagObj.lastUsedAt > 0 
+                                          ? 'rgba(255, 149, 0, 0.12)' 
+                                          : 'var(--color-bg-secondary)',
+                                      color: tagObj.isArticleTag 
+                                        ? '#007AFF' 
+                                        : tagObj.lastUsedAt > 0 
+                                          ? '#FF9500' 
+                                          : 'var(--color-text-primary)',
+                                      cursor: 'pointer',
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '4px',
+                                      fontWeight: '500'
+                                    }}
+                                  >
+                                    {tagObj.isArticleTag ? '📌' : tagObj.lastUsedAt > 0 ? '🕒' : '🔥'} #{tagObj.name}
+                                    {tagObj.totalCount > 0 && <span style={{ opacity: 0.65, fontSize: '10px' }}>({tagObj.totalCount})</span>}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
                           </div>
                         </div>
 
@@ -861,48 +940,52 @@ export default function DailyReviewView({ onBackToArticles }) {
                                 ✕
                               </button>
 
-                              {/* 快捷标签自动补全弹出浮层 */}
-                              {quickTagInput.trim() && (
-                                <div style={{
-                                  position: 'absolute',
-                                  top: '100%',
-                                  left: 0,
-                                  marginTop: '4px',
-                                  backgroundColor: 'var(--color-bg-card)',
-                                  border: '1px solid var(--color-border)',
-                                  borderRadius: '10px',
-                                  boxShadow: 'var(--shadow-md)',
-                                  zIndex: 100,
-                                  maxHeight: '140px',
-                                  width: '180px',
-                                  overflowY: 'auto',
-                                  padding: '4px'
-                                }}>
-                                  {allSystemTags
-                                    .filter(t => t.toLowerCase().includes(quickTagInput.trim().toLowerCase()) && !(currentHl.tags || []).includes(t))
-                                    .slice(0, 6)
-                                    .map(suggestedTag => (
-                                      <div
-                                        key={suggestedTag}
-                                        onClick={() => handleQuickAddTag(suggestedTag)}
-                                        style={{
-                                          padding: '6px 10px',
-                                          borderRadius: '6px',
-                                          fontSize: '12px',
-                                          color: 'var(--color-text-primary)',
-                                          cursor: 'pointer',
-                                          display: 'flex',
-                                          alignItems: 'center',
-                                          gap: '4px'
-                                        }}
-                                        onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--color-bg-hover)'}
-                                        onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-                                      >
-                                        <Tag size={11} style={{ color: 'var(--color-accent)' }} /> #{suggestedTag}
-                                      </div>
-                                    ))}
-                                </div>
-                              )}
+                              {/* 快捷标签智能补全与推荐弹出浮层 */}
+                              <div style={{
+                                position: 'absolute',
+                                top: '100%',
+                                left: 0,
+                                marginTop: '4px',
+                                backgroundColor: 'var(--color-bg-card)',
+                                border: '1px solid var(--color-border)',
+                                borderRadius: '10px',
+                                boxShadow: 'var(--shadow-md)',
+                                zIndex: 100,
+                                maxHeight: '160px',
+                                width: '210px',
+                                overflowY: 'auto',
+                                padding: '4px'
+                              }}>
+                                {getSortedSuggestedTags(quickTagInput, currentHl?.tags || [])
+                                  .slice(0, 8)
+                                  .map(tagObj => (
+                                    <div
+                                      key={tagObj.name}
+                                      onClick={() => handleQuickAddTag(tagObj.name)}
+                                      style={{
+                                        padding: '6px 10px',
+                                        borderRadius: '6px',
+                                        fontSize: '12px',
+                                        color: tagObj.isArticleTag ? '#007AFF' : 'var(--color-text-primary)',
+                                        cursor: 'pointer',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justify: 'space-between',
+                                        gap: '6px',
+                                        fontWeight: tagObj.isArticleTag ? '600' : 'normal'
+                                      }}
+                                      onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--color-bg-hover)'}
+                                      onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                                    >
+                                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                        <Tag size={11} style={{ color: tagObj.isArticleTag ? '#007AFF' : 'var(--color-accent)' }} /> #{tagObj.name}
+                                      </span>
+                                      <span style={{ fontSize: '10px', opacity: 0.65 }}>
+                                        {tagObj.isArticleTag ? '📌本文' : tagObj.lastUsedAt > 0 ? '🕒最近' : `🔥${tagObj.totalCount}`}
+                                      </span>
+                                    </div>
+                                  ))}
+                              </div>
                             </div>
                           ) : (
                             <button

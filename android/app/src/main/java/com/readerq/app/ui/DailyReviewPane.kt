@@ -45,6 +45,13 @@ fun parseHlTags(tagsJson: String?): List<String> {
     }
 }
 
+data class TagRecItem(
+    val name: String,
+    val isArticleTag: Boolean,
+    val lastUsedIndex: Int,
+    val frequency: Int
+)
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DailyReviewPane(
@@ -858,7 +865,7 @@ fun DailyReviewPane(
         }
     }
 
-    // 5. 标签添加对话框 (带自动完成与常用标签选择)
+    // 5. 标签添加对话框 (带智能三级推荐: 本文贴切 -> 最近使用 -> 最多使用)
     if (showAddTagDialog && currentHl != null) {
         val allTags by viewModel.allTags.collectAsState()
         val currentHlTags = remember(currentHl) { parseHlTags(currentHl.tags_json) }
@@ -869,14 +876,61 @@ fun DailyReviewPane(
             parts.lastOrNull()?.trim() ?: ""
         }
 
-        // 匹配未被当前划线添加的候选标签列表
-        val matchedTags = remember(allTags, currentQuery, currentHlTags) {
-            val candidate = if (currentQuery.isBlank()) {
-                allTags
-            } else {
-                allTags.filter { it.contains(currentQuery, ignoreCase = true) }
+        // 🏷️ 智能标签三级组合推荐逻辑:
+        // 1. 本文最贴切标签 (isArticleTag)
+        // 2. 最近使用标签 (lastUsedIndex 越小表示在列表里越新)
+        // 3. 最多使用标签 (frequency 降序)
+        val sortedTagRecommendations = remember(allTags, rawHighlights, currentHl, currentDoc, currentQuery, currentHlTags) {
+            val articleTags = mutableSetOf<String>()
+            if (currentDoc != null) {
+                parseHlTags(currentDoc.tags_json).forEach { articleTags.add(it.lowercase()) }
             }
-            candidate.filter { !currentHlTags.contains(it) }.take(12)
+            if (currentHl != null) {
+                val sameDocHls = rawHighlights.filter { 
+                    it.document_id == currentHl.document_id || 
+                    (currentDoc != null && (it.document_id == currentDoc.id || it.document_id.contains(currentDoc.id)))
+                }
+                sameDocHls.forEach { hl ->
+                    parseHlTags(hl.tags_json).forEach { articleTags.add(it.lowercase()) }
+                }
+            }
+
+            val freqMap = mutableMapOf<String, Int>()
+            val lastIndexMap = mutableMapOf<String, Int>()
+
+            rawHighlights.forEachIndexed { idx, hl ->
+                val tags = parseHlTags(hl.tags_json)
+                tags.forEach { tag ->
+                    val k = tag.lowercase()
+                    freqMap[k] = (freqMap[k] ?: 0) + 1
+                    if (!lastIndexMap.containsKey(k)) {
+                        lastIndexMap[k] = idx
+                    }
+                }
+            }
+
+            val candidateTags = allTags.filter { tag ->
+                !currentHlTags.contains(tag) &&
+                (currentQuery.isBlank() || tag.contains(currentQuery, ignoreCase = true))
+            }
+
+            candidateTags.map { tag ->
+                val k = tag.lowercase()
+                val isArt = articleTags.contains(k)
+                val freq = freqMap[k] ?: 0
+                val lastIdx = lastIndexMap[k] ?: Int.MAX_VALUE
+                TagRecItem(
+                    name = tag,
+                    isArticleTag = isArt,
+                    lastUsedIndex = lastIdx,
+                    frequency = freq
+                )
+            }.sortedWith(
+                compareByDescending<TagRecItem> { it.isArticleTag }
+                    .thenBy { it.lastUsedIndex }
+                    .thenByDescending { it.frequency }
+                    .thenBy { it.name }
+            ).take(15)
         }
 
         AlertDialog(
@@ -914,7 +968,7 @@ fun DailyReviewPane(
 
                     // 自动完成 / 候选标签 Chips
                     Text(
-                        text = if (currentQuery.isBlank()) "💡 现有常用标签 (点击快捷添加):" else "🔍 匹配的标签 (点击自动完成):",
+                        text = if (currentQuery.isBlank()) "💡 智能推荐标签 (按本文贴切、最近使用、最多使用排序):" else "🔍 智能筛选标签:",
                         fontSize = 12.sp,
                         fontWeight = FontWeight.SemiBold,
                         color = textColor.copy(alpha = 0.7f)
@@ -922,32 +976,52 @@ fun DailyReviewPane(
 
                     Spacer(modifier = Modifier.height(8.dp))
 
-                    if (matchedTags.isNotEmpty()) {
+                    if (sortedTagRecommendations.isNotEmpty()) {
                         androidx.compose.foundation.lazy.LazyRow(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            items(matchedTags.size) { idx ->
-                                val tag = matchedTags[idx]
+                            items(sortedTagRecommendations.size) { idx ->
+                                val rec = sortedTagRecommendations[idx]
+                                
+                                val badgePrefix = when {
+                                    rec.isArticleTag -> "📌 本文"
+                                    rec.lastUsedIndex < Int.MAX_VALUE -> "🕒 最近"
+                                    rec.frequency > 0 -> "🔥 常用(${rec.frequency})"
+                                    else -> "🏷️"
+                                }
+
+                                val chipBg = when {
+                                    rec.isArticleTag -> Color(0xFF007AFF).copy(alpha = 0.15f)
+                                    rec.lastUsedIndex < Int.MAX_VALUE -> Color(0xFFFF9500).copy(alpha = 0.15f)
+                                    else -> MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)
+                                }
+
+                                val chipColor = when {
+                                    rec.isArticleTag -> Color(0xFF007AFF)
+                                    rec.lastUsedIndex < Int.MAX_VALUE -> Color(0xFFFF9500)
+                                    else -> MaterialTheme.colorScheme.primary
+                                }
+
                                 FilterChip(
                                     selected = false,
                                     onClick = {
                                         val parts = tagInputText.split(",", "，").map { it.trim() }.filter { it.isNotEmpty() }
                                         val newParts = if (currentQuery.isNotBlank() && parts.isNotEmpty()) {
-                                            parts.dropLast(1) + tag
+                                            parts.dropLast(1) + rec.name
                                         } else {
-                                            parts + tag
+                                            parts + rec.name
                                         }
                                         tagInputText = newParts.distinct().joinToString(", ")
                                     },
-                                    label = { Text("#$tag", fontSize = 12.sp) },
+                                    label = { Text("$badgePrefix #${rec.name}", fontSize = 11.sp, fontWeight = FontWeight.SemiBold) },
                                     leadingIcon = {
-                                        Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(14.dp))
+                                        Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(13.dp), tint = chipColor)
                                     },
                                     shape = RoundedCornerShape(12.dp),
                                     colors = FilterChipDefaults.filterChipColors(
-                                        containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
-                                        labelColor = MaterialTheme.colorScheme.primary
+                                        containerColor = chipBg,
+                                        labelColor = chipColor
                                     )
                                 )
                             }
