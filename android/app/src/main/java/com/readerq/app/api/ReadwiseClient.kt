@@ -12,6 +12,10 @@ import io.ktor.serialization.kotlinx.json.*
 import kotlinx.coroutines.delay
 import kotlinx.serialization.json.Json
 
+import io.ktor.client.plugins.HttpTimeout
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+
 class ReadwiseClient(private val token: String) {
 
     private val json = Json {
@@ -22,6 +26,11 @@ class ReadwiseClient(private val token: String) {
     private val client = HttpClient(Android) {
         install(ContentNegotiation) {
             json(json)
+        }
+        install(HttpTimeout) {
+            requestTimeoutMillis = 180_000L
+            connectTimeoutMillis = 15_000L
+            socketTimeoutMillis = 180_000L
         }
         install(Logging) {
             level = LogLevel.INFO
@@ -452,7 +461,7 @@ class ReadwiseClient(private val token: String) {
 
     // 17. 从 Server API Endpoint 获取指定文档的完整博客文章响应（带 502 重试）
     suspend fun fetchBlogFromServerFull(baseUrl: String, documentId: String): ServerBlogResponse? {
-        val cleanBaseUrl = baseUrl.trim().removeSuffix("/")
+        val cleanBaseUrl = if (baseUrl.contains("10.0.2.2")) "http://127.0.0.1:3000" else baseUrl.trim().removeSuffix("/")
         if (cleanBaseUrl.isBlank()) return null
         val url = "$cleanBaseUrl/api/documents/$documentId/blog"
         val maxRetries = 3
@@ -484,7 +493,7 @@ class ReadwiseClient(private val token: String) {
 
     // 18. 从 Server API Endpoint 获取指定文档的字幕结构化响应（带 502 重试）
     suspend fun fetchSubtitleFromServerFull(baseUrl: String, documentId: String): ServerSubtitleResponse? {
-        val cleanBaseUrl = baseUrl.trim().removeSuffix("/")
+        val cleanBaseUrl = if (baseUrl.contains("10.0.2.2")) "http://127.0.0.1:3000" else baseUrl.trim().removeSuffix("/")
         if (cleanBaseUrl.isBlank()) return null
         val url = "$cleanBaseUrl/api/documents/$documentId/subtitles"
         val maxRetries = 3
@@ -528,6 +537,41 @@ class ReadwiseClient(private val token: String) {
         } catch (e: Exception) {
             println("[fetchSubtitleFromServer] EXCEPTION: ${e.javaClass.simpleName}: ${e.message}")
             null
+        }
+    }
+
+    // 19. 远程触发服务器端字幕自动下载与处理（调用 video-pipeline API）
+    // 读取 SSE 流直到完成，返回最终结果
+    suspend fun triggerServerSubtitleDownload(
+        baseUrl: String,
+        documentId: String,
+        videoUrl: String,
+        title: String = "视频文章"
+    ): Boolean {
+        val cleanBaseUrl = if (baseUrl.contains("10.0.2.2")) "http://127.0.0.1:3000" else baseUrl.trim().removeSuffix("/")
+        if (cleanBaseUrl.isBlank()) return false
+        val url = "$cleanBaseUrl/api/video-pipeline/process"
+        return try {
+            val payload = JsonObject(mapOf(
+                "docId" to JsonPrimitive(documentId),
+                "url" to JsonPrimitive(videoUrl),
+                "title" to JsonPrimitive(title)
+            )).toString()
+
+            val response = client.post(url) {
+                contentType(ContentType.Application.Json)
+                setBody(payload)
+            }
+            if (response.status.isSuccess()) {
+                val responseText = response.bodyAsText()
+                !responseText.contains("\"type\":\"error\"")
+            } else {
+                println("[triggerServerSubtitleDownload] HTTP ${response.status.value}")
+                false
+            }
+        } catch (e: Exception) {
+            println("[triggerServerSubtitleDownload] EXCEPTION: ${e.javaClass.simpleName}: ${e.message}")
+            false
         }
     }
 }

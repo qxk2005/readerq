@@ -2320,6 +2320,30 @@ fun SubtitlePanelComposable(
             )
 
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                // 🎬 下载字幕按钮（仅对 YouTube 视频文章显示）
+                val videoUrl = doc.source_url ?: doc.url
+                val isYouTubeVideo = videoUrl.contains("youtube.com") || videoUrl.contains("youtu.be")
+                val isDownloading by viewModel.subtitleDownloading.collectAsState()
+                if (isYouTubeVideo) {
+                    Surface(
+                        onClick = {
+                            if (!isDownloading) {
+                                viewModel.downloadSubtitleFromServer(doc.id, videoUrl, doc.title)
+                                Toast.makeText(context, "正在从服务器下载字幕...", Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                        shape = RoundedCornerShape(6.dp),
+                        color = if (isDownloading) Color(0xFF6366F1).copy(alpha = 0.08f) else Color(0xFF6366F1).copy(alpha = 0.15f)
+                    ) {
+                        Text(
+                            text = if (isDownloading) "提取中..." else "下载字幕",
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                            fontSize = 12.sp,
+                            color = if (isDownloading) Color(0xFF6366F1).copy(alpha = 0.5f) else Color(0xFF6366F1),
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                }
                 // 上传按钮
                 Surface(
                     onClick = { srtPickerLauncher.launch("*/*") },
@@ -2406,19 +2430,43 @@ fun SubtitlePanelComposable(
             }
         }
 
-        // 字幕内容
-        if (isLoading) {
+        val activeProgress by viewModel.activeSubtitleProgress.collectAsState()
+        val downloadingDocId by viewModel.downloadingDocId.collectAsState()
+        val isDownloadingThisDoc = downloadingDocId == doc.id
+
+        // 字幕内容 / 加载与进度面板
+        if (isLoading || isDownloadingThisDoc) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(20.dp),
                 contentAlignment = Alignment.Center
             ) {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(24.dp),
-                    color = accentColor,
-                    strokeWidth = 2.dp
-                )
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(32.dp),
+                        color = accentColor,
+                        strokeWidth = 2.5.dp
+                    )
+                    val progressMsg = if (isDownloadingThisDoc) activeProgress else "正在加载字幕..."
+                    if (!progressMsg.isNullOrBlank()) {
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = accentColor.copy(alpha = 0.12f),
+                        ) {
+                            Text(
+                                text = progressMsg,
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                                fontSize = 12.sp,
+                                color = accentColor,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+                    }
+                }
             }
         } else if (subtitles.isEmpty()) {
             Box(

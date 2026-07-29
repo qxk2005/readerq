@@ -569,6 +569,7 @@ fun AddDocumentDialog(
 ) {
     val isSaving by viewModel.isSavingDoc.collectAsState()
     val saveResult by viewModel.saveDocResult.collectAsState()
+    val pipelineProgress by viewModel.videoPipelineProgress.collectAsState()
 
     var activeTab by remember { mutableStateOf("url") } // "url" | "text"
     var urlInput by remember { mutableStateOf("") }
@@ -583,10 +584,10 @@ fun AddDocumentDialog(
     val borderColor = if (isDark) Color(0xFF444444) else Color(0xFFE0E0E0)
     val accentColor = Color(0xFF3B82F6)
 
-    // 处理保存结果
+    // 处理保存结果（视频文章等 pipeline 完成后再自动关闭）
     LaunchedEffect(saveResult) {
         if (saveResult?.success == true) {
-            kotlinx.coroutines.delay(1500)
+            kotlinx.coroutines.delay(2000)
             viewModel.clearSaveDocResult()
             onDismiss()
         }
@@ -707,6 +708,41 @@ fun AddDocumentDialog(
                     )
                 )
 
+                // 🎬 视频管线处理实时进度面板
+                if (pipelineProgress != null) {
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(10.dp),
+                        color = if (isDark) Color(0xFF1A2332) else Color(0xFFEFF6FF),
+                        border = BorderStroke(1.dp, accentColor.copy(alpha = 0.3f))
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 12.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            if (isSaving) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(16.dp),
+                                    color = accentColor,
+                                    strokeWidth = 2.dp
+                                )
+                            }
+                            Text(
+                                text = pipelineProgress ?: "",
+                                fontSize = 12.sp,
+                                color = if (isDark) Color(0xFF93C5FD) else Color(0xFF1E40AF),
+                                fontWeight = FontWeight.Medium,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                    }
+                }
+
                 // Result message
                 saveResult?.let { result ->
                     Text(
@@ -778,7 +814,11 @@ fun AddDocumentDialog(
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                         }
-                        Text(if (isSaving) "保存中..." else "保存")
+                        Text(
+                            if (isSaving && pipelineProgress != null) "处理中..."
+                            else if (isSaving) "保存中..."
+                            else "保存"
+                        )
                     }
                 }
             }

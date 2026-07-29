@@ -916,6 +916,19 @@ export function saveSubtitle(documentId, srtContent, bilingualJson = null, updat
   const now = new Date().toISOString();
   const effectiveUpdatedAt = updatedAt || now;
 
+  // 💡 确保 documents 表中存在该记录以满足外键约束 (FOREIGN KEY document_id REFERENCES documents(id))
+  try {
+    const docExists = db.prepare('SELECT id FROM documents WHERE id = ?').get(documentId);
+    if (!docExists) {
+      db.prepare(`
+        INSERT INTO documents (id, title, location, created_at, updated_at)
+        VALUES (?, '视频文章', 'new', datetime('now'), datetime('now'))
+      `).run(documentId);
+    }
+  } catch (e) {
+    console.warn('[saveSubtitle] 自动补齐 documents 记录失败:', e.message);
+  }
+
   try {
     db.prepare(`
       INSERT OR REPLACE INTO subtitles (document_id, srt_content, bilingual_json, created_at, updated_at)

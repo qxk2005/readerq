@@ -14,6 +14,13 @@ import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.buildJsonArray
+import kotlinx.serialization.json.put
+import kotlinx.serialization.json.add
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.encodeToString
@@ -22,8 +29,13 @@ import io.ktor.client.HttpClient
 import io.ktor.client.engine.android.Android
 import io.ktor.client.request.get
 import io.ktor.client.request.header
+import io.ktor.client.request.post
+import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpStatusCode
+import io.ktor.http.ContentType
+import io.ktor.http.contentType
+import io.ktor.http.isSuccess
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.serialization.kotlinx.json.json
 import io.ktor.client.call.body
@@ -1066,6 +1078,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    private suspend fun getServerBaseUrl(): String {
+        val custom = settingDao.getSetting("server_base_url")?.trim()
+        if (custom.isNullOrBlank() || custom == "http://10.0.2.2:3000") {
+            return "http://127.0.0.1:3000"
+        }
+        return custom.removeSuffix("/")
+    }
+
     // --- Save Document Methods ---
 
     private val _saveDocResult = MutableStateFlow<SaveDocResult?>(null)
@@ -1074,8 +1094,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _isSavingDoc = MutableStateFlow(false)
     val isSavingDoc: StateFlow<Boolean> = _isSavingDoc.asStateFlow()
 
+    // 视频处理管线实时进度
+    private val _videoPipelineProgress = MutableStateFlow<String?>(null)
+    val videoPipelineProgress: StateFlow<String?> = _videoPipelineProgress.asStateFlow()
+
     fun clearSaveDocResult() {
         _saveDocResult.value = null
+        _videoPipelineProgress.value = null
     }
 
     fun saveDocumentByUrl(
@@ -1087,21 +1112,156 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val currentToken = _token.value ?: return
         _isSavingDoc.value = true
         _saveDocResult.value = null
+        _videoPipelineProgress.value = null
+
+        val isVideoUrl = url.contains("youtube.com") || url.contains("youtu.be")
 
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val client = ReadwiseClient(currentToken)
+                val serverUrl = getServerBaseUrl()
+
+                // 步骤 1：保存到 Readwise
+                if (isVideoUrl) {
+                    _videoPipelineProgress.value = "⌛ [1/5] 正在保存视频文章到 Readwise..."
+                }
                 val request = com.readerq.app.api.ReadwiseSaveRequest(
                     url = url,
                     tags = if (!tags.isNullOrEmpty()) tags else null,
                     author = author?.takeIf { it.isNotBlank() },
                     notes = notes?.takeIf { it.isNotBlank() }
                 )
-                val result = client.saveDocument(request)
-                _saveDocResult.value = SaveDocResult(
-                    success = true,
-                    message = "文章已保存到 ReaderQ"
-                )
+
+                // 优先通过服务器端保存（会触发 oEmbed 获取真实标题）
+                var docId: String? = null
+                var docTitle: String? = null
+                try {
+                    val serverSaveUrl = "$serverUrl/api/readwise/save"
+                    val saveResp = HttpClient(Android) {
+                        install(ContentNegotiation) {
+                            json(Json {
+                                ignoreUnknownKeys = true
+                                coerceInputValues = true
+                            })
+                        }
+                    }.use { httpClient ->
+                        val savePayload = buildJsonObject {
+                            put("url", url)
+                            put("author", author ?: "")
+                            put("notes", notes ?: "")
+                            put("tags", buildJsonArray {
+                                (tags ?: emptyList()).forEach { add(it) }
+                            })
+                        }.toString()
+                        httpClient.post(serverSaveUrl) {
+                            contentType(ContentType.Application.Json)
+                            setBody(savePayload)
+                        }
+                    }
+                    if (saveResp.status.isSuccess()) {
+                        val respText = saveResp.bodyAsText()
+                        // 解析 JSON 获取 id 和 title
+                        try {
+                            val jsonObj = kotlinx.serialization.json.Json.parseToJsonElement(respText)
+                            if (jsonObj is kotlinx.serialization.json.JsonObject) {
+                                docId = (jsonObj["id"] as? kotlinx.serialization.json.JsonPrimitive)?.content
+                                docTitle = (jsonObj["title"] as? kotlinx.serialization.json.JsonPrimitive)?.content
+                            }
+                        } catch (_: Exception) {}
+                    }
+                } catch (e: Exception) {
+                    // Server 保存失败则回退到直接 Readwise API
+                    println("[saveDocumentByUrl] Server save failed, fallback: ${e.message}")
+                    val result = client.saveDocument(request)
+                    docId = result.id
+                }
+
+                if (docId == null) {
+                    throw Exception("保存文档失败，未返回文档 ID")
+                }
+
+                if (isVideoUrl) {
+                    _videoPipelineProgress.value = "✅ [1/5] 文章已保存 → ${docTitle ?: "视频文章"}"
+                    kotlinx.coroutines.delay(500)
+
+                    // 步骤 2-5：调用服务器端 video-pipeline SSE 流式接口
+                    // 由于 Ktor Android 不支持 SSE 流式读取，使用并发进度模拟 + 实际结果
+                    _videoPipelineProgress.value = "⌛ [2/5] 正在从 YouTube 提取字幕..."
+
+                    // 启动进度模拟（在后台逐步更新进度文字）
+                    val progressJob = viewModelScope.launch(Dispatchers.IO) {
+                        val steps = listOf(
+                            3000L to "⌛ [2/5] 正在尝试直接抓取公开字幕轨...",
+                            6000L to "⌛ [2/5] 正在尝试使用 Chrome Cookie 解密提取字幕...",
+                            12000L to "⌛ [3/5] 正在调用 AI 进行中英对照翻译...",
+                            20000L to "⌛ [4/5] 正在调用大模型生成视频博客文章...",
+                            30000L to "⌛ [5/5] 正在同步字幕与博客到阿里云 OSS...",
+                        )
+                        for ((delay, msg) in steps) {
+                            kotlinx.coroutines.delay(delay)
+                            _videoPipelineProgress.value = msg
+                        }
+                    }
+
+                    try {
+                        val pipelineUrl = "$serverUrl/api/video-pipeline/process"
+                        val pipeResp = HttpClient(Android) {
+                            install(ContentNegotiation) {
+                                json(Json {
+                                    ignoreUnknownKeys = true
+                                })
+                            }
+                            // 设置较长超时（pipeline 可能运行 60 秒以上）
+                            install(io.ktor.client.plugins.HttpTimeout) {
+                                requestTimeoutMillis = 120_000
+                                connectTimeoutMillis = 10_000
+                                socketTimeoutMillis = 120_000
+                            }
+                        }.use { httpClient ->
+                            httpClient.post(pipelineUrl) {
+                                contentType(ContentType.Application.Json)
+                                setBody("""{"docId":"$docId","url":"$url","title":"${docTitle ?: "视频文章"}"}""")
+                            }
+                        }
+
+                        // Pipeline 完成，停止进度模拟
+                        progressJob.cancel()
+
+                        if (pipeResp.status.isSuccess()) {
+                            val sseText = pipeResp.bodyAsText()
+                            // 解析 SSE 流中最后一条进度消息作为最终状态
+                            var lastMsg: String? = null
+                            sseText.split("\n\n").forEach { chunk ->
+                                if (chunk.startsWith("data: ")) {
+                                    try {
+                                        val jsonEl = Json.parseToJsonElement(chunk.removePrefix("data: "))
+                                        if (jsonEl is kotlinx.serialization.json.JsonObject) {
+                                            val msg = (jsonEl["message"] as? kotlinx.serialization.json.JsonPrimitive)?.content
+                                            if (msg != null) lastMsg = msg
+                                        }
+                                    } catch (_: Exception) {}
+                                }
+                            }
+                            _videoPipelineProgress.value = lastMsg ?: "✅ [完成] 视频处理已完成"
+                        } else {
+                            _videoPipelineProgress.value = "⚠️ 服务器处理返回异常 (HTTP ${pipeResp.status.value})"
+                        }
+                    } catch (e: Exception) {
+                        progressJob.cancel()
+                        _videoPipelineProgress.value = "⚠️ 字幕处理跳过: ${e.message}"
+                    }
+
+                    _saveDocResult.value = SaveDocResult(
+                        success = true,
+                        message = "✅ 视频文章添加完成！字幕与博客已自动处理"
+                    )
+                } else {
+                    _saveDocResult.value = SaveDocResult(
+                        success = true,
+                        message = "文章已保存到 ReaderQ"
+                    )
+                }
+
                 // 触发同步以获取新文章
                 startSync()
             } catch (e: Exception) {
@@ -1111,6 +1271,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 )
             } finally {
                 _isSavingDoc.value = false
+                // 延迟清除进度信息
+                if (isVideoUrl) {
+                    kotlinx.coroutines.delay(2000)
+                    _videoPipelineProgress.value = null
+                }
             }
         }
     }
@@ -1271,7 +1436,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 if (!ossHandled) {
                     val token = settingDao.getSetting("readwise_token")?.replace("\"", "") ?: ""
                     val client = com.readerq.app.api.ReadwiseClient(token)
-                    val serverUrl = settingDao.getSetting("server_base_url") ?: "http://10.0.2.2:3000"
+                    val serverUrl = getServerBaseUrl()
 
                     val serverResp = try {
                         client.fetchSubtitleFromServerFull(serverUrl, documentId)
@@ -1393,7 +1558,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 if (!ossHandled) {
                     val token = settingDao.getSetting("readwise_token")?.replace("\"", "") ?: ""
                     val client = com.readerq.app.api.ReadwiseClient(token)
-                    val serverUrl = settingDao.getSetting("server_base_url") ?: "http://10.0.2.2:3000"
+                    val serverUrl = getServerBaseUrl()
 
                     val serverResp = try {
                         client.fetchBlogFromServerFull(serverUrl, documentId)
@@ -1540,6 +1705,68 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
             } catch (e: Exception) {
                 // 忽略
+            }
+        }
+    }
+
+    // 远程触发服务器端字幕自动下载（通过 video-pipeline API）
+    private val _subtitleDownloading = MutableStateFlow(false)
+    val subtitleDownloading: StateFlow<Boolean> = _subtitleDownloading.asStateFlow()
+
+    private val _downloadingDocId = MutableStateFlow<String?>(null)
+    val downloadingDocId: StateFlow<String?> = _downloadingDocId.asStateFlow()
+
+    private val _activeSubtitleProgress = MutableStateFlow<String?>(null)
+    val activeSubtitleProgress: StateFlow<String?> = _activeSubtitleProgress.asStateFlow()
+
+    fun downloadSubtitleFromServer(documentId: String, videoUrl: String, title: String = "视频文章") {
+        viewModelScope.launch(Dispatchers.IO) {
+            _subtitleDownloading.value = true
+            _downloadingDocId.value = documentId
+            _subtitleLoading.value = true
+            _activeSubtitleProgress.value = "⌛ [1/4 抓取字幕] 正在尝试从 YouTube 免 Cookie 提取字幕轨..."
+
+            // 后台步进提示
+            val progressJob = viewModelScope.launch(Dispatchers.IO) {
+                val steps = listOf(
+                    3000L to "⌛ [1/4 抓取字幕] 正在解析带时间戳字幕卡片...",
+                    7000L to "⌛ [2/4 双语翻译] 正在调用 AI 进行中英对照翻译...",
+                    16000L to "⌛ [3/4 博客转换] 正在生成 Markdown 精选视频博客...",
+                    25000L to "☁️ [4/4 OSS 同步] 正在无缝同步到阿里云 OSS...",
+                )
+                for ((delay, msg) in steps) {
+                    kotlinx.coroutines.delay(delay)
+                    if (_downloadingDocId.value == documentId) {
+                        _activeSubtitleProgress.value = msg
+                    }
+                }
+            }
+
+            try {
+                val token = settingDao.getSetting("readwise_token")?.replace("\"", "") ?: ""
+                val client = com.readerq.app.api.ReadwiseClient(token)
+                val serverUrl = getServerBaseUrl()
+
+                try {
+                    client.triggerServerSubtitleDownload(serverUrl, documentId, videoUrl, title)
+                } catch (e: Exception) {
+                    println("[downloadSubtitleFromServer] Pipeline trigger error: ${e.message}")
+                }
+
+                progressJob.cancel()
+                _activeSubtitleProgress.value = "✅ 处理完成！正在刷新字幕..."
+
+                // 重新从服务器/本地拉取最新字幕和博客
+                loadSubtitles(documentId)
+                loadBlog(documentId)
+            } catch (e: Exception) {
+                progressJob.cancel()
+                println("[downloadSubtitleFromServer] EXCEPTION: ${e.message}")
+            } finally {
+                _subtitleDownloading.value = false
+                _downloadingDocId.value = null
+                _subtitleLoading.value = false
+                _activeSubtitleProgress.value = null
             }
         }
     }

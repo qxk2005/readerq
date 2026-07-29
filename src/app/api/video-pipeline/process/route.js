@@ -62,6 +62,12 @@ export async function POST(request) {
           const { srtContent, segments } = subtitleFetchResult;
           sendProgress('progress', `⌛ [1/4 抓取字幕] 成功提取 ${segments.length} 条带时间戳字幕卡片`);
 
+          // 💡 阶段 1 存库：立即将抓取到的原始字幕写入本地 DB 与 OSS，确保字幕秒级可用
+          saveSubtitle(docId, srtContent, segments);
+          if (isOssAvailable()) {
+            try { uploadSubtitleToOss(docId, srtContent); } catch (e) {}
+          }
+
           let finalSegments = segments;
           let generatedBlogHtml = null;
 
@@ -75,6 +81,8 @@ export async function POST(request) {
                 finalSegments = translated;
                 const translatedCount = translated.filter(s => s.zh).length;
                 sendProgress('progress', `✅ [2/4 双语翻译] 已成功生成 ${translatedCount} 句中英双语对照`);
+                // 更新为双语字幕
+                saveSubtitle(docId, srtContent, finalSegments);
               }
             } catch (aiErr) {
               sendProgress('progress', `⚠️ [2/4 双语翻译] AI 翻译跳过: ${aiErr.message}`);
@@ -97,7 +105,7 @@ export async function POST(request) {
             sendProgress('progress', 'ℹ️ 未配置 OpenAI 服务器，跳过 AI 双语翻译与博客生成');
           }
 
-          // 3. 本地与 OSS 存库阶段
+          // 3. 本地与 OSS 存库阶段 (更新最终版双语字幕与博客)
           saveSubtitle(docId, srtContent, finalSegments);
           sendProgress('progress', '💾 字幕与数据已保存到本地 SQLite 数据库');
 
