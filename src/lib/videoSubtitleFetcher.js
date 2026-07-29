@@ -1,5 +1,5 @@
 import { YoutubeTranscript } from 'youtube-transcript';
-import { mergeSubtitlesSmartly, formatTimestamp } from './subtitleParser.js';
+import { mergeSubtitlesSmartly, formatTimestamp, parseSrv1ToSegments } from './subtitleParser.js';
 import { getSetting } from './db.js';
 import { exec } from 'child_process';
 import { promisify } from 'util';
@@ -99,7 +99,7 @@ function parseSrtToSegments(srtContent) {
 }
 
 /**
- * 使用 yt-dlp 自动解密主 Chrome Keychain Cookie 并提取 YouTube 字幕 (终极可靠后备方案)
+ * 使用 yt-dlp 自动提取 YouTube 人工及自动生成字幕轨 (全语言支持与多维匹配)
  * @param {string} videoUrl YouTube 视频 URL
  * @param {Function} [onRetryStatus] 状态回调
  * @returns {Promise<{ srtContent: string, segments: Array, language: string } | null>}
@@ -111,61 +111,67 @@ async function fetchSubtitlesViaYtDlp(videoUrl, onRetryStatus = null) {
 
   try {
     if (onRetryStatus) {
-      onRetryStatus(0, 0, '🔑 使用本机 Chrome 已登录会话自动解密提取字幕中...');
+      onRetryStatus(0, 0, '🔑 使用后端 yt-dlp 提取高清字幕轨中...');
     }
 
-    const cmd = `yt-dlp --cookies-from-browser chrome --write-auto-sub --sub-lang en --convert-subs srt --skip-download -o "${outTemplate}" "${videoUrl}" 2>&1`;
+    const userCookie = getSetting('youtube_cookie', '');
+    let cookieHeader = '';
+    if (userCookie && typeof userCookie === 'string' && userCookie.trim().length > 0) {
+      cookieHeader = `--add-header "Cookie: ${userCookie.trim().replace(/"/g, '\\"')}"`;
+    }
 
-    const { stdout, stderr } = await execAsync(cmd, { timeout: 30000 });
+    // 优先按原生 srv1 / srv2 / ttml 原生格式抓取，杜绝 VTT 滚屏转码带来的重复
+    const subLangs = "en,en-orig,en-US,en-GB,zh-Hans,zh-Hant,zh,ja,es,fr,de";
+    const cmd = `yt-dlp ${cookieHeader} --write-sub --write-auto-sub --sub-lang "${subLangs}" --sub-format "srv1/srv2/srv3/ttml/srt/best" --skip-download -o "${outTemplate}.%(ext)s" "${videoUrl}" 2>&1`;
+
+    const { stdout, stderr } = await execAsync(cmd, { timeout: 35000 });
     const output = stdout + (stderr || '');
+    console.log('[yt-dlp 提取结果]:', output.substring(0, 500));
 
-    // 查找生成的 SRT 文件
-    const srtPath = `${outTemplate}.en.srt`;
-    if (fs.existsSync(srtPath)) {
-      const srtContent = fs.readFileSync(srtPath, 'utf-8');
-      // 清理临时文件
-      try { fs.unlinkSync(srtPath); } catch (e) {}
+    // 全量扫描当前 uniqueId 产生的所有字幕产物 (.srv1, .ttml, .srt, .xml)
+    const generatedFiles = fs.readdirSync(tmpDir).filter(f => f.startsWith(uniqueId) && (f.endsWith('.srv1') || f.endsWith('.ttml') || f.endsWith('.srt') || f.endsWith('.xml')));
+    
+    // 优先排位：英文原生 (en, en-orig, en-US) -> 中文 (zh, zh-Hans) -> 其他语言
+    const sortedFiles = generatedFiles.sort((a, b) => {
+      const isAEn = a.includes('.en') || a.includes('.en-orig');
+      const isBEn = b.includes('.en') || b.includes('.en-orig');
+      if (isAEn && !isBEn) return -1;
+      if (!isAEn && isBEn) return 1;
+      return 0;
+    });
 
-      if (srtContent && srtContent.trim().length > 50) {
-        const rawSegments = parseSrtToSegments(srtContent);
-        if (rawSegments.length > 0) {
-          const mergedSegments = mergeSubtitlesSmartly(rawSegments, 10);
-          const cleanSrt = convertSegmentsToSrt(mergedSegments);
-          return {
-            srtContent: cleanSrt,
-            segments: mergedSegments,
-            language: 'en',
-          };
-        }
-      }
-    }
-
-    // 尝试其他语言
-    const files = fs.readdirSync(tmpDir).filter(f => f.startsWith(uniqueId) && f.endsWith('.srt'));
-    for (const file of files) {
+    for (const file of sortedFiles) {
       const filePath = path.join(tmpDir, file);
-      const srtContent = fs.readFileSync(filePath, 'utf-8');
-      try { fs.unlinkSync(filePath); } catch (e) {}
+      try {
+        const fileContent = fs.readFileSync(filePath, 'utf-8');
+        try { fs.unlinkSync(filePath); } catch (e) {}
 
-      if (srtContent && srtContent.trim().length > 50) {
-        const rawSegments = parseSrtToSegments(srtContent);
-        if (rawSegments.length > 0) {
-          const mergedSegments = mergeSubtitlesSmartly(rawSegments, 10);
-          const cleanSrt = convertSegmentsToSrt(mergedSegments);
-          const langMatch = file.match(/\.(\w{2,5})\.srt$/);
-          return {
-            srtContent: cleanSrt,
-            segments: mergedSegments,
-            language: langMatch ? langMatch[1] : 'auto',
-          };
+        if (fileContent && fileContent.trim().length > 30) {
+          let segments = [];
+          if (file.endsWith('.srv1') || file.endsWith('.ttml') || file.endsWith('.xml') || fileContent.includes('<text ')) {
+            segments = parseSrv1ToSegments(fileContent);
+          } else {
+            segments = parseSrtToSegments(fileContent);
+          }
+
+          if (segments.length > 0) {
+            const cleanSrt = convertSegmentsToSrt(segments);
+            const langMatch = file.match(/\.([a-zA-Z0-9_-]+)\.(srv1|ttml|srt|xml)$/);
+            return {
+              srtContent: cleanSrt,
+              segments,
+              language: langMatch ? langMatch[1] : 'en',
+            };
+          }
         }
+      } catch (fileErr) {
+        console.warn(`读取字幕产物文件 ${file} 异常:`, fileErr.message);
       }
     }
 
     return null;
   } catch (err) {
     console.warn('[yt-dlp 字幕提取失败]:', err.message);
-    // 清理临时文件
     try {
       const files = fs.readdirSync(tmpDir).filter(f => f.startsWith(uniqueId));
       for (const file of files) {

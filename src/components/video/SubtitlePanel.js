@@ -356,7 +356,8 @@ export default function SubtitlePanel({
       // 提取完成后重新拉取最新数据
       const subRes = await fetch(`/api/documents/${documentId}/subtitles`);
       const subData = await subRes.json();
-      if (subData.exists && subData.subtitles) {
+      if (subData.exists && Array.isArray(subData.subtitles) && subData.subtitles.length > 0) {
+        setUploadError(null);
         onSubtitleUploaded?.(subData.subtitles);
       } else {
         setUploadError('未能自动提取到该视频的字幕。您可以点击右侧【上传字幕】导入 .srt 文件');

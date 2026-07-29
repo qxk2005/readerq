@@ -100,7 +100,7 @@ export function parseSubtitles(htmlContent) {
     }
   }
 
-  return segments;
+  return mergeSubtitlesBySentence(segments);
 }
 
 /**
@@ -209,6 +209,157 @@ export function formatSubtitlesForAI(segments) {
  * @param {string} srtContent - 原始 SRT 文件文本
  * @returns {Array<{time: number, timeStr: string, text: string}>} 字幕段落数组
  */
+/**
+ * HTML/XML 转义字符还原
+ */
+export function unescapeXml(text) {
+  if (!text) return '';
+  return text
+    .replace(/&#39;|&#039;/g, "'")
+    .replace(/&quot;/g, '"')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/<[^>]+>/g, '')
+    .trim();
+}
+
+/**
+ * 按完整句子语义与优雅时间窗合并字幕卡片 (Sentence-level Subtitle Merging)
+ * 1. 优先在遇到完整句号 . ! ? 或 句尾终止符时进行自然切分；
+ * 2. 控制单卡片最佳时长在 3.5 ~ 8.0 秒之间，字符数在 50 ~ 140 字符之间；
+ * 3. 100% 锁定首句的精确 start time，彻底消除腰斩切割与阅读割裂。
+ */
+export function mergeSubtitlesBySentence(segments, targetMaxDuration = 8.0, targetMinDuration = 3.5) {
+  if (!Array.isArray(segments) || segments.length === 0) return [];
+
+  const merged = [];
+  let currentGroup = [];
+  let groupStartTime = null;
+
+  for (let i = 0; i < segments.length; i++) {
+    const seg = segments[i];
+    if (currentGroup.length === 0) {
+      currentGroup.push(seg);
+      groupStartTime = seg.time;
+    } else {
+      const durationSpan = (seg.time + (seg.duration || 2.5)) - groupStartTime;
+      const lastText = currentGroup[currentGroup.length - 1].text.trim();
+      const sentenceEnded = /[.!?]$/.test(lastText);
+      const groupChars = currentGroup.map(s => s.text).join(' ').length;
+
+      // 条件 A: 遇到了句尾标点 且 累积时间 >= 3.5 秒 (或 字符数 >= 50)
+      // 条件 B: 累积时间超过上限 8.0 秒 (或 字符数 >= 140)
+      if ((sentenceEnded && (durationSpan >= targetMinDuration || groupChars >= 50)) || durationSpan >= targetMaxDuration || groupChars >= 140) {
+        merged.push({
+          time: currentGroup[0].time,
+          timeStr: currentGroup[0].timeStr,
+          text: currentGroup.map(s => s.text.trim()).join(' '),
+          duration: durationSpan
+        });
+        currentGroup = [seg];
+        groupStartTime = seg.time;
+      } else {
+        currentGroup.push(seg);
+      }
+    }
+  }
+
+  if (currentGroup.length > 0) {
+    merged.push({
+      time: currentGroup[0].time,
+      timeStr: currentGroup[0].timeStr,
+      text: currentGroup.map(s => s.text.trim()).join(' '),
+      duration: Math.max(3.0, (currentGroup[currentGroup.length - 1].time || 0) - currentGroup[0].time + 2.5)
+    });
+  }
+
+  return merged;
+}
+
+/**
+ * 从 YouTube 原生 srv1 / ttml XML 内容中解析出零重复、100% 毫秒精准的纯正字幕段落
+ */
+export function parseSrv1ToSegments(xmlContent) {
+  if (!xmlContent || typeof xmlContent !== 'string') return [];
+  const regex = /<text start="([\d.]+)"(?: dur="([\d.]+)")?>(.*?)<\/text>/gi;
+  const segments = [];
+  let match;
+  while ((match = regex.exec(xmlContent)) !== null) {
+    const startSec = parseFloat(match[1]);
+    const durSec = match[2] ? parseFloat(match[2]) : 3.0;
+    const text = unescapeXml(match[3]);
+    if (text) {
+      segments.push({
+        time: startSec,
+        timeStr: formatTimestamp(startSec),
+        duration: durSec,
+        text
+      });
+    }
+  }
+  
+  // 🎯 按完整句子表达进行优雅打包，彻底解决腰斩断句
+  return mergeSubtitlesBySentence(segments);
+}
+export function cleanRollingSrtSegments(segments) {
+  if (!Array.isArray(segments) || segments.length === 0) return [];
+
+  // 1. 丢弃极快重叠/包含的前缀帧 (Same timestamp & substring duplicate filter)
+  const clean = [];
+  for (let i = 0; i < segments.length; i++) {
+    const curr = segments[i];
+    const next = segments[i + 1];
+    if (next) {
+      const cText = (curr.text || '').trim().toLowerCase();
+      const nText = (next.text || '').trim().toLowerCase();
+      // 如果起始时间相差小于 1.2 秒，且 next 文本包含了 curr 文本的大部分内容，说明 curr 纯属未显示完整的临时过渡帧
+      if (cText.length > 0 && Math.abs((next.time || 0) - (curr.time || 0)) < 1.2 && nText.includes(cText)) {
+        continue;
+      }
+    }
+    clean.push(curr);
+  }
+
+  // 2. 二次精剪尾巴重叠短语
+  const finalResult = [];
+  let prevRawText = '';
+
+  for (const seg of clean) {
+    const currText = (seg.text || '').trim();
+    if (!currText) continue;
+
+    let pureText = currText;
+    if (prevRawText) {
+      const p = prevRawText.toLowerCase();
+      const c = currText.toLowerCase();
+      let maxOverlap = 0;
+      const minLen = Math.min(p.length, c.length);
+
+      for (let len = 4; len <= minLen; len++) {
+        const subC = c.substring(0, len);
+        if (p.endsWith(subC)) {
+          maxOverlap = len;
+        }
+      }
+
+      if (maxOverlap > 0) {
+        pureText = currText.substring(maxOverlap).trim();
+      }
+    }
+
+    if (pureText.length > 0) {
+      finalResult.push({
+        ...seg,
+        text: pureText
+      });
+      prevRawText = currText;
+    }
+  }
+
+  return finalResult;
+}
+
 export function parseSRT(srtContent) {
   if (!srtContent || typeof srtContent !== 'string') return [];
 
@@ -259,8 +410,8 @@ export function parseSRT(srtContent) {
     }
   }
 
-  // 🎯 智能合并分段：确保段落阅读流畅，且单段时长严格不超过 10 秒
-  return mergeSubtitlesSmartly(segments, 10);
+  const cleaned = cleanRollingSrtSegments(segments);
+  return mergeSubtitlesBySentence(cleaned);
 }
 
 /**
@@ -274,10 +425,21 @@ export function parseSRT(srtContent) {
  * @param {number} [maxDuration=10] - 单个段落的最大秒数限制
  * @returns {Array<{time: number, timeStr: string, text: string, duration?: number}>} 合并后的字幕段落
  */
+export function deduplicateRollingText(text) {
+  if (!text || typeof text !== 'string') return '';
+  let cleaned = text.trim();
+  for (let i = 0; i < 3; i++) {
+    cleaned = cleaned.replace(/(\b[\w\s',.-]{5,80}\b)\s+\1/gi, '$1');
+  }
+  return cleaned.replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * 智能合并字幕段落
+ */
 export function mergeSubtitlesSmartly(segments, maxDuration = 10) {
   if (!segments || segments.length === 0) return [];
 
-  // 🎯 核心排序保障：先按时间戳升序严格排序，防止原始数据倒序或错乱
   const sortedInput = [...segments].sort((a, b) => (a.time || 0) - (b.time || 0));
   
   const merged = [];
@@ -297,12 +459,12 @@ export function mergeSubtitlesSmartly(segments, maxDuration = 10) {
       const lastText = lastSegInGroup.text.trim();
       const sentenceEnded = /[。！？.!?]$/.test(lastText);
 
-      // 如果加进当前句后时长超过 10 秒，或者前一句已经是完整句子且当前组合已包含足够内容，则封包当前组
       if (durationSpan >= maxDuration || (sentenceEnded && durationSpan >= 5)) {
+        const rawText = currentGroup.map(s => s.text.trim()).join(' ');
         merged.push({
           time: currentGroup[0].time,
           timeStr: currentGroup[0].timeStr || formatTimestamp(currentGroup[0].time),
-          text: currentGroup.map(s => s.text.trim()).join(' '),
+          text: deduplicateRollingText(rawText),
           zh: currentGroup.map(s => s.zh || '').filter(Boolean).join(' ') || undefined,
           en: currentGroup.map(s => s.en || '').filter(Boolean).join(' ') || undefined,
           duration: segTime - currentGroup[0].time
@@ -316,10 +478,11 @@ export function mergeSubtitlesSmartly(segments, maxDuration = 10) {
   }
 
   if (currentGroup.length > 0) {
+    const rawText = currentGroup.map(s => s.text.trim()).join(' ');
     merged.push({
       time: currentGroup[0].time,
       timeStr: currentGroup[0].timeStr || formatTimestamp(currentGroup[0].time),
-      text: currentGroup.map(s => s.text.trim()).join(' '),
+      text: deduplicateRollingText(rawText),
       zh: currentGroup.map(s => s.zh || '').filter(Boolean).join(' ') || undefined,
       en: currentGroup.map(s => s.en || '').filter(Boolean).join(' ') || undefined,
       duration: Math.max(2, (currentGroup[currentGroup.length - 1].time || 0) - currentGroup[0].time + 3)
