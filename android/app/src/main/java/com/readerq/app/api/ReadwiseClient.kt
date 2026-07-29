@@ -350,6 +350,9 @@ class ReadwiseClient(private val token: String) {
 
             val results = data.results
             fetchedBookCount += results.size
+            if (totalBookCount < fetchedBookCount) {
+                totalBookCount = fetchedBookCount
+            }
             for (book in results) {
                 fetchedCount += book.highlights.size
             }

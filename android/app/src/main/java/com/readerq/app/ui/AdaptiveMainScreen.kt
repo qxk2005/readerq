@@ -1455,13 +1455,16 @@ fun TabSyncContent(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(phaseText, fontSize = 11.sp, color = labelColor)
-                        val totalStr = if (syncProgress.total > 0) syncProgress.total.toString() else "--"
+                        val safeTotal = maxOf(syncProgress.total, syncProgress.fetched)
+                        val totalStr = if (safeTotal > 0) safeTotal.toString() else "--"
                         Text("${syncProgress.fetched} / $totalStr", fontSize = 11.sp, color = labelColor)
                     }
                     Spacer(modifier = Modifier.height(4.dp))
                     if (syncProgress.total > 0) {
+                        val safeTotal = maxOf(syncProgress.total, syncProgress.fetched)
+                        val progressVal = (syncProgress.fetched.toFloat() / safeTotal.toFloat()).coerceIn(0f, 1f)
                         LinearProgressIndicator(
-                            progress = syncProgress.fetched.toFloat() / syncProgress.total.toFloat(),
+                            progress = progressVal,
                             modifier = Modifier.fillMaxWidth(),
                             color = MaterialTheme.colorScheme.primary
                         )
