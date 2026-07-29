@@ -620,7 +620,7 @@ fun AddDocumentDialog(
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    listOf("url" to "URL", "text" to "文本").forEach { (key, label) ->
+                    listOf("url" to "URL 链接", "video" to "🎥 视频", "text" to "文本").forEach { (key, label) ->
                         val isActive = activeTab == key
                         Surface(
                             onClick = { activeTab = key },
@@ -630,8 +630,8 @@ fun AddDocumentDialog(
                         ) {
                             Text(
                                 text = label,
-                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                                fontSize = 13.sp,
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                                fontSize = 12.sp,
                                 fontWeight = if (isActive) FontWeight.Bold else FontWeight.Normal,
                                 color = if (isActive) Color.White else MaterialTheme.colorScheme.onBackground
                             )
@@ -641,12 +641,12 @@ fun AddDocumentDialog(
 
                 // Tab content
                 when (activeTab) {
-                    "url" -> {
+                    "url", "video" -> {
                         OutlinedTextField(
                             value = urlInput,
                             onValueChange = { urlInput = it },
-                            label = { Text("URL 地址") },
-                            placeholder = { Text("https://example.com/article") },
+                            label = { Text(if (activeTab == "video") "视频 URL (支持 YouTube 免 Cookie 字幕)" else "URL 地址") },
+                            placeholder = { Text(if (activeTab == "video") "https://www.youtube.com/watch?v=..." else "https://example.com/article") },
                             singleLine = true,
                             modifier = Modifier.fillMaxWidth(),
                             colors = OutlinedTextFieldDefaults.colors(
@@ -741,7 +741,7 @@ fun AddDocumentDialog(
                                 .takeIf { it.isNotEmpty() }
 
                             when (activeTab) {
-                                "url" -> {
+                                "url", "video" -> {
                                     if (urlInput.isNotBlank()) {
                                         viewModel.saveDocumentByUrl(
                                             url = urlInput.trim(),
@@ -764,7 +764,7 @@ fun AddDocumentDialog(
                             }
                         },
                         enabled = !isSaving && when (activeTab) {
-                            "url" -> urlInput.isNotBlank()
+                            "url", "video" -> urlInput.isNotBlank()
                             "text" -> titleInput.isNotBlank() && textContent.isNotBlank()
                             else -> false
                         },

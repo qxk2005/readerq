@@ -22,6 +22,7 @@ export default function AddUrlModal() {
   const { showAddUrl, setShowAddUrl, saveDocument, fetchDocuments, setShowSettings } = useApp();
   const [activeTab, setActiveTab] = useState('url'); // 'url' | 'file' | 'text' | 'video'
   const [isLoading, setIsLoading] = useState(false);
+  const [progressMsg, setProgressMsg] = useState('');
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState(null);
 
@@ -50,9 +51,17 @@ export default function AddUrlModal() {
 
   // 5. OSS 检测状态
   const [isOssConfigured, setIsOssConfigured] = useState(false);
+  const [needYtLogin, setNeedYtLogin] = useState(false);
+  const [currentCreatedDocId, setCurrentCreatedDocId] = useState(null);
+
+  const abortControllerRef = useRef(null);
 
   // 重置状态
   const resetForm = () => {
+    if (abortControllerRef.current) {
+      try { abortControllerRef.current.abort(); } catch {}
+      abortControllerRef.current = null;
+    }
     setUrl('');
     setFile(null);
     setTextTitle('');
@@ -65,6 +74,9 @@ export default function AddUrlModal() {
     setError(null);
     setSuccess(false);
     setIsLoading(false);
+    setProgressMsg('');
+    setNeedYtLogin(false);
+    setCurrentCreatedDocId(null);
   };
 
   // 监听显示状态
@@ -215,13 +227,19 @@ export default function AddUrlModal() {
 
       } else if (activeTab === 'video') {
         if (!videoUrl.trim()) {
-          throw new Error('请输入 YouTube 视频链接');
+          throw new Error('请输入视频链接');
         }
 
-        // 1. 先保存 URL 到 Readwise
-        const res = await fetch('/api/readwise/save', {
+        const controller = new AbortController();
+        abortControllerRef.current = controller;
+
+        setProgressMsg('⌛ 正在创建文档记录...');
+
+        // 1. 先保存至 Readwise 获得 docId
+        const saveRes = await fetch('/api/readwise/save', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
+          signal: controller.signal,
           body: JSON.stringify({ 
             url: videoUrl.trim(),
             author: author.trim(),
@@ -229,22 +247,73 @@ export default function AddUrlModal() {
             tags: tags
           }),
         });
-        const data = await res.json();
-        if (data.error) throw new Error(data.error);
+        const saveResultData = await saveRes.json();
+        if (saveResultData.error) throw new Error(saveResultData.error);
 
-        // 2. 如果用户上传了 SRT 文件，保存到本地
-        if (videoSrtFile && data.id) {
+        const docId = saveResultData.id;
+
+        // 如果用户选了本地 SRT，覆盖生效
+        if (videoSrtFile && docId) {
+          setProgressMsg('⌛ 正在应用手动上传的本地 SRT 字幕...');
           const srtFormData = new FormData();
           srtFormData.append('file', videoSrtFile);
-          const srtRes = await fetch(`/api/documents/${data.id}/subtitles`, {
+          await fetch(`/api/documents/${docId}/subtitles`, {
             method: 'POST',
+            signal: controller.signal,
             body: srtFormData,
           });
-          const srtData = await srtRes.json();
-          if (!srtRes.ok || srtData.error) {
-            console.warn('字幕上传失败（视频已成功保存）:', srtData.error);
-          }
         }
+
+        setCurrentCreatedDocId(docId);
+
+        // 💡 立即刷新文档列表，确保侧栏列表立刻显示正确的视频标题
+        await fetchDocuments();
+
+        // 2. 阻塞式流式 SSE 监听后台真实执行进度，直到处理完全闭环
+        const runPipeline = async (targetDocId) => {
+          const streamRes = await fetch('/api/video-pipeline/process', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            signal: controller.signal,
+            body: JSON.stringify({
+              docId: targetDocId,
+              url: videoUrl.trim(),
+              title: saveResultData.title || '视频文章'
+            })
+          });
+
+          if (streamRes.body) {
+            const reader = streamRes.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = '';
+
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
+
+              buffer += decoder.decode(value, { stream: true });
+              const lines = buffer.split('\n\n');
+              buffer = lines.pop() || '';
+
+              for (const line of lines) {
+                if (line.startsWith('data: ')) {
+                  try {
+                    const data = JSON.parse(line.slice(6));
+                    if (data.message) {
+                      setProgressMsg(data.message);
+                    }
+                    // 📋 当后端完成文档元数据同步时，实时刷新文档列表
+                    if (data.type === 'doc_updated') {
+                      fetchDocuments();
+                    }
+                  } catch (e) {}
+                }
+              }
+            }
+          }
+        };
+
+        await runPipeline(docId);
       }
 
       setSuccess(true);
@@ -671,6 +740,54 @@ export default function AddUrlModal() {
                 </div>
               </div>
 
+              {/* 实时进度提示与取消按钮 */}
+              {progressMsg && (
+                <div style={{
+                  padding: '8px 12px',
+                  backgroundColor: 'rgba(0, 122, 255, 0.1)',
+                  borderRadius: '8px',
+                  color: 'var(--color-accent)',
+                  fontSize: 'var(--text-xs)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: '6px',
+                  fontWeight: '500'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <Loader2 size={14} style={{ animation: 'spin 1s linear infinite', flexShrink: 0 }} />
+                    <span>{progressMsg}</span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+                    {isLoading && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (abortControllerRef.current) {
+                            try { abortControllerRef.current.abort(); } catch {}
+                            abortControllerRef.current = null;
+                          }
+                          setIsLoading(false);
+                          setProgressMsg('');
+                        }}
+                        style={{
+                          padding: '2px 8px',
+                          borderRadius: '4px',
+                          backgroundColor: 'rgba(239, 68, 68, 0.12)',
+                          color: 'var(--color-danger, #ef4444)',
+                          border: 'none',
+                          fontSize: '11px',
+                          fontWeight: '600',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        取消处理
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+
               {/* 错误提示 */}
               {error && (
                 <div style={{
@@ -709,7 +826,7 @@ export default function AddUrlModal() {
                 {isLoading ? (
                   <>
                     <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} />
-                    <span>正在保存到 ReaderQ...</span>
+                    <span>{progressMsg || '正在保存到 ReaderQ...'}</span>
                   </>
                 ) : (
                   <span>保存到 ReaderQ</span>

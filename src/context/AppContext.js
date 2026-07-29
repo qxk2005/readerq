@@ -61,23 +61,23 @@ export function AppProvider({ children }) {
 
   // 单篇文档正文按需同步
   const fetchDocumentDetails = useCallback(async (id) => {
+    if (!id) return;
     setIsContentLoading(true);
     setContentError(null);
     try {
       const res = await fetch(`/api/readwise/documents?id=${id}`);
       const fullDoc = await res.json();
-      if (fullDoc && !fullDoc.error) {
+      if (res.ok && fullDoc && !fullDoc.error) {
         _setSelectedDoc(prev => (prev && prev.id === id ? fullDoc : prev));
         // 更新列表中的正文缓存，以便下次直接秒开
         setDocuments(prevDocs =>
           prevDocs.map(doc => (doc.id === id ? { ...doc, html_content: fullDoc.html_content } : doc))
         );
       } else {
-        throw new Error(fullDoc.error || '获取文档内容失败');
+        console.warn('按需同步文档正文提示:', fullDoc?.error || '文档尚在生成中');
       }
     } catch (err) {
-      console.error('按需同步文档正文失败:', err);
-      setContentError(err.message || '获取文档正文失败，请稍后重试');
+      console.warn('按需同步文档正文捕获异常:', err);
     } finally {
       setIsContentLoading(false);
     }

@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
-import { saveSubtitle, getSubtitle, deleteSubtitle } from '@/lib/db';
+import { saveSubtitle, getSubtitle, deleteSubtitle, getCachedDocument, updateDocumentBlog, setSetting } from '@/lib/db';
 import { parseSRT, mergeSubtitlesSmartly } from '@/lib/subtitleParser';
-import { translateSubtitlesToBilingual } from '@/lib/ai';
-import { uploadSubtitleToOss, downloadSubtitleFromOss, deleteSubtitleFromOss, validateOssConfig, getOssConfig } from '@/lib/oss';
+import { translateSubtitlesToBilingual, convertSubtitlesToBlog } from '@/lib/ai';
+import { uploadSubtitleToOss, downloadSubtitleFromOss, deleteSubtitleFromOss, uploadBlogToOss, validateOssConfig, getOssConfig } from '@/lib/oss';
 
 /**
  * 检查 OSS 是否已配置
@@ -217,6 +217,21 @@ export async function POST(request, { params }) {
         bilingualSegments = await translateSubtitlesToBilingual(mergedSegments);
       } catch (err) {
         console.warn('[字幕双语化] AI 翻译失败，保留合并单语字幕:', err.message);
+      }
+
+      // 3. 全自动触发精选博客文章转换
+      try {
+        const doc = getCachedDocument(id);
+        const blogHtml = await convertSubtitlesToBlog(bilingualSegments, doc?.title || '视频精选博客');
+        if (blogHtml) {
+          updateDocumentBlog(id, blogHtml);
+          setSetting(`blog_updated_at_${id}`, new Date().toISOString());
+          if (isOssAvailable()) {
+            await uploadBlogToOss(id, blogHtml);
+          }
+        }
+      } catch (blogErr) {
+        console.warn('[字幕博客自动转换] 转换失败:', blogErr.message);
       }
 
       // 保存到本地数据库

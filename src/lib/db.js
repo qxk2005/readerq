@@ -268,6 +268,23 @@ export function upsertDocument(doc) {
 }
 
 /**
+ * 更新指定文档的 AI 字幕博客内容 (blog_content)
+ */
+export function updateDocumentBlog(id, blogContent) {
+  if (!id || !blogContent) return;
+  const db = getDatabase();
+  try {
+    db.prepare('UPDATE documents SET blog_content = ?, updated_at = ? WHERE id = ?').run(
+      blogContent,
+      new Date().toISOString(),
+      id
+    );
+  } catch (e) {
+    console.error('更新文档 blog_content 失败:', e);
+  }
+}
+
+/**
  * 批量保存文档
  */
 export function upsertDocuments(docs) {

@@ -53,6 +53,30 @@ export default function SettingsModal() {
   const [testResult, setTestResult] = useState(null);
   const [testStages, setTestStages] = useState(null);
   const [openaiMaxTokens, setOpenaiMaxTokens] = useState('');
+  const [youtubeCookie, setYoutubeCookie] = useState('');
+  const [isFetchingCookie, setIsFetchingCookie] = useState(false);
+  const [cookieMsg, setCookieMsg] = useState(null);
+
+  const handleFetchYoutubeCookie = async () => {
+    setIsFetchingCookie(true);
+    setCookieMsg('⌛ 正在为您弹出 YouTube 独立登录窗口，请在弹出的 Chrome 窗口中输入账号登录，系统将自动捕获凭证...');
+    try {
+      const res = await fetch('/api/settings/open-youtube-login', { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        throw new Error(data.error || '未能在限定时间内捕获到登录 Cookie');
+      }
+      if (data.cookie) {
+        setYoutubeCookie(data.cookie);
+        setCookieMsg(data.message || '✅ 成功自动抓取并保存 YouTube 认证 Cookie！已彻底破解机器人风控！');
+      }
+    } catch (err) {
+      console.error('获取 YouTube Cookie 失败:', err);
+      setCookieMsg(`❌ 获取失败: ${err.message}`);
+    } finally {
+      setIsFetchingCookie(false);
+    }
+  };
 
   // OSS 图床配置状态
   const [ossRegion, setOssRegion] = useState('');
@@ -94,6 +118,7 @@ export default function SettingsModal() {
       setOpenaiBaseUrl(data.openai_base_url || '');
       setOpenaiModel(data.openai_model || '');
       setOpenaiMaxTokens(data.openai_max_tokens || '');
+      setYoutubeCookie(data.youtube_cookie || '');
       setOssRegion(data.oss_region || '');
       setOssBucket(data.oss_bucket || '');
       setOssAccessKeyId(data.oss_access_key_id || '');
@@ -149,6 +174,7 @@ export default function SettingsModal() {
           openai_base_url: openaiBaseUrl,
           openai_model: openaiModel,
           openai_max_tokens: openaiMaxTokens,
+          youtube_cookie: youtubeCookie,
           oss_region: ossRegion,
           oss_bucket: ossBucket,
           oss_access_key_id: ossAccessKeyId,
@@ -600,6 +626,39 @@ function TabAPI({
         </label>
         <input type="number" min="1" className="form-input" placeholder="4096" value={openaiMaxTokens} onChange={(e) => setOpenaiMaxTokens(e.target.value)} />
         <div className="form-hint">AI 接口单次生成（含思考过程）的最大 Token 限制。对于 DeepSeek 等推理模型，建议设置为 4096 或更大。</div>
+      </div>
+
+      {/* YouTube Cookie 身份认证与风控解除 */}
+      <div className="form-group" style={{ marginTop: 'var(--space-5)', paddingTop: 'var(--space-4)', borderTop: '1px dashed var(--color-border)' }}>
+        <label className="form-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <span>YouTube 登录 Cookie (用于破解机器人风控与验证)</span>
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm"
+            onClick={handleFetchYoutubeCookie}
+            disabled={isFetchingCookie}
+            style={{ fontSize: 'var(--text-xs)', display: 'flex', alignItems: 'center', gap: '4px' }}
+          >
+            {isFetchingCookie ? <Loader2 size={12} className="spin" /> : <Key size={12} />}
+            {isFetchingCookie ? '正在获取 Cookie...' : '🔑 登录 YouTube 自动获取 Cookie'}
+          </button>
+        </label>
+        <textarea
+          className="form-input"
+          rows={3}
+          placeholder="自动获取后会自动在此填入 Cookie 字符串 (如: VISITOR_INFO1_LIVE=...; LOGIN_INFO=...)"
+          value={youtubeCookie}
+          onChange={(e) => setYoutubeCookie(e.target.value)}
+          style={{ fontFamily: 'monospace', fontSize: '11px' }}
+        />
+        <div className="form-hint">
+          当 YouTube 抛出 <code>Sign in to confirm you're not a bot</code> 防爬风控拦截时，点击上面按钮完成一次自动登录或识别，系统将自动捕获凭证解锁全局字幕提取。
+        </div>
+        {cookieMsg && (
+          <div style={{ marginTop: '6px', fontSize: 'var(--text-xs)', color: cookieMsg.startsWith('✅') ? 'var(--color-success)' : 'var(--color-danger)' }}>
+            {cookieMsg}
+          </div>
+        )}
       </div>
 
       {/* 测试连接按钮 */}

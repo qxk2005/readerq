@@ -4,13 +4,13 @@
  */
 
 import OpenAI from 'openai';
+import { getSetting } from './db.js';
 
 /**
  * 从数据库读取设置（回退）
  */
 function getDbSetting(key) {
   try {
-    const { getSetting } = require('@/lib/db');
     return getSetting(key);
   } catch { return null; }
 }
@@ -360,6 +360,66 @@ export async function translateSubtitlesToBilingual(segments) {
       zh: seg.text,
       en: seg.text,
     }));
+  }
+}
+
+/**
+ * 检查系统是否已配置 OpenAI 兼容服务
+ */
+export function isAIConfigured() {
+  try {
+    const apiKey = getDbSetting('openai_api_key') || process.env.OPENAI_API_KEY;
+    return !!(apiKey && apiKey.trim().length > 0);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * 将视频字幕大纲转化并深度生成为精选“字幕博客文章” (HTML/Markdown 格式)
+ * @param {Array<{start: number, text: string, zh?: string}>} segments 
+ * @param {string} title 
+ * @returns {Promise<string>} 生成的博客富文本 HTML
+ */
+export async function convertSubtitlesToBlog(segments, title = '视频整理') {
+  if (!segments || segments.length === 0) return '';
+  if (!isAIConfigured()) return '';
+
+  const client = createAIClient();
+  const model = getModelName();
+
+  const fullText = segments.map(s => {
+    const timeTag = s.timeStr ? `[${s.timeStr}]` : (typeof s.time === 'number' ? `[${Math.floor(s.time / 60)}:${String(Math.floor(s.time % 60)).padStart(2, '0')}]` : '');
+    const content = s.zh ? `${s.zh} (${s.text})` : s.text;
+    return `${timeTag} ${content}`;
+  }).join('\n');
+
+  const prompt = `你是一位顶尖的技术博客主编与知识博主。
+请将下面传入的视频字幕整理生成一篇优雅、结构化、条理清晰的【视频精选博客文章】(Markdown 格式)。
+
+**核心关键要求（极其重要）**：
+1. 必须在所有章节标题 (## / ###) 末尾或开头附带该主题在视频中对应的起始时间戳，例如 \`## 初见倾心：为“护照”形态上瘾 [0:58]\`；
+2. 必须在正文论述关键看点、核心功能演示、试用体会或结论时，显式保留或插入对应的视频时间戳节点标记（例如：\`在 [1:45] 处，展示了单手折叠的惊艳感受\` 或 \`[2:30] 的屏幕悬停功能堪称创新\`）；
+3. 时间戳格式必须严格为 \`[mm:ss]\` 或 \`[hh:mm:ss]\` 格式（如 \`[0:58]\`），以便读者在阅读时可以直接点击时间戳跳播到对应的视频画面帧！
+4. 包含【核心摘要与金句速览】；
+5. 将文字整理为流畅自然的博文表达，修饰口语化词汇；
+6. 输出干净漂亮的 Markdown 结构化内容。`;
+
+  try {
+    const response = await client.chat.completions.create({
+      model,
+      messages: [
+        { role: 'system', content: prompt },
+        { role: 'user', content: `视频标题: ${title}\n\n完整带时间戳字幕内容:\n${fullText.slice(0, 18000)}` }
+      ],
+      temperature: 0.5,
+    });
+
+    const choice = response.choices[0];
+    return extractAIResponse(choice);
+  } catch (err) {
+    console.error('AI 字幕生成博客文章失败:', err);
+    return '';
   }
 }
 

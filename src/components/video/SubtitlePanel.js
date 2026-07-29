@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { formatTimestamp, formatSubtitlesForAI, parseTimestamp } from '@/lib/subtitleParser';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Loader2, FileText, BookOpen, RefreshCw, Sparkles, Upload, Trash2, CheckCircle, Play, Languages } from 'lucide-react';
+import { Loader2, FileText, BookOpen, RefreshCw, Sparkles, Upload, Trash2, CheckCircle, Play, Languages, DownloadCloud } from 'lucide-react';
 
 // 动态解析包含时间戳的节点，并将时间戳转化为可点击跳转的跳播 Badge
 const renderTextWithTimestamps = (textNode, onSeek) => {
@@ -319,6 +319,63 @@ export default function SubtitlePanel({
     }
   }, [subtitles, title, blogPrompt, documentId]);
 
+  const [isExtractingSubtitles, setIsExtractingSubtitles] = useState(false);
+
+  // 免 Cookie 自动重新下载字幕并触发双语翻译与博客生成
+  const handleAutoFetchSubtitles = useCallback(async () => {
+    if (!documentId || !selectedDoc) return;
+    const targetUrl = selectedDoc.source_url || selectedDoc.url;
+    if (!targetUrl) return;
+
+    setIsExtractingSubtitles(true);
+    setUploadError(null);
+
+    try {
+      const res = await fetch('/api/video-pipeline/process', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          docId: documentId,
+          url: targetUrl,
+          title: title || selectedDoc.title || '视频文章'
+        })
+      });
+
+      if (res.body) {
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+        }
+      }
+
+      // 提取完成后重新拉取最新数据
+      const subRes = await fetch(`/api/documents/${documentId}/subtitles`);
+      const subData = await subRes.json();
+      if (subData.exists && subData.subtitles) {
+        onSubtitleUploaded?.(subData.subtitles);
+      } else {
+        setUploadError('未能自动提取到该视频的字幕。您可以点击右侧【上传字幕】导入 .srt 文件');
+      }
+
+      const blogRes = await fetch(`/api/documents/${documentId}/blog`);
+      const blogData = await blogRes.json();
+      if (blogData.exists && blogData.blogContent) {
+        setBlogContent(blogData.blogContent);
+        onBlogUpdated?.(blogData.blogContent);
+      }
+    } catch (err) {
+      console.error('自动下载字幕失败:', err);
+      setUploadError(err.message || '自动下载字幕失败，请检查网络或使用手动上传');
+    } finally {
+      setIsExtractingSubtitles(false);
+    }
+  }, [documentId, selectedDoc, title, onSubtitleUploaded, onBlogUpdated]);
+
   // 上传 SRT 字幕文件
   const handleSrtUpload = useCallback(async (file) => {
     if (!file || !documentId) return;
@@ -484,6 +541,24 @@ export default function SubtitlePanel({
               用户字幕
             </span>
           )}
+          {/* 免 Cookie 提取/下载字幕按钮 */}
+          {mode === 'subtitle' && documentId && (
+            <button
+              className="btn btn-ghost btn-sm"
+              onClick={handleAutoFetchSubtitles}
+              disabled={isExtractingSubtitles}
+              title="免 Cookie 自动下载视频字幕，并全自动触发 AI 双语翻译与博客生成"
+              style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: 'var(--text-xs)', color: 'var(--color-accent)' }}
+            >
+              {isExtractingSubtitles ? (
+                <Loader2 size={14} className="spin" />
+              ) : (
+                <DownloadCloud size={14} />
+              )}
+              {isExtractingSubtitles ? '提取中...' : '下载字幕'}
+            </button>
+          )}
+
           {/* 上传/替换字幕按钮 */}
           {mode === 'subtitle' && documentId && (
             <>
@@ -539,7 +614,7 @@ export default function SubtitlePanel({
         </div>
       </div>
 
-      {/* 上传错误提示 */}
+      {/* 上传/提取错误提示 */}
       {uploadError && (
         <div style={{
           padding: '8px 16px',
@@ -554,7 +629,7 @@ export default function SubtitlePanel({
           <span>{uploadError}</span>
           <button
             onClick={() => setUploadError(null)}
-            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-danger)', padding: '0 4px' }}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-danger)', padding: '0 4px', flexShrink: 0 }}
           >✕</button>
         </div>
       )}
