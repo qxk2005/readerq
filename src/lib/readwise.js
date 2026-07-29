@@ -113,6 +113,9 @@ class ReadwiseAPI {
       }
       
       fetchedCount += data.results.length;
+      if (totalCount < fetchedCount) {
+        totalCount = fetchedCount;
+      }
       nextPageCursor = data.nextPageCursor;
 
       if (onProgress) {
@@ -526,6 +529,7 @@ class ReadwiseAPI {
   async fetchAllV2Highlights({ updatedAfter } = {}, onProgress = null, checkCancel = null, onBatch = null) {
     let nextPageCursor = null;
     let fetchedCount = 0;
+    let fetchedBookCount = 0;
     let totalBookCount = 0;
 
     do {
@@ -545,9 +549,15 @@ class ReadwiseAPI {
         totalBookCount = data.count;
       }
 
+      const results = data.results || [];
+      fetchedBookCount += results.length;
+      if (totalBookCount < fetchedBookCount) {
+        totalBookCount = fetchedBookCount;
+      }
+
       // 从 export 数据中提取每本书的高亮
       const batchItems = [];
-      for (const book of (data.results || [])) {
+      for (const book of results) {
         if (book.highlights && book.highlights.length > 0) {
           const highlights = book.highlights.map(h => ({
             id: h.external_id || `readwise-v2-${h.id}`,
@@ -579,7 +589,7 @@ class ReadwiseAPI {
       nextPageCursor = data.nextPageCursor;
 
       if (onProgress) {
-        onProgress({ fetched: fetchedCount, total: totalBookCount });
+        onProgress({ fetched: fetchedBookCount, total: totalBookCount });
       }
     } while (nextPageCursor);
 
@@ -623,6 +633,9 @@ class ReadwiseAPI {
       }
       
       fetchedCount += data.results.length;
+      if (totalCount < fetchedCount) {
+        totalCount = fetchedCount;
+      }
       nextPageCursor = data.nextPageCursor;
       
       if (onProgress) {
