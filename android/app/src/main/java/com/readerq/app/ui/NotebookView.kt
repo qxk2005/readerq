@@ -807,7 +807,9 @@ fun HighlightContentWithImages(
     modifier: Modifier = Modifier
 ) {
     var previewImageUrl by remember { mutableStateOf<String?>(null) }
-    val imageRegex = remember { Regex("""!\[([^]]*)]\(([^)]+)\)""") }
+    val imageRegex = remember {
+        Regex("""!\[([^]]*)]\(([^)]+)\)|<img\s+[^>]*src=["']([^"']+)["'][^>]*>""", RegexOption.IGNORE_CASE)
+    }
     
     val blocks = remember(text) {
         val list = mutableListOf<HighlightBlock>()
@@ -820,8 +822,9 @@ fun HighlightContentWithImages(
                     list.add(HighlightBlock.TextBlock(textSegment))
                 }
             }
-            val alt = match.groups[1]?.value ?: "图片"
-            val url = match.groups[2]?.value ?: ""
+            // Group 1 & 2 for Markdown ![alt](url), Group 3 for HTML <img src="url">
+            val alt = match.groups[1]?.value?.ifBlank { null } ?: "图片"
+            val url = match.groups[2]?.value ?: match.groups[3]?.value ?: ""
             if (url.isNotBlank()) {
                 list.add(HighlightBlock.ImageBlock(url = url, alt = alt))
             }
@@ -867,7 +870,7 @@ fun HighlightContentWithImages(
                             contentScale = ContentScale.FillWidth,
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .heightIn(min = 140.dp, max = 360.dp)
+                                .wrapContentHeight()
                         )
 
                         // 🔍 悬浮提示 Chip

@@ -18,6 +18,10 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontWeight
@@ -598,7 +602,7 @@ fun DailyReviewPane(
 
                             Spacer(modifier = Modifier.height(16.dp))
 
-                            // 3.2 划线正文引用框 (典雅黄色边框指示)
+                            // 3.2 划线正文引用框 (典雅黄色边框指示，去除 IntrinsicSize 约束)
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -608,29 +612,30 @@ fun DailyReviewPane(
                                         BorderStroke(1.dp, Color(0xFFFFB300).copy(alpha = 0.5f)),
                                         RoundedCornerShape(12.dp)
                                     )
-                                    .padding(16.dp)
+                                    .drawBehind {
+                                        val barWidth = 4.dp.toPx()
+                                        val leftPadding = 14.dp.toPx()
+                                        val topPadding = 14.dp.toPx()
+                                        val bottomPadding = 14.dp.toPx()
+                                        val cornerRadius = 2.dp.toPx()
+                                        
+                                        drawRoundRect(
+                                            color = Color(0xFFFFB300),
+                                            topLeft = Offset(leftPadding, topPadding),
+                                            size = Size(barWidth, (size.height - topPadding - bottomPadding).coerceAtLeast(0f)),
+                                            cornerRadius = CornerRadius(cornerRadius, cornerRadius)
+                                        )
+                                    }
+                                    .padding(start = 28.dp, end = 16.dp, top = 16.dp, bottom = 16.dp)
                             ) {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(IntrinsicSize.Min)
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .width(4.dp)
-                                            .fillMaxHeight()
-                                            .background(Color(0xFFFFB300), RoundedCornerShape(2.dp))
-                                    )
-                                    Spacer(modifier = Modifier.width(12.dp))
-                                    HighlightContentWithImages(
-                                        text = currentHl.text,
-                                        textColor = textColor,
-                                        fontSize = 16.sp,
-                                        lineHeight = 24.sp,
-                                        fontWeight = FontWeight.Medium,
-                                        modifier = Modifier.weight(1f)
-                                    )
-                                }
+                                HighlightContentWithImages(
+                                    text = currentHl.text,
+                                    textColor = textColor,
+                                    fontSize = 16.sp,
+                                    lineHeight = 24.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    modifier = Modifier.fillMaxWidth()
+                                )
                             }
 
                             if (!currentHl.note.isNullOrBlank()) {
@@ -993,7 +998,11 @@ fun DailyReviewPane(
                 }
             },
             text = {
-                Column(modifier = Modifier.fillMaxWidth()) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState())
+                ) {
                     Text("划线金句正文:", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = textColor.copy(alpha = 0.7f))
                     Spacer(modifier = Modifier.height(6.dp))
                     OutlinedTextField(
@@ -1001,8 +1010,8 @@ fun DailyReviewPane(
                         onValueChange = { editHlText = it },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .heightIn(min = 90.dp, max = 180.dp),
-                        maxLines = 6
+                            .heightIn(min = 120.dp, max = 280.dp),
+                        maxLines = 15
                     )
 
                     Spacer(modifier = Modifier.height(14.dp))
@@ -1015,8 +1024,8 @@ fun DailyReviewPane(
                         placeholder = { Text("记录下您此时的思考与心得...", fontSize = 13.sp) },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .heightIn(min = 70.dp, max = 140.dp),
-                        maxLines = 4
+                            .heightIn(min = 80.dp, max = 180.dp),
+                        maxLines = 8
                     )
                 }
             },
