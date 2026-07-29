@@ -466,7 +466,7 @@ class ReadwiseClient(private val token: String) {
 
     // 17. 从 Server API Endpoint 获取指定文档的完整博客文章响应（带 502 重试）
     suspend fun fetchBlogFromServerFull(baseUrl: String, documentId: String): ServerBlogResponse? {
-        val cleanBaseUrl = if (baseUrl.contains("10.0.2.2")) "http://127.0.0.1:3000" else baseUrl.trim().removeSuffix("/")
+        val cleanBaseUrl = baseUrl.trim().removeSuffix("/")
         if (cleanBaseUrl.isBlank()) return null
         val url = "$cleanBaseUrl/api/documents/$documentId/blog"
         val maxRetries = 3
@@ -498,7 +498,7 @@ class ReadwiseClient(private val token: String) {
 
     // 18. 从 Server API Endpoint 获取指定文档的字幕结构化响应（带 502 重试）
     suspend fun fetchSubtitleFromServerFull(baseUrl: String, documentId: String): ServerSubtitleResponse? {
-        val cleanBaseUrl = if (baseUrl.contains("10.0.2.2")) "http://127.0.0.1:3000" else baseUrl.trim().removeSuffix("/")
+        val cleanBaseUrl = baseUrl.trim().removeSuffix("/")
         if (cleanBaseUrl.isBlank()) return null
         val url = "$cleanBaseUrl/api/documents/$documentId/subtitles"
         val maxRetries = 3
@@ -553,7 +553,7 @@ class ReadwiseClient(private val token: String) {
         videoUrl: String,
         title: String = "视频文章"
     ): Boolean {
-        val cleanBaseUrl = if (baseUrl.contains("10.0.2.2")) "http://127.0.0.1:3000" else baseUrl.trim().removeSuffix("/")
+        val cleanBaseUrl = baseUrl.trim().removeSuffix("/")
         if (cleanBaseUrl.isBlank()) return false
         val url = "$cleanBaseUrl/api/video-pipeline/process"
         return try {

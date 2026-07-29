@@ -1147,10 +1147,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private suspend fun getServerBaseUrl(): String {
         val custom = settingDao.getSetting("server_base_url")?.trim()
-        if (custom.isNullOrBlank() || custom == "http://10.0.2.2:3000") {
-            return "http://127.0.0.1:3000"
+        if (!custom.isNullOrBlank()) {
+            return custom.removeSuffix("/")
         }
-        return custom.removeSuffix("/")
+        // 默认回退至 10.0.2.2:3000（供模拟器调试宿主服务）
+        return "http://10.0.2.2:3000"
     }
 
     // --- Save Document Methods ---
@@ -1315,7 +1316,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         }
                     } catch (e: Exception) {
                         progressJob.cancel()
-                        _videoPipelineProgress.value = "⚠️ 字幕处理跳过: ${e.message}"
+                        val errMsg = e.message ?: ""
+                        if (errMsg.contains("Failed to connect") || errMsg.contains("ConnectException") || errMsg.contains("127.0.0.1") || errMsg.contains("10.0.2.2")) {
+                            _videoPipelineProgress.value = "⚠️ 未连接到 Node 服务端: 请在【设置-服务器设置】中填写您的 ReaderQ 服务端 URL"
+                        } else {
+                            _videoPipelineProgress.value = "⚠️ 字幕处理跳过: ${e.message}"
+                        }
                     }
 
                     _saveDocResult.value = SaveDocResult(
