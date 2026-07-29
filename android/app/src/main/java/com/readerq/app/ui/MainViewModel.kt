@@ -991,6 +991,24 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val doc = docDao.getDocumentById(docId) ?: return@launch
             val updated = doc.copy(location = newLocation)
             docDao.insertDocument(updated)
+            if (_selectedDoc.value?.id == docId) {
+                _selectedDoc.value = updated
+            }
+
+            // 💡 自动后台全局同步向 Readwise 云端 API 推送更新
+            val currentToken = _token.value
+            if (!currentToken.isNullOrBlank() && currentToken != "offline") {
+                try {
+                    val client = ReadwiseClient(currentToken)
+                    if (newLocation == "trash") {
+                        client.deleteDocument(docId)
+                    } else {
+                        client.updateDocument(docId, location = newLocation)
+                    }
+                } catch (e: Exception) {
+                    println("[moveDocument] Background Readwise sync error: ${e.message}")
+                }
+            }
         }
     }
 
@@ -1004,6 +1022,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             docDao.insertDocument(updated)
             if (_selectedDoc.value?.id == docId) {
                 _selectedDoc.value = updated
+            }
+
+            // 💡 自动后台全局同步向 Readwise 云端 API 更新位置为 "new"
+            val currentToken = _token.value
+            if (!currentToken.isNullOrBlank() && currentToken != "offline") {
+                try {
+                    val client = ReadwiseClient(currentToken)
+                    client.updateDocument(docId, location = "new")
+                } catch (e: Exception) {
+                    println("[restoreDocument] Background Readwise sync error: ${e.message}")
+                }
             }
         }
     }
@@ -1021,8 +1050,46 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     val client = ReadwiseClient(currentToken)
                     client.deleteDocument(docId)
                 } catch (e: Exception) {
-                    e.printStackTrace()
+                    println("[permanentlyDeleteDocument] Background Readwise sync error: ${e.message}")
                 }
+            }
+        }
+    }
+
+    /**
+     * 清空垃圾箱：彻底物理删除所有 location == 'trash' 的本地文档，并自动并发推送至 Readwise API
+     */
+    fun emptyTrash() {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val trashIds = docDao.getTrashDocumentIds()
+                if (trashIds.isEmpty()) return@launch
+
+                // 1. 本地数据库清空
+                trashIds.forEach { id ->
+                    docDao.deleteDocument(id)
+                    hlDao.deleteHighlightsForDocument(id)
+                }
+                if (_selectedDoc.value?.id in trashIds) {
+                    _selectedDoc.value = null
+                }
+
+                // 2. 自动并发向 Readwise 云端 API 推送彻底删除请求
+                val currentToken = _token.value
+                if (!currentToken.isNullOrBlank() && currentToken != "offline") {
+                    val client = ReadwiseClient(currentToken)
+                    trashIds.map { id ->
+                        launch(Dispatchers.IO) {
+                            try {
+                                client.deleteDocument(id)
+                            } catch (e: Exception) {
+                                println("[emptyTrash] Background Readwise sync delete error for $id: ${e.message}")
+                            }
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                println("[emptyTrash] EXCEPTION: ${e.message}")
             }
         }
     }
@@ -2093,7 +2160,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                                 )
                             )
                         } else {
-                            val targetLocation = if (trashIdsSet.contains(item.id)) "trash" else item.location
+                            val targetLocation = item.location ?: "new"
                             regularDocs.add(
                                 DocumentEntity(
                                     id = item.id,
@@ -2130,6 +2197,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     }
 
                     totalFetchedDocs += results.size
+                    if (remoteDocCount < totalFetchedDocs) {
+                        remoteDocCount = totalFetchedDocs
+                    }
                     _syncProgress.value = SyncProgress("documents", totalFetchedDocs, remoteDocCount)
 
                     pageCursor = response.nextPageCursorString
@@ -2139,8 +2209,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 _syncProgress.value = SyncProgress("highlights", 0, 0)
                 client.fetchAllV2Highlights(
                     updatedAfter = lastV2SyncedAt,
-                    onProgress = { fetched, totalBook ->
-                        _syncProgress.value = SyncProgress("highlights", fetched, totalBook)
+                    onProgress = { fetchedBookCount, totalBookCount ->
+                        _syncProgress.value = SyncProgress("highlights", fetchedBookCount, totalBookCount)
                     },
                     checkCancel = { checkCancelled() },
                     onBatch = { batchBooks ->
@@ -2188,18 +2258,23 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     }
                 )
 
+                // 阶段 4: 增量模式下的轻量擦除核对（全量模式直接跳过，防止假死）
+                if (!fullSync) {
+                    verifyAndPurgeOrphanDocuments(client, false)
+                }
+
                 // 保存最后同步时间
                 val now = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", java.util.Locale.US).apply {
                     timeZone = java.util.TimeZone.getTimeZone("GMT")
                 }.format(java.util.Date())
 
+                val localCount = docDao.getDocumentCount()
                 settingDao.setSetting(SettingEntity("lastDocumentSync", now))
                 settingDao.setSetting(SettingEntity("lastV2HighlightSync", now))
-                settingDao.setSetting(SettingEntity("remote_doc_count", remoteDocCount.toString()))
+                settingDao.setSetting(SettingEntity("remote_doc_count", localCount.toString()))
 
-                val localCount = docDao.getDocumentCount()
-                _syncCounts.value = SyncCounts(local = localCount, remote = remoteDocCount, lastSync = now)
-                _syncProgress.value = SyncProgress("done", totalFetchedDocs, remoteDocCount)
+                _syncCounts.value = SyncCounts(local = localCount, remote = localCount, lastSync = now)
+                _syncProgress.value = SyncProgress("done", totalFetchedDocs, localCount)
                 _syncStatus.value = "idle"
 
             } catch (e: kotlinx.coroutines.CancellationException) {
@@ -2212,6 +2287,63 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             } finally {
                 _isSyncing.value = false
             }
+        }
+    }
+
+    /**
+     * 智能比对擦除：
+     * 普通同步 (fullSync = false)：仅发起 1 次极其轻量的 API 请求 (limit = 50)，秒级拉取远端 trash 分类下最新被删除的项目并擦除本地，绝对不发起多页翻页轮询。
+     * 全量同步 (fullSync = true)：进行深层完整比对。
+     */
+    private suspend fun verifyAndPurgeOrphanDocuments(client: ReadwiseClient, fullSync: Boolean) {
+        try {
+            if (fullSync) {
+                // 全量模式：拉取存活集合比对
+                val localDocIds = docDao.getAllDocumentIdsSync().filter { !it.startsWith("local_") }
+                if (localDocIds.isEmpty()) return
+
+                val liveRemoteDocIds = mutableSetOf<String>()
+                val locationsToFetch = listOf("new", "later", "archive", "feed", "trash")
+
+                for (loc in locationsToFetch) {
+                    var pageCursor: String? = null
+                    do {
+                        if (checkCancelled()) break
+                        val response = client.listDocuments(location = loc, pageCursor = pageCursor)
+                        response.results.forEach { liveRemoteDocIds.add(it.id) }
+                        pageCursor = response.nextPageCursorString
+                    } while (pageCursor != null)
+                }
+
+                val orphanedDocIds = localDocIds.filter { id -> !liveRemoteDocIds.contains(id) }
+                if (orphanedDocIds.isNotEmpty()) {
+                    println("[SmartPurge] 全量比对物理擦除 ${orphanedDocIds.size} 篇远端已清空文档")
+                    orphanedDocIds.forEach { id ->
+                        docDao.deleteDocument(id)
+                        hlDao.deleteHighlightsForDocument(id)
+                    }
+                    if (_selectedDoc.value?.id in orphanedDocIds) {
+                        _selectedDoc.value = null
+                    }
+                }
+            } else {
+                // 普通增量同步模式：极其轻量！只做 1 次请求 (limit 50)，绝不翻页！
+                val trashResp = client.listDocuments(location = "trash", limit = 50)
+                val trashRemoteIds = trashResp.results.map { it.id }.toSet()
+                if (trashRemoteIds.isNotEmpty()) {
+                    val localAllDocIds = docDao.getAllDocumentIdsSync()
+                    val toPurge = localAllDocIds.filter { trashRemoteIds.contains(it) }
+                    if (toPurge.isNotEmpty()) {
+                        println("[SmartPurge] 轻量快速擦除 ${toPurge.size} 篇移入垃圾箱文档: $toPurge")
+                        toPurge.forEach { id ->
+                            docDao.deleteDocument(id)
+                            hlDao.deleteHighlightsForDocument(id)
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            println("[SmartPurge] 比对被删文档捕获异常 (不影响主流程): ${e.message}")
         }
     }
 

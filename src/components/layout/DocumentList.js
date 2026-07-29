@@ -232,8 +232,18 @@ export default function DocumentList({ width }) {
     page, hasMore, isFetchingMore,
     batchMoveDocuments,
     batchDeleteDocuments,
-    syncData, isSyncing
+    syncData, isSyncing,
+    emptyTrash
   } = useApp();
+
+  const [showEmptyConfirm, setShowEmptyConfirm] = useState(false);
+
+  const handleEmptyTrash = useCallback(async () => {
+    setShowEmptyConfirm(false);
+    if (emptyTrash) {
+      await emptyTrash();
+    }
+  }, [emptyTrash]);
 
   const [isSelectionMode, setIsSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState(new Set());
@@ -289,24 +299,58 @@ export default function DocumentList({ width }) {
   });
 
   return (
-    <div 
-      className="doclist-panel"
-      style={width ? { width: `${width}px`, minWidth: `${width}px` } : {}}
-    >
+    <div className="doclist-container" style={{ width: `${width}px` }}>
+      {showEmptyConfirm && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(0, 0, 0, 0.5)', zIndex: 9999,
+          display: 'flex', alignItems: 'center', justifyContent: 'center'
+        }}>
+          <div style={{
+            background: 'var(--color-bg-card, #1e1e1e)',
+            padding: '24px', borderRadius: '12px', maxWidth: '400px', width: '90%',
+            boxShadow: '0 8px 32px rgba(0,0,0,0.3)', border: '1px solid var(--color-border)'
+          }}>
+            <h3 style={{ margin: '0 0 12px 0', fontSize: '16px', fontWeight: 'bold' }}>清空垃圾箱</h3>
+            <p style={{ margin: '0 0 20px 0', fontSize: '13px', color: 'var(--color-text-secondary)' }}>
+              确定要清空垃圾箱中的所有文章吗？此操作将彻底删除所有文章，并自动同步至 Readwise 云端。
+            </p>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+              <button className="btn btn-ghost btn-sm" onClick={() => setShowEmptyConfirm(false)}>取消</button>
+              <button className="btn btn-sm" style={{ background: '#ef4444', color: '#fff', fontWeight: 'bold' }} onClick={handleEmptyTrash}>
+                清空垃圾箱
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="doclist-header">
         <div className="doclist-title">
           <span>{getViewTitle()}</span>
-          <button
-            className="btn-icon"
-            onClick={() => {
-              if (!isSyncing) syncData({ full: false });
-            }}
-            disabled={isSyncing}
-            data-tooltip={isSyncing ? "同步中..." : "增量同步"}
-            style={{ opacity: isSyncing ? 0.7 : 1, cursor: isSyncing ? 'not-allowed' : 'pointer' }}
-          >
-            <RefreshCw size={18} style={isSyncing ? { animation: 'spin 1s linear infinite' } : {}} />
-          </button>
+          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            {currentView === 'trash' && documents.some(d => d.location === 'trash') && (
+              <button
+                className="btn-icon"
+                onClick={() => setShowEmptyConfirm(true)}
+                data-tooltip="清空垃圾箱"
+                style={{ color: '#ef4444' }}
+              >
+                <Trash2 size={18} />
+              </button>
+            )}
+            <button
+              className="btn-icon"
+              onClick={() => {
+                if (!isSyncing) syncData({ full: false });
+              }}
+              disabled={isSyncing}
+              data-tooltip={isSyncing ? "同步中..." : "增量同步"}
+              style={{ opacity: isSyncing ? 0.7 : 1, cursor: isSyncing ? 'not-allowed' : 'pointer' }}
+            >
+              <RefreshCw size={18} style={isSyncing ? { animation: 'spin 1s linear infinite' } : {}} />
+            </button>
+          </div>
         </div>
         <div className="doclist-search">
           <span className="doclist-search-icon"><Search size={14} /></span>

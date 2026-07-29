@@ -321,6 +321,21 @@ export function AppProvider({ children }) {
     }
   }, [fetchDocuments]);
 
+  // 清空垃圾箱：删除本地与 Readwise 云端中所有的垃圾箱文章
+  const emptyTrash = useCallback(async () => {
+    try {
+      const trashDocs = documents.filter(doc => doc.location === 'trash');
+      if (trashDocs.length === 0) return true;
+      const trashIds = trashDocs.map(doc => doc.id);
+      await batchDeleteDocuments(trashIds);
+      showToast('垃圾箱已清空', 'success');
+      return true;
+    } catch (err) {
+      console.error('清空垃圾箱失败:', err);
+      showToast('清空垃圾箱失败', 'error');
+    }
+  }, [documents, batchDeleteDocuments, showToast]);
+
   // 切换视图
   const switchView = useCallback((view) => {
     setCurrentView(view);
@@ -464,6 +479,7 @@ export function AppProvider({ children }) {
     saveDocument,
     batchMoveDocuments,
     batchDeleteDocuments,
+    emptyTrash,
     switchView,
     switchCategory,
     switchTag,

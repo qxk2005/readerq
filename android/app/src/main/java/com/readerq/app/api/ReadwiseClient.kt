@@ -326,6 +326,7 @@ class ReadwiseClient(private val token: String) {
     ): Int {
         var pageCursor: String? = null
         var fetchedCount = 0
+        var fetchedBookCount = 0
         var totalBookCount = 0
 
         do {
@@ -348,6 +349,7 @@ class ReadwiseClient(private val token: String) {
             }
 
             val results = data.results
+            fetchedBookCount += results.size
             for (book in results) {
                 fetchedCount += book.highlights.size
             }
@@ -358,7 +360,7 @@ class ReadwiseClient(private val token: String) {
 
             pageCursor = data.nextPageCursorString
 
-            onProgress?.invoke(fetchedCount, totalBookCount)
+            onProgress?.invoke(fetchedBookCount, totalBookCount)
 
         } while (pageCursor != null)
 

@@ -23,6 +23,9 @@ interface DocumentDao {
     @Query("SELECT id FROM documents WHERE location = 'trash'")
     suspend fun getTrashDocumentIds(): List<String>
 
+    @Query("SELECT id FROM documents")
+    suspend fun getAllDocumentIdsSync(): List<String>
+
     @Query("SELECT * FROM documents WHERE id = :id LIMIT 1")
     suspend fun getDocumentById(id: String): DocumentEntity?
 

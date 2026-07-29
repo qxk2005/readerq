@@ -273,6 +273,67 @@ fun DocumentListPane(
             }
         }
 
+        // 🗑️ 清空垃圾箱快捷操作栏
+        var showEmptyTrashConfirmDialog by remember { mutableStateOf(false) }
+
+        if (currentView == "trash" && documents.isNotEmpty()) {
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                shape = RoundedCornerShape(8.dp),
+                color = Color(0xFFEF4444).copy(alpha = 0.12f),
+                border = BorderStroke(1.dp, Color(0xFFEF4444).copy(alpha = 0.3f))
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = "垃圾箱中共 ${documents.size} 篇文章",
+                        fontSize = 12.sp,
+                        color = Color(0xFFEF4444),
+                        fontWeight = FontWeight.Medium
+                    )
+                    Button(
+                        onClick = { showEmptyTrashConfirmDialog = true },
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
+                        modifier = Modifier.height(28.dp),
+                        shape = RoundedCornerShape(6.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444))
+                    ) {
+                        Text("清空垃圾箱", fontSize = 11.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+
+        if (showEmptyTrashConfirmDialog) {
+            AlertDialog(
+                onDismissRequest = { showEmptyTrashConfirmDialog = false },
+                title = { Text("清空垃圾箱") },
+                text = { Text("确定要清空垃圾箱中的所有文章吗？此操作将彻底删除所有文章并自动同步至 Readwise 云端。") },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            showEmptyTrashConfirmDialog = false
+                            viewModel.emptyTrash()
+                        }
+                    ) {
+                        Text("清空", color = Color(0xFFEF4444), fontWeight = FontWeight.Bold)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showEmptyTrashConfirmDialog = false }) {
+                        Text("取消")
+                    }
+                }
+            )
+        }
+
         // List
         LazyColumn(
             modifier = Modifier
