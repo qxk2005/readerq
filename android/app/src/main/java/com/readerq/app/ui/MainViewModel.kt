@@ -1811,6 +1811,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _activeSubtitleProgress = MutableStateFlow<String?>(null)
     val activeSubtitleProgress: StateFlow<String?> = _activeSubtitleProgress.asStateFlow()
 
+    private val _aiErrorMessage = MutableStateFlow<String?>(null)
+    val aiErrorMessage: StateFlow<String?> = _aiErrorMessage.asStateFlow()
+
+    fun dismissAiErrorMessage() {
+        _aiErrorMessage.value = null
+    }
+
     fun downloadSubtitleFromServer(documentId: String, videoUrl: String, title: String = "视频文章") {
         viewModelScope.launch(Dispatchers.IO) {
             _subtitleDownloading.value = true
@@ -1851,15 +1858,28 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         val openAiBase = settingDao.getSetting("openai_base_url")?.replace("\"", "")?.trim() ?: "https://api.openai.com/v1"
                         val openAiModel = settingDao.getSetting("openai_model")?.replace("\"", "")?.trim() ?: "gpt-3.5-turbo"
 
+                        println("[downloadSubtitleFromServer] openAiKey length=${openAiKey.length}, isBlank=${openAiKey.isBlank()}, base=$openAiBase, model=$openAiModel")
+
                         var finalSegments = nativeSegments
+                        var translateErrorMsg: String? = null
+                        var blogErrorMsg: String? = null
+
                         if (openAiKey.isNotBlank()) {
                             try {
+                                println("[downloadSubtitleFromServer] Calling translateSubtitlesNative with ${nativeSegments.size} segments...")
                                 finalSegments = com.readerq.app.api.AndroidSubtitleFetcher.translateSubtitlesNative(
                                     nativeSegments, openAiKey, openAiBase, openAiModel
                                 )
+                                println("[downloadSubtitleFromServer] Translation completed, ${finalSegments?.size ?: 0} segments returned")
+                                val zhCount = finalSegments?.count { !it.zh.isNullOrBlank() } ?: 0
+                                println("[downloadSubtitleFromServer] Segments with zh translation: $zhCount / ${finalSegments?.size ?: 0}")
                             } catch (aiErr: Exception) {
+                                translateErrorMsg = aiErr.message
                                 println("[downloadSubtitleFromServer] AI 翻译跳过: ${aiErr.message}")
                             }
+                        } else {
+                            println("[downloadSubtitleFromServer] SKIPPED: openAiKey is blank!")
+                            _activeSubtitleProgress.value = "⚠️ 未配置 AI API Key，跳过翻译。请在设置中配置 OpenAI 兼容 API Key"
                         }
 
                         // 构造干净的 SRT 文本与 JSON 字符串存入本地 Room 数据库
@@ -1898,15 +1918,33 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                                     val blogMd = com.readerq.app.api.AndroidSubtitleFetcher.generateBlogNative(
                                         title, finalSegments ?: emptyList(), openAiKey, openAiBase, openAiModel
                                     )
+                                    println("[downloadSubtitleFromServer] Blog generation result: length=${blogMd?.length ?: 0}, isBlank=${blogMd.isNullOrBlank()}")
                                     if (!blogMd.isNullOrBlank()) {
                                         settingDao.setSetting(SettingEntity("blog_$documentId", blogMd))
+                                        println("[downloadSubtitleFromServer] Blog saved to database for doc=$documentId")
                                     }
                                 } catch (blogErr: Exception) {
+                                    blogErrorMsg = blogErr.message
                                     println("[downloadSubtitleFromServer] AI 博客生成跳过: ${blogErr.message}")
                                 }
                             }
 
-                            _activeSubtitleProgress.value = "✅ [完成] 已成功原生提取字幕、翻译双语与生成 AI 博客"
+                            if (translateErrorMsg != null || blogErrorMsg != null) {
+                                val detail = translateErrorMsg ?: blogErrorMsg ?: ""
+                                val formattedErr = when {
+                                    detail.contains("402") || detail.contains("Insufficient Balance") ->
+                                        "⚠️ [AI失败] 大模型 API 账号余额不足 (HTTP 402)，双语翻译与博客生成被跳过。已保存原生英文字幕。请在设置中充值或更换 API Key。"
+                                    detail.contains("401") || detail.contains("deepseek") ->
+                                        "⚠️ [AI失败] AI 大模型 API Key 或模型配置不合法 (${detail.take(50)})。已保存原生英文字幕。请检查设置中的 Key 及模型名称。"
+                                    else ->
+                                        "⚠️ [AI失败] AI 翻译/博客请求异常 (${detail.take(60)})。已保存原生英文字幕。"
+                                }
+                                _activeSubtitleProgress.value = formattedErr
+                                _aiErrorMessage.value = formattedErr
+                            } else {
+                                _activeSubtitleProgress.value = "✅ [完成] 已成功原生提取字幕、翻译双语与生成 AI 博客"
+                                _aiErrorMessage.value = null
+                            }
                         } catch (dbErr: Exception) {
                             println("[downloadSubtitleFromServer] save subtitle error: ${dbErr.message}")
                         }

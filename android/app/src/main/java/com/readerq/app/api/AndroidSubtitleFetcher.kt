@@ -7,7 +7,14 @@ import io.ktor.client.request.*
 import io.ktor.client.statement.*
 import io.ktor.http.*
 import kotlinx.serialization.json.*
-import java.net.URLDecoder
+import java.io.BufferedReader
+import java.io.InputStreamReader
+import java.io.OutputStreamWriter
+import java.net.CookieHandler
+import java.net.CookieManager
+import java.net.CookiePolicy
+import java.net.HttpURLConnection
+import java.net.URL
 
 data class NativeSubtitleSegment(
     val time: Double,
@@ -35,8 +42,8 @@ object AndroidSubtitleFetcher {
     fun extractVideoId(url: String): String? {
         if (url.isBlank()) return null
         val regexes = listOf(
-            Regex("(?:youtube\\.com\\/(?:[^\\/]+\\/.+\\/|(?:v|e(?:mbed)?)\\/" +
-                    "|.*[?&]v=)|youtu\\.be\\/)([^\"&?\\/\\s]{11})"),
+            Regex("(?:youtube\\.com\\/(?:[^\\/]+\\/.+\\/|(?:v|e(?:mbed)?)\\/|" +
+                    ".*[?&]v=)|youtu\\.be\\/)([^\"&?\\/\\s]{11})"),
             Regex("^([^\"&?\\/\\s]{11})$")
         )
         for (regex in regexes) {
@@ -51,13 +58,24 @@ object AndroidSubtitleFetcher {
      */
     private fun unescapeXml(text: String): String {
         return text
+            // 先处理双重编码：&amp;#39; → &#39;, &amp;quot; → &quot; 等
+            .replace("&amp;#39;", "'")
+            .replace("&amp;#039;", "'")
+            .replace("&amp;quot;", "\"")
+            .replace("&amp;lt;", "<")
+            .replace("&amp;gt;", ">")
+            .replace("&amp;amp;", "&")
+            // 再处理标准 XML 实体
             .replace("&#39;", "'")
             .replace("&#039;", "'")
             .replace("&quot;", "\"")
             .replace("&amp;", "&")
             .replace("&lt;", "<")
             .replace("&gt;", ">")
+            // 清理内嵌 HTML 标签和多余换行
             .replace(Regex("<[^>]+>"), "")
+            .replace("\n", " ")
+            .replace(Regex("\\s+"), " ")
             .trim()
     }
 
@@ -137,99 +155,254 @@ object AndroidSubtitleFetcher {
     }
 
     /**
-     * 100% Android 原生免 Cookie 从 YouTube 网页抓取公开字幕轨
+     * 100% Android 原生字幕提取 —— 移植自 youtube-transcript-api (Python) 的成功方法。
+     *
+     * 核心原理：使用 java.net.CookieManager 维持 HTTP Session，
+     * 模拟 youtube-transcript-api 的三步流程：
+     * 1. GET watch 页面 → 建立 session cookies
+     * 2. 从 HTML 中提取 INNERTUBE_API_KEY
+     * 3. POST Innertube player API (ANDROID 客户端身份) → 获取 captionTracks
+     * 4. 用同一 session GET 字幕 baseUrl → 获取 XML 字幕内容
      */
     suspend fun fetchYouTubeSubtitlesNative(videoUrl: String): List<NativeSubtitleSegment>? {
         val videoId = extractVideoId(videoUrl) ?: return null
-        val watchUrl = "https://www.youtube.com/watch?v=$videoId"
+
+        println("[AndroidSubtitleFetcher] Starting Innertube session method for $videoId")
+
+        return try {
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                fetchSubtitlesViaInnertube(videoId)
+            }
+        } catch (e: Exception) {
+            println("[AndroidSubtitleFetcher] EXCEPTION: ${e.javaClass.simpleName}: ${e.message}")
+            null
+        }
+    }
+
+    /**
+     * 通过 Innertube Session 方法获取字幕（在 IO 线程执行）
+     */
+    private fun fetchSubtitlesViaInnertube(videoId: String): List<NativeSubtitleSegment>? {
+        // 设置全局 CookieManager 维持 session
+        val cookieManager = CookieManager()
+        cookieManager.setCookiePolicy(CookiePolicy.ACCEPT_ALL)
+        val previousHandler = CookieHandler.getDefault()
+        CookieHandler.setDefault(cookieManager)
 
         try {
-            val response = client.get(watchUrl) {
-                header(HttpHeaders.UserAgent, "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-                header(HttpHeaders.AcceptLanguage, "en-US,en;q=0.9,zh-CN;q=0.8,zh;q=0.7")
+            // ========== Step 1: GET watch 页面，建立 session cookies ==========
+            val watchUrl = "https://www.youtube.com/watch?v=$videoId"
+            println("[AndroidSubtitleFetcher] Step 1: Fetching watch page...")
+
+            val html = httpGet(watchUrl)
+            if (html.isNullOrBlank()) {
+                println("[AndroidSubtitleFetcher] Step 1 FAILED: Empty HTML response")
+                return null
             }
+            println("[AndroidSubtitleFetcher] Step 1 OK: HTML length=${html.length}")
 
-            if (!response.status.isSuccess()) return null
-            val html = response.bodyAsText()
-
-            // 提取与解析 captionTracks
-            val captionTracksMatch = Regex("\"captionTracks\":\\s*(\\[.*?\\])").find(html)
-            var targetTrackUrl: String? = null
-
-            if (captionTracksMatch != null) {
-                var jsonArrayStr = captionTracksMatch.groupValues[1]
-                // 替换 unicode 转义
-                jsonArrayStr = jsonArrayStr.replace("\\u0026", "&")
-                try {
-                    val array = jsonParser.parseToJsonElement(jsonArrayStr).jsonArray
-                    var bestUrl: String? = null
-                    var fallbackUrl: String? = null
-
-                    for (item in array) {
-                        val obj = item.jsonObject
-                        val baseUrl = obj["baseUrl"]?.jsonPrimitive?.content ?: continue
-                        val vssId = obj["vssId"]?.jsonPrimitive?.content ?: ""
-                        val langCode = obj["languageCode"]?.jsonPrimitive?.content ?: ""
-
-                        if (langCode.startsWith("en") || vssId.contains(".en")) {
-                            bestUrl = baseUrl
-                            break
-                        } else if (fallbackUrl == null) {
-                            fallbackUrl = baseUrl
+            // 处理 CONSENT 页面（欧盟区域需要）
+            if (html.contains("action=\"https://consent.youtube.com/s\"")) {
+                println("[AndroidSubtitleFetcher] Handling consent page...")
+                val consentMatch = Regex("name=\"v\" value=\"(.*?)\"").find(html)
+                if (consentMatch != null) {
+                    // 设置 CONSENT cookie
+                    val consentValue = "YES+" + consentMatch.groupValues[1]
+                    cookieManager.cookieStore.add(
+                        java.net.URI("https://www.youtube.com"),
+                        java.net.HttpCookie("CONSENT", consentValue).apply {
+                            domain = ".youtube.com"
+                            path = "/"
                         }
-                    }
-                    targetTrackUrl = (bestUrl ?: fallbackUrl)?.replace("\\u0026", "&")
-                } catch (e: Exception) {
-                    println("[AndroidSubtitleFetcher] Parse captionTracks JSON error: ${e.message}")
-                }
-            }
-
-            // 如果网页没找到，后备尝试官方TimedText Endpoint
-            if (targetTrackUrl == null) {
-                targetTrackUrl = "https://www.youtube.com/api/timedtext?v=$videoId&lang=en&fmt=srv1"
-            }
-
-            // 补全格式参数 fmt=srv1 以拿取原生 XML
-            val finalXmlUrl = if (!targetTrackUrl.contains("fmt=")) {
-                "$targetTrackUrl&fmt=srv1"
-            } else targetTrackUrl
-
-            val xmlResponse = client.get(finalXmlUrl) {
-                header(HttpHeaders.UserAgent, "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)")
-            }
-
-            if (!xmlResponse.status.isSuccess()) return null
-            val xmlContent = xmlResponse.bodyAsText()
-
-            // 解析 XML <text start="..." dur="...">...</text>
-            val textRegex = Regex("<text start=\"([\\d.]+)\"(?: dur=\"([\\d.]+)\")?>(.*?)</text>", RegexOption.IGNORE_CASE)
-            val rawSegments = mutableListOf<NativeSubtitleSegment>()
-
-            for (match in textRegex.findAll(xmlContent)) {
-                val startSec = match.groupValues[1].toDoubleOrNull() ?: continue
-                val durSec = match.groupValues[2].toDoubleOrNull() ?: 3.0
-                val rawText = unescapeXml(match.groupValues[3])
-                if (rawText.isNotBlank()) {
-                    rawSegments.add(
-                        NativeSubtitleSegment(
-                            time = startSec,
-                            timeStr = formatTimestamp(startSec),
-                            duration = durSec,
-                            text = rawText
-                        )
                     )
                 }
             }
 
-            if (rawSegments.isEmpty()) return null
+            // ========== Step 2: 提取 INNERTUBE_API_KEY ==========
+            val apiKeyMatch = Regex("\"INNERTUBE_API_KEY\":\\s*\"([a-zA-Z0-9_-]+)\"").find(html)
+            val apiKey = apiKeyMatch?.groupValues?.get(1) ?: "AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8"
+            println("[AndroidSubtitleFetcher] Step 2: API key = $apiKey")
 
-            // 🎯 按完整句子表达封包组合
-            return mergeSubtitlesBySentence(rawSegments)
+            // ========== Step 3: POST Innertube player API (ANDROID 客户端) ==========
+            println("[AndroidSubtitleFetcher] Step 3: Calling Innertube player API...")
 
-        } catch (e: Exception) {
-            println("[AndroidSubtitleFetcher] EXCEPTION: ${e.javaClass.simpleName}: ${e.message}")
-            return null
+            val innertubeUrl = "https://www.youtube.com/youtubei/v1/player?key=$apiKey"
+            val innertubePayload = """
+                {
+                    "context": {
+                        "client": {
+                            "clientName": "ANDROID",
+                            "clientVersion": "20.10.38"
+                        }
+                    },
+                    "videoId": "$videoId"
+                }
+            """.trimIndent()
+
+            val innertubeResponse = httpPost(innertubeUrl, innertubePayload)
+            if (innertubeResponse.isNullOrBlank()) {
+                println("[AndroidSubtitleFetcher] Step 3 FAILED: Empty Innertube response")
+                return null
+            }
+
+            val innertubeJson = jsonParser.parseToJsonElement(innertubeResponse).jsonObject
+            val captionsRenderer = innertubeJson["captions"]?.jsonObject
+                ?.get("playerCaptionsTracklistRenderer")?.jsonObject
+
+            if (captionsRenderer == null) {
+                val status = innertubeJson["playabilityStatus"]?.jsonObject
+                    ?.get("status")?.jsonPrimitive?.content
+                println("[AndroidSubtitleFetcher] Step 3 FAILED: No captions. Playability=$status")
+                return null
+            }
+
+            val captionTracks = captionsRenderer["captionTracks"]?.jsonArray
+            if (captionTracks == null || captionTracks.isEmpty()) {
+                println("[AndroidSubtitleFetcher] Step 3 FAILED: Empty captionTracks")
+                return null
+            }
+
+            println("[AndroidSubtitleFetcher] Step 3 OK: Found ${captionTracks.size} caption tracks")
+
+            // 找英文字幕轨，否则用第一个
+            var targetBaseUrl: String? = null
+            var fallbackBaseUrl: String? = null
+            for (track in captionTracks) {
+                val trackObj = track.jsonObject
+                val langCode = trackObj["languageCode"]?.jsonPrimitive?.content ?: ""
+                val baseUrl = trackObj["baseUrl"]?.jsonPrimitive?.content ?: continue
+
+                if (langCode.startsWith("en")) {
+                    targetBaseUrl = baseUrl
+                    break
+                } else if (fallbackBaseUrl == null) {
+                    fallbackBaseUrl = baseUrl
+                }
+            }
+
+            val subtitleUrl = (targetBaseUrl ?: fallbackBaseUrl)
+                ?.replace("&fmt=srv3", "")  // 移除 srv3 格式
+            if (subtitleUrl == null) {
+                println("[AndroidSubtitleFetcher] Step 3 FAILED: No usable subtitle URL")
+                return null
+            }
+
+            // 检查是否需要 POT token
+            if (subtitleUrl.contains("&exp=xpe")) {
+                println("[AndroidSubtitleFetcher] WARNING: URL contains &exp=xpe (may need POT token)")
+            }
+
+            // ========== Step 4: GET 字幕内容（用同一 session 的 cookies） ==========
+            println("[AndroidSubtitleFetcher] Step 4: Fetching subtitle XML...")
+            val xmlContent = httpGet(subtitleUrl)
+            if (xmlContent.isNullOrBlank()) {
+                println("[AndroidSubtitleFetcher] Step 4 FAILED: Empty subtitle content")
+                return null
+            }
+
+            println("[AndroidSubtitleFetcher] Step 4 OK: XML content length=${xmlContent.length}")
+
+            // ========== Step 5: 解析 XML ==========
+            return parseXmlSubtitles(xmlContent)
+
+        } finally {
+            // 恢复之前的 CookieHandler
+            CookieHandler.setDefault(previousHandler)
         }
+    }
+
+    /**
+     * 使用 java.net.HttpURLConnection 执行 GET 请求（自动携带 CookieManager 管理的 cookies）
+     */
+    private fun httpGet(urlStr: String): String? {
+        val conn = URL(urlStr).openConnection() as HttpURLConnection
+        conn.requestMethod = "GET"
+        conn.setRequestProperty("User-Agent",
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+        conn.setRequestProperty("Accept-Language", "en-US,en;q=0.9")
+        conn.connectTimeout = 15000
+        conn.readTimeout = 15000
+        conn.instanceFollowRedirects = true
+
+        return try {
+            if (conn.responseCode == HttpURLConnection.HTTP_OK) {
+                BufferedReader(InputStreamReader(conn.inputStream, "UTF-8")).use { it.readText() }
+            } else {
+                println("[AndroidSubtitleFetcher] HTTP GET ${conn.responseCode}: $urlStr")
+                null
+            }
+        } catch (e: Exception) {
+            println("[AndroidSubtitleFetcher] HTTP GET error: ${e.message}")
+            null
+        } finally {
+            conn.disconnect()
+        }
+    }
+
+    /**
+     * 使用 java.net.HttpURLConnection 执行 POST 请求（JSON body）
+     */
+    private fun httpPost(urlStr: String, jsonBody: String): String? {
+        val conn = URL(urlStr).openConnection() as HttpURLConnection
+        conn.requestMethod = "POST"
+        conn.setRequestProperty("Content-Type", "application/json")
+        conn.setRequestProperty("User-Agent",
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+        conn.doOutput = true
+        conn.connectTimeout = 15000
+        conn.readTimeout = 15000
+
+        return try {
+            OutputStreamWriter(conn.outputStream, "UTF-8").use { it.write(jsonBody) }
+            if (conn.responseCode == HttpURLConnection.HTTP_OK) {
+                BufferedReader(InputStreamReader(conn.inputStream, "UTF-8")).use { it.readText() }
+            } else {
+                println("[AndroidSubtitleFetcher] HTTP POST ${conn.responseCode}: $urlStr")
+                // Try reading error stream
+                val errorBody = try {
+                    BufferedReader(InputStreamReader(conn.errorStream, "UTF-8")).use { it.readText() }
+                } catch (_: Exception) { "" }
+                println("[AndroidSubtitleFetcher]   Error: ${errorBody.take(200)}")
+                null
+            }
+        } catch (e: Exception) {
+            println("[AndroidSubtitleFetcher] HTTP POST error: ${e.message}")
+            null
+        } finally {
+            conn.disconnect()
+        }
+    }
+
+    /**
+     * 解析 XML 格式的字幕内容为段落列表
+     */
+    private fun parseXmlSubtitles(xmlContent: String): List<NativeSubtitleSegment>? {
+        println("[AndroidSubtitleFetcher] XML preview: ${xmlContent.take(300)}")
+        // DOT_MATCHES_ALL 是关键：YouTube XML 中 <text> 标签内容经常包含换行符
+        val textRegex = Regex("<text start=\"([\\d.]+)\"(?: dur=\"([\\d.]+)\")?>(.+?)</text>",
+            setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
+        val rawSegments = mutableListOf<NativeSubtitleSegment>()
+
+        for (match in textRegex.findAll(xmlContent)) {
+            val startSec = match.groupValues[1].toDoubleOrNull() ?: continue
+            val durSec = match.groupValues[2].toDoubleOrNull() ?: 3.0
+            val rawText = unescapeXml(match.groupValues[3])
+            if (rawText.isNotBlank()) {
+                rawSegments.add(
+                    NativeSubtitleSegment(
+                        time = startSec,
+                        timeStr = formatTimestamp(startSec),
+                        duration = durSec,
+                        text = rawText
+                    )
+                )
+            }
+        }
+
+        println("[AndroidSubtitleFetcher] Parsed ${rawSegments.size} raw segments from XML")
+        if (rawSegments.isEmpty()) return null
+
+        return mergeSubtitlesBySentence(rawSegments)
     }
 
     /**
@@ -287,11 +460,15 @@ object AndroidSubtitleFetcher {
                     setBody(payload)
                 }
 
+                println("[AndroidSubtitleFetcher] Batch ${i / batchSize + 1}: HTTP status=${response.status}")
                 if (response.status.isSuccess()) {
                     val respText = response.bodyAsText()
+                    println("[AndroidSubtitleFetcher] Batch ${i / batchSize + 1}: Response length=${respText.length}")
                     val jsonResponse = jsonParser.parseToJsonElement(respText).jsonObject
                     val content = jsonResponse["choices"]?.jsonArray?.firstOrNull()?.jsonObject
                         ?.get("message")?.jsonObject?.get("content")?.jsonPrimitive?.content ?: ""
+
+                    println("[AndroidSubtitleFetcher] Batch ${i / batchSize + 1}: AI content preview='${content.take(200)}'")
 
                     val cleanJsonStr = content.replace(Regex("^```json\\s*"), "")
                         .replace(Regex("^```\\s*"), "")
@@ -299,6 +476,8 @@ object AndroidSubtitleFetcher {
                         .trim()
 
                     val translatedArray = jsonParser.parseToJsonElement(cleanJsonStr).jsonArray
+                    println("[AndroidSubtitleFetcher] Batch ${i / batchSize + 1}: Parsed ${translatedArray.size} translated items")
+                    var matchCount = 0
                     for (item in translatedArray) {
                         val obj = item.jsonObject
                         val idIdx = obj["id"]?.jsonPrimitive?.intOrNull ?: continue
@@ -307,11 +486,18 @@ object AndroidSubtitleFetcher {
                         if (targetGlobalIdx in result.indices) {
                             val orig = result[targetGlobalIdx]
                             result[targetGlobalIdx] = orig.copy(zh = zhText)
+                            matchCount++
                         }
                     }
+                    println("[AndroidSubtitleFetcher] Batch ${i / batchSize + 1}: Applied $matchCount zh translations")
+                } else {
+                    val errBody = response.bodyAsText().take(300)
+                    println("[AndroidSubtitleFetcher] Batch ${i / batchSize + 1}: HTTP error ${response.status}, body=$errBody")
+                    throw Exception("AI API 错误 (${response.status.value}): $errBody")
                 }
             } catch (e: Exception) {
                 println("[AndroidSubtitleFetcher] Batch translation exception: ${e.message}")
+                throw e
             }
         }
 
@@ -380,10 +566,14 @@ $subtitleTranscript
                     .replace(Regex("^```\\s*"), "")
                     .replace(Regex("\\s*```$"), "")
                     .trim()
+            } else {
+                val errBody = response.bodyAsText().take(300)
+                println("[AndroidSubtitleFetcher] generateBlogNative HTTP error ${response.status}, body=$errBody")
+                throw Exception("AI API 博客生成错误 (${response.status.value}): $errBody")
             }
         } catch (e: Exception) {
             println("[AndroidSubtitleFetcher] generateBlogNative exception: ${e.message}")
+            throw e
         }
-        return null
     }
 }

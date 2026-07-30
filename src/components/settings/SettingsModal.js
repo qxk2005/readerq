@@ -320,6 +320,7 @@ export default function SettingsModal() {
           openaiBaseUrl, setOpenaiBaseUrl, openaiModel, setOpenaiModel,
           openaiMaxTokens, setOpenaiMaxTokens, envInfo,
           testConfig, testLoading, testStages, testResult,
+          youtubeCookie, setYoutubeCookie, handleFetchYoutubeCookie, isFetchingCookie, cookieMsg,
         }} />;
       case 'oss':
         return <TabOSS {...{
@@ -476,6 +477,7 @@ function TabAPI({
   openaiBaseUrl, setOpenaiBaseUrl, openaiModel, setOpenaiModel,
   openaiMaxTokens, setOpenaiMaxTokens, envInfo,
   testConfig, testLoading, testStages, testResult,
+  youtubeCookie, setYoutubeCookie, handleFetchYoutubeCookie, isFetchingCookie, cookieMsg,
 }) {
   return (
     <>

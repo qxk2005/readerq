@@ -2189,6 +2189,42 @@ fun VideoReadingContent(
             val hasNewerBlog by viewModel.hasNewerBlogVersion.collectAsState()
             if (selectedTab == "博客") {
                 Column(modifier = Modifier.fillMaxSize()) {
+                    val aiErrMsg by viewModel.aiErrorMessage.collectAsState()
+                    val activeProgressState by viewModel.activeSubtitleProgress.collectAsState()
+                    val rawProgress = activeProgressState
+                    val errText = aiErrMsg ?: if (!rawProgress.isNullOrBlank() && rawProgress.contains("⚠️")) rawProgress else null
+
+                    if (!errText.isNullOrBlank()) {
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 12.dp, vertical = 6.dp),
+                            shape = RoundedCornerShape(10.dp),
+                            color = Color(0xFFEF4444).copy(alpha = 0.12f),
+                            border = BorderStroke(1.dp, Color(0xFFEF4444).copy(alpha = 0.4f))
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    text = errText,
+                                    fontSize = 12.sp,
+                                    color = Color(0xFFEF4444),
+                                    fontWeight = FontWeight.SemiBold,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                TextButton(
+                                    onClick = { viewModel.dismissAiErrorMessage() },
+                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                                ) {
+                                    Text("忽略 ✕", fontSize = 11.sp, color = Color(0xFFEF4444))
+                                }
+                            }
+                        }
+                    }
+
                     if (hasNewerBlog) {
                         val accentColor = Color(0xFF3B82F6)
                         val blogLocalVer by viewModel.blogLocalVersion.collectAsState()
@@ -2430,9 +2466,51 @@ fun SubtitlePanelComposable(
             }
         }
 
-        val activeProgress by viewModel.activeSubtitleProgress.collectAsState()
+        val aiErrMsg by viewModel.aiErrorMessage.collectAsState()
+        val activeProgressState by viewModel.activeSubtitleProgress.collectAsState()
+        val progressMsg = activeProgressState
+        val errText = aiErrMsg ?: if (!progressMsg.isNullOrBlank() && progressMsg.contains("⚠️")) progressMsg else null
         val downloadingDocId by viewModel.downloadingDocId.collectAsState()
         val isDownloadingThisDoc = downloadingDocId == doc.id
+
+        // 📢 遇到带有 ⚠️ 标记的异常/402错误时，自动弹 Toast 提示
+        LaunchedEffect(errText) {
+            if (!errText.isNullOrBlank() && errText.contains("⚠️")) {
+                Toast.makeText(context, errText, Toast.LENGTH_LONG).show()
+            }
+        }
+
+        // 🔴 错误提醒 Warning Banner (如大模型余额不足402等，持久显示直到用户点击忽略)
+        if (!errText.isNullOrBlank()) {
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                shape = RoundedCornerShape(10.dp),
+                color = Color(0xFFEF4444).copy(alpha = 0.12f),
+                border = BorderStroke(1.dp, Color(0xFFEF4444).copy(alpha = 0.4f))
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = errText,
+                        fontSize = 12.sp,
+                        color = Color(0xFFEF4444),
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.weight(1f)
+                    )
+                    TextButton(
+                        onClick = { viewModel.dismissAiErrorMessage() },
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                    ) {
+                        Text("忽略 ✕", fontSize = 11.sp, color = Color(0xFFEF4444))
+                    }
+                }
+            }
+        }
 
         // 字幕内容 / 加载与进度面板
         if (isLoading || isDownloadingThisDoc) {
@@ -2451,14 +2529,14 @@ fun SubtitlePanelComposable(
                         color = accentColor,
                         strokeWidth = 2.5.dp
                     )
-                    val progressMsg = if (isDownloadingThisDoc) activeProgress else "正在加载字幕..."
-                    if (!progressMsg.isNullOrBlank()) {
+                    val currentProgressText = if (isDownloadingThisDoc) (progressMsg ?: "") else "正在加载字幕..."
+                    if (currentProgressText.isNotBlank()) {
                         Surface(
                             shape = RoundedCornerShape(8.dp),
                             color = accentColor.copy(alpha = 0.12f),
                         ) {
                             Text(
-                                text = progressMsg,
+                                text = currentProgressText,
                                 modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
                                 fontSize = 12.sp,
                                 color = accentColor,
