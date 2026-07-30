@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useApp } from '@/context/AppContext';
 import { useTheme } from '@/context/ThemeContext';
-import { Settings, Key, Palette, Keyboard, Info, RefreshCw, Lightbulb, Save, Zap, CheckCircle2, XCircle, Wrench, PartyPopper, Sun, Moon, Check, X, Image, CloudUpload, History, Video, LayoutGrid } from 'lucide-react';
+import { Settings, Key, Palette, Keyboard, Info, RefreshCw, Lightbulb, Save, Zap, CheckCircle2, XCircle, Wrench, PartyPopper, Sun, Moon, Check, X, Image, CloudUpload, History, Video, LayoutGrid, Loader2 } from 'lucide-react';
 import ChangelogPanel from './ChangelogPanel';
 
 const TABS = [
