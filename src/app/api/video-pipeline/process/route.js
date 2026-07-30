@@ -72,6 +72,8 @@ export async function POST(request) {
           let generatedBlogHtml = null;
 
           // 2. AI 处理阶段 (翻译 + 博客)
+          let aiErrorMessage = null;
+
           if (isAIConfigured()) {
             // 2.1 双语翻译
             sendProgress('progress', `⌛ [2/4 双语翻译] 正在调用 AI 进行中英对照翻译 (共 ${segments.length} 句)...`);
@@ -85,7 +87,15 @@ export async function POST(request) {
                 saveSubtitle(docId, srtContent, finalSegments);
               }
             } catch (aiErr) {
-              sendProgress('progress', `⚠️ [2/4 双语翻译] AI 翻译跳过: ${aiErr.message}`);
+              const detail = aiErr.message || '';
+              if (detail.includes('402') || detail.includes('Insufficient Balance')) {
+                aiErrorMessage = '⚠️ [AI 失败] 大模型 API 账号余额不足 (HTTP 402)，已保留原生英文字幕。请在设置中充值或更换 API Key。';
+              } else if (detail.includes('401')) {
+                aiErrorMessage = '⚠️ [AI 失败] 大模型 API Key 或模型配置无效 (HTTP 401)，已保留原生英文字幕。请检查设置。';
+              } else {
+                aiErrorMessage = `⚠️ [AI 失败] 双语翻译服务异常: ${detail}`;
+              }
+              sendProgress('warning', aiErrorMessage);
             }
 
             // 2.2 字幕博客生成
@@ -99,7 +109,15 @@ export async function POST(request) {
                 sendProgress('progress', `✅ [3/4 博客转换] 已成功生成 ${blogHtml.length} 字精选结构化博客文章`);
               }
             } catch (blogErr) {
-              sendProgress('progress', `⚠️ [3/4 博客转换] 博客生成跳过: ${blogErr.message}`);
+              const detail = blogErr.message || '';
+              if (!aiErrorMessage) {
+                if (detail.includes('402') || detail.includes('Insufficient Balance')) {
+                  aiErrorMessage = '⚠️ [AI 失败] 大模型 API 账号余额不足 (HTTP 402)，视频博客生成被跳过。请在设置中充值或更换 API Key。';
+                } else {
+                  aiErrorMessage = `⚠️ [AI 失败] 博客生成异常: ${detail}`;
+                }
+              }
+              sendProgress('warning', `⚠️ [3/4 博客转换] 博客生成跳过: ${detail}`);
             }
           } else {
             sendProgress('progress', 'ℹ️ 未配置 OpenAI 服务器，跳过 AI 双语翻译与博客生成');
@@ -151,7 +169,11 @@ export async function POST(request) {
           }
 
           // 5. 全流程完成
-          sendProgress('complete', '✅ [完成] 视频解析、双语翻译与博客生成全流程处理成功！');
+          if (aiErrorMessage) {
+            sendProgress('complete', aiErrorMessage, { hasAiError: true, aiError: aiErrorMessage });
+          } else {
+            sendProgress('complete', '✅ [完成] 视频解析、双语翻译与博客生成全流程处理成功！');
+          }
           controller.close();
         } catch (err) {
           console.error('视频 Pipeline 执行出错:', err);

@@ -243,28 +243,31 @@ export async function fetchYouTubeSubtitles(videoIdOrUrl, onRetryStatus = null) 
     return null;
   };
 
-  // ===== 第 1 阶段：通过 youtube-transcript 库直接提取 (快速、免依赖) =====
+  // ===== 第 1 阶段：通过 youtube-transcript 库按语言优先级精准抓取 (优先英文/中文，防止抓到乱码小语种) =====
+  const langPriority = ['en', 'en-US', 'en-GB', 'zh-Hans', 'zh-Hant', 'zh', 'ja'];
+
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
       if (onRetryStatus) {
         onRetryStatus(attempt, maxAttempts + 1, `正在尝试直接抓取公开字幕轨 (第 ${attempt}/${maxAttempts + 1} 次尝试)...`);
       }
 
-      if (attempt === 1) {
-        const result = await tryFetch();
-        if (result) return result;
-      }
-
-      if (attempt === 2) {
-        for (const lang of ['en', 'zh', 'zh-Hans', 'ja', 'auto']) {
-          try {
-            const resLang = await tryFetch({ lang });
-            if (resLang) return resLang;
-          } catch (langErr) {
-            // 忽略单个语言轨查找失败
+      // 优先尝试标准语言队列
+      for (const lang of langPriority) {
+        try {
+          const resLang = await tryFetch({ lang });
+          if (resLang) {
+            console.log(`[YouTube 字幕成功命中语言轨: ${lang}]`);
+            return resLang;
           }
+        } catch (langErr) {
+          // 忽略单个语言轨无结果
         }
       }
+
+      // 最后的退避回退：无参数抓取
+      const defaultResult = await tryFetch();
+      if (defaultResult) return defaultResult;
     } catch (err) {
       console.warn(`[YouTube 字幕直接抓取第 ${attempt} 次失败]:`, err.message);
       lastError = err;

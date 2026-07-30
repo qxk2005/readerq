@@ -354,12 +354,8 @@ export async function translateSubtitlesToBilingual(segments) {
       };
     });
   } catch (err) {
-    console.error('AI 字幕双语翻译失败，使用回退原文本:', err);
-    return segments.map(seg => ({
-      ...seg,
-      zh: seg.text,
-      en: seg.text,
-    }));
+    console.error('AI 字幕双语翻译出错:', err);
+    throw new Error(`AI 翻译服务异常 (${err.status || err.message || '未知错误'}): ${err.message}`);
   }
 }
 

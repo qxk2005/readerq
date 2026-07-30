@@ -111,6 +111,8 @@ export default function SubtitlePanel({
   const userScrollingRef = useRef(false);
   const scrollTimeoutRef = useRef(null);
 
+  const { setShowSettings } = useApp();
+
   // SRT 上传相关状态
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState(null);
@@ -350,6 +352,30 @@ export default function SubtitlePanel({
           const { done, value } = await reader.read();
           if (done) break;
           buffer += decoder.decode(value, { stream: true });
+
+          const lines = buffer.split('\n\n');
+          buffer = lines.pop() || ''; // 保留未完成的片段
+
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              try {
+                const eventData = JSON.parse(line.substring(6));
+                if (eventData.type === 'warning' || eventData.type === 'error' || eventData.hasAiError) {
+                  const errMsg = eventData.aiError || eventData.message;
+                  if (errMsg && errMsg.includes('⚠️')) {
+                    setUploadError(errMsg);
+                  }
+                } else if (eventData.type === 'progress') {
+                  // 如果是带有 ⚠️ 的跳过/报错进度
+                  if (eventData.message && eventData.message.includes('⚠️')) {
+                    setUploadError(eventData.message);
+                  }
+                }
+              } catch (e) {
+                // 忽略非 JSON 数据
+              }
+            }
+          }
         }
       }
 
@@ -357,7 +383,6 @@ export default function SubtitlePanel({
       const subRes = await fetch(`/api/documents/${documentId}/subtitles`);
       const subData = await subRes.json();
       if (subData.exists && Array.isArray(subData.subtitles) && subData.subtitles.length > 0) {
-        setUploadError(null);
         onSubtitleUploaded?.(subData.subtitles);
       } else {
         setUploadError('未能自动提取到该视频的字幕。您可以点击右侧【上传字幕】导入 .srt 文件');
@@ -615,23 +640,45 @@ export default function SubtitlePanel({
         </div>
       </div>
 
-      {/* 上传/提取错误提示 */}
+      {/* 上传/提取/AI 错误提示 Banner */}
       {uploadError && (
         <div style={{
-          padding: '8px 16px',
-          background: 'rgba(239, 68, 68, 0.08)',
-          borderBottom: '1px solid rgba(239, 68, 68, 0.15)',
+          padding: '10px 16px',
+          background: 'rgba(239, 68, 68, 0.1)',
+          borderBottom: '1px solid rgba(239, 68, 68, 0.25)',
           color: 'var(--color-danger)',
           fontSize: 'var(--text-xs)',
           display: 'flex',
           alignItems: 'center',
-          gap: '6px',
+          justifyContent: 'space-between',
+          gap: '8px',
+          fontWeight: '500'
         }}>
-          <span>{uploadError}</span>
-          <button
-            onClick={() => setUploadError(null)}
-            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-danger)', padding: '0 4px', flexShrink: 0 }}
-          >✕</button>
+          <span style={{ flex: 1, lineHeight: '1.4' }}>{uploadError}</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+            {setShowSettings && (
+              <button
+                type="button"
+                onClick={() => setShowSettings(true)}
+                style={{
+                  background: 'var(--color-danger)',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: '4px',
+                  padding: '2px 8px',
+                  fontSize: '11px',
+                  cursor: 'pointer',
+                  fontWeight: '600'
+                }}
+              >
+                ⚙️ 前往设置
+              </button>
+            )}
+            <button
+              onClick={() => setUploadError(null)}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-danger)', padding: '0 4px', fontSize: '13px' }}
+            >✕</button>
+          </div>
         </div>
       )}
       {uploadSuccess && (
