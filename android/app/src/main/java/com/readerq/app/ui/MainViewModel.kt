@@ -1202,67 +1202,28 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
                 // 优先通过服务器端保存（会触发 oEmbed 获取真实标题）
                 var docId: String? = null
-                var docTitle: String? = null
-                try {
-                    val serverSaveUrl = "$serverUrl/api/readwise/save"
-                    val saveResp = HttpClient(Android) {
-                        install(ContentNegotiation) {
-                            json(Json {
-                                ignoreUnknownKeys = true
-                                coerceInputValues = true
-                            })
-                        }
-                    }.use { httpClient ->
-                        val savePayload = buildJsonObject {
-                            put("url", url)
-                            put("author", author ?: "")
-                            put("notes", notes ?: "")
-                            put("tags", buildJsonArray {
-                                (tags ?: emptyList()).forEach { add(it) }
-                            })
-                        }.toString()
-                        httpClient.post(serverSaveUrl) {
-                            contentType(ContentType.Application.Json)
-                            setBody(savePayload)
-                        }
-                    }
-                    if (saveResp.status.isSuccess()) {
-                        val respText = saveResp.bodyAsText()
-                        try {
-                            val jsonObj = kotlinx.serialization.json.Json.parseToJsonElement(respText)
-                            if (jsonObj is kotlinx.serialization.json.JsonObject) {
-                                docId = (jsonObj["id"] as? kotlinx.serialization.json.JsonPrimitive)?.content
-                                    ?: (jsonObj["document_id"] as? kotlinx.serialization.json.JsonPrimitive)?.content
-                                    ?: (jsonObj["document"] as? kotlinx.serialization.json.JsonObject)?.get("id")?.let { (it as? kotlinx.serialization.json.JsonPrimitive)?.content }
-                                docTitle = (jsonObj["title"] as? kotlinx.serialization.json.JsonPrimitive)?.content
-                                    ?: (jsonObj["document"] as? kotlinx.serialization.json.JsonObject)?.get("title")?.let { (it as? kotlinx.serialization.json.JsonPrimitive)?.content }
-                            }
-                        } catch (_: Exception) {}
-                    }
-                } catch (e: Exception) {
-                    // Server 保存失败则回退到直接 Readwise API
-                    println("[saveDocumentByUrl] Server save failed, fallback: ${e.message}")
-                    try {
-                        val result = client.saveDocument(request)
-                        docId = result.id ?: result.url
-                    } catch (rwErr: Exception) {
-                        println("[saveDocumentByUrl] Readwise API save failed: ${rwErr.message}")
-                    }
+                // 🎯 步骤 1：直接调用 Readwise 官方 API 进行真实保存
+                val rwSaveResult = try {
+                    client.saveDocument(request)
+                } catch (rwErr: Exception) {
+                    println("[saveDocumentByUrl] Readwise 官方 API 保存报错: ${rwErr.message}")
+                    throw Exception("保存到 Readwise 官方接口失败: ${rwErr.message}")
                 }
 
-                // 容错后备保障：如果仍未获取到 ID，基于 URL 的 hash 生成伪 ID 保证流程通畅
-                if (docId.isNullOrBlank()) {
-                    val cleanUrl = url.trim().lowercase()
-                    docId = "doc_${Math.abs(cleanUrl.hashCode())}"
-                }
+                // 🎯 步骤 2：锁定 Readwise 官方返回的绝对权威 ID (例如 "01kyrq0jfj7cwqy9ybzcdpj4pq")
+                val officialDocId = rwSaveResult.id
+                    ?: rwSaveResult.url?.split("/")?.filter { it.isNotBlank() }?.lastOrNull()
+                    ?: throw Exception("Readwise 官方接口未返回有效文档 ID")
 
-                // 🎯 核心第二步：保存成功后，立即构造 DocumentEntity 写入本地 Room 数据库，确保即刻出现在【我的库 - 收件箱】中
+                val officialReadwiseUrl = rwSaveResult.url ?: "https://read.readwise.io/read/$officialDocId"
+
+                // 🎯 步骤 3：以官方权威 ID 立即落盘写入 Android 本地 Room 数据库，保证 ID 100% 官方一致，UI 列表秒刷
                 val nowIso = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", java.util.Locale.US).format(java.util.Date())
                 val newDocEntity = DocumentEntity(
-                    id = docId,
+                    id = officialDocId, // 100% 绑定 Readwise 官方唯一 ID！
                     url = url,
-                    source_url = url,
-                    title = docTitle ?: (if (isVideoUrl) "YouTube 视频文章" else "已保存文章"),
+                    source_url = officialReadwiseUrl,
+                    title = if (isVideoUrl) "YouTube 视频文章" else "已保存文章",
                     author = author,
                     source = if (isVideoUrl) "youtube" else "web",
                     category = if (isVideoUrl) "video" else "article",
@@ -1291,6 +1252,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 } catch (dbErr: Exception) {
                     println("[saveDocumentByUrl] insertDocument error: ${dbErr.message}")
                 }
+
+                docId = officialDocId
 
                 if (isVideoUrl) {
                     _videoPipelineProgress.value = "✅ [1/4] 文章已保存 → ${newDocEntity.title}"
