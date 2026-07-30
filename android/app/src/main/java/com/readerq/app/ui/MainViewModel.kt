@@ -1276,7 +1276,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                             }.use { httpClient ->
                                 httpClient.post(pipelineUrl) {
                                     contentType(ContentType.Application.Json)
-                                    setBody("""{"docId":"$docId","url":"$url","title":"${docTitle ?: "视频文章"}"}""")
+                                    setBody("""{"docId":"$docId","url":"$url","title":"${newDocEntity.title}"}""")
                                 }
                             }
                         } catch (e: Exception) {
@@ -1284,9 +1284,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         }
                     }
 
-                    // 2. 启动 Android 端优雅轮询器，持续向服务端复核字幕就绪状态
+                    // 2. 启动 Android 端原生字幕补全与优雅轮询器
                     var subtitleSuccess = false
-                    val maxPolls = 10
+                    val maxPolls = 6
                     for (attempt in 1..maxPolls) {
                         kotlinx.coroutines.delay(2000L)
                         val checkSub = client.fetchSubtitleFromServerFull(serverUrl, docId)
@@ -1295,18 +1295,71 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                             subtitleSuccess = true
                             break
                         } else {
-                            if (attempt <= 3) {
-                                _videoPipelineProgress.value = "⌛ [2/4] 正在从 YouTube 提取字幕中 (${attempt * 2}s)..."
-                            } else if (attempt <= 7) {
-                                _videoPipelineProgress.value = "⌛ [3/4] 字幕已抓取，正在进行 AI 中英对照翻译 (${attempt * 2}s)..."
-                            } else {
-                                _videoPipelineProgress.value = "⌛ [4/4] 正在生成视频精选博客文章 (${attempt * 2}s)..."
+                            _videoPipelineProgress.value = "⌛ [2/4] 正在解析与生成字幕 (${attempt * 2}s)..."
+                        }
+                    }
+
+                    // 🎯 降级后备：若服务器在 12 秒内未完成，触发 Android 原生字幕提取与存库！
+                    if (!subtitleSuccess) {
+                        _videoPipelineProgress.value = "⌛ [Android 原生] 正在由 Android 本地直接抓取字幕轨..."
+                        val nativeSegments = com.readerq.app.api.AndroidSubtitleFetcher.fetchYouTubeSubtitlesNative(url)
+                        if (nativeSegments != null && nativeSegments.isNotEmpty()) {
+                            _videoPipelineProgress.value = "⌛ [Android 原生] 抓取到 ${nativeSegments.size} 句字幕，进行 AI 双语翻译..."
+                            val openAiKey = settingDao.getSetting("openai_api_key")?.replace("\"", "")?.trim() ?: ""
+                            val openAiBase = settingDao.getSetting("openai_base_url")?.replace("\"", "")?.trim() ?: "https://api.openai.com/v1"
+                            val openAiModel = settingDao.getSetting("openai_model")?.replace("\"", "")?.trim() ?: "gpt-3.5-turbo"
+
+                            var finalSegments = nativeSegments
+                            if (openAiKey.isNotBlank()) {
+                                try {
+                                    finalSegments = com.readerq.app.api.AndroidSubtitleFetcher.translateSubtitlesNative(
+                                        nativeSegments, openAiKey, openAiBase, openAiModel
+                                    )
+                                } catch (_: Exception) {}
                             }
+
+                            val srtBuilder = StringBuilder()
+                            val jsonArray = buildJsonArray {
+                                finalSegments.forEachIndexed { index, seg ->
+                                    val endSec = seg.time + seg.duration
+                                    srtBuilder.append("${index + 1}\n")
+                                    srtBuilder.append("${com.readerq.app.api.AndroidSubtitleFetcher.formatTimestamp(seg.time)} --> ${com.readerq.app.api.AndroidSubtitleFetcher.formatTimestamp(endSec)}\n")
+                                    srtBuilder.append("${seg.text}\n")
+                                    if (!seg.zh.isNullOrBlank()) {
+                                        srtBuilder.append("${seg.zh}\n")
+                                    }
+                                    srtBuilder.append("\n")
+
+                                    add(buildJsonObject {
+                                        put("time", seg.time)
+                                        put("timeStr", seg.timeStr)
+                                        put("duration", seg.duration)
+                                        put("text", seg.text)
+                                        if (!seg.zh.isNullOrBlank()) {
+                                            put("zh", seg.zh)
+                                        }
+                                    })
+                                }
+                            }
+
+                            val nowIso = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", java.util.Locale.US).format(java.util.Date())
+                            val subEntity = SubtitleEntity(
+                                document_id = docId,
+                                srt_content = srtBuilder.toString().trim(),
+                                parsed_segments_json = jsonArray.toString(),
+                                created_at = nowIso,
+                                updated_at = nowIso
+                            )
+                            try {
+                                subtitleDao.insertSubtitle(subEntity)
+                                _videoPipelineProgress.value = "✅ [完成] 原生字幕已落地生成 (${finalSegments.size} 句)"
+                                subtitleSuccess = true
+                            } catch (_: Exception) {}
                         }
                     }
 
                     if (!subtitleSuccess) {
-                        _videoPipelineProgress.value = "ℹ️ 视频已保存，字幕处理已转为云端后台运行"
+                        _videoPipelineProgress.value = "ℹ️ 视频已保存，您可以点击【下载字幕】随时重试"
                     }
 
                     _saveDocResult.value = SaveDocResult(
@@ -1782,48 +1835,108 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             _subtitleDownloading.value = true
             _downloadingDocId.value = documentId
             _subtitleLoading.value = true
-            _activeSubtitleProgress.value = "⌛ [1/4 抓取字幕] 正在尝试从 YouTube 免 Cookie 提取字幕轨..."
-
-            // 后台步进提示
-            val progressJob = viewModelScope.launch(Dispatchers.IO) {
-                val steps = listOf(
-                    3000L to "⌛ [1/4 抓取字幕] 正在解析带时间戳字幕卡片...",
-                    7000L to "⌛ [2/4 双语翻译] 正在调用 AI 进行中英对照翻译...",
-                    16000L to "⌛ [3/4 博客转换] 正在生成 Markdown 精选视频博客...",
-                    25000L to "☁️ [4/4 OSS 同步] 正在无缝同步到阿里云 OSS...",
-                )
-                for ((delay, msg) in steps) {
-                    kotlinx.coroutines.delay(delay)
-                    if (_downloadingDocId.value == documentId) {
-                        _activeSubtitleProgress.value = msg
-                    }
-                }
-            }
+            _activeSubtitleProgress.value = "⌛ 正在获取视频字幕轨..."
 
             try {
                 val token = settingDao.getSetting("readwise_token")?.replace("\"", "") ?: ""
                 val client = com.readerq.app.api.ReadwiseClient(token)
                 val serverUrl = getServerBaseUrl()
 
+                var serverSuccess = false
                 try {
-                    client.triggerServerSubtitleDownload(serverUrl, documentId, videoUrl, title)
+                    serverSuccess = client.triggerServerSubtitleDownload(serverUrl, documentId, videoUrl, title)
                 } catch (e: Exception) {
                     println("[downloadSubtitleFromServer] Pipeline trigger error: ${e.message}")
                 }
 
-                progressJob.cancel()
-                _activeSubtitleProgress.value = "✅ 处理完成！正在刷新字幕..."
+                // 尝试从服务端拉取最新字幕
+                val checkSub = try {
+                    client.fetchSubtitleFromServerFull(serverUrl, documentId)
+                } catch (_: Exception) { null }
 
-                // 重新从服务器/本地拉取最新字幕和博客
+                if (checkSub != null && (checkSub.exists || checkSub.subtitles != null)) {
+                    serverSuccess = true
+                }
+
+                // 🎯 核心 Android 原生兜底防线：如果服务端未抓取成功，自动使用 Android 本地原生引擎从 YouTube 提取并 AI 翻译
+                if (!serverSuccess) {
+                    _activeSubtitleProgress.value = "⌛ [Android 原生] 正在从 YouTube 提取公开字幕轨..."
+                    val nativeSegments = com.readerq.app.api.AndroidSubtitleFetcher.fetchYouTubeSubtitlesNative(videoUrl)
+
+                    if (nativeSegments != null && nativeSegments.isNotEmpty()) {
+                        _activeSubtitleProgress.value = "⌛ [Android 原生] 成功抓取 ${nativeSegments.size} 句字幕，正在调用 AI 进行双语翻译..."
+                        val openAiKey = settingDao.getSetting("openai_api_key")?.replace("\"", "")?.trim() ?: ""
+                        val openAiBase = settingDao.getSetting("openai_base_url")?.replace("\"", "")?.trim() ?: "https://api.openai.com/v1"
+                        val openAiModel = settingDao.getSetting("openai_model")?.replace("\"", "")?.trim() ?: "gpt-3.5-turbo"
+
+                        var finalSegments = nativeSegments
+                        if (openAiKey.isNotBlank()) {
+                            try {
+                                finalSegments = com.readerq.app.api.AndroidSubtitleFetcher.translateSubtitlesNative(
+                                    nativeSegments, openAiKey, openAiBase, openAiModel
+                                )
+                            } catch (aiErr: Exception) {
+                                println("[downloadSubtitleFromServer] AI 翻译跳过: ${aiErr.message}")
+                            }
+                        }
+
+                        // 构造干净的 SRT 文本与 JSON 字符串存入本地 Room 数据库
+                        val srtBuilder = StringBuilder()
+                        val jsonArray = buildJsonArray {
+                            finalSegments.forEachIndexed { index, seg ->
+                                val endSec = seg.time + seg.duration
+                                srtBuilder.append("${index + 1}\n")
+                                srtBuilder.append("${com.readerq.app.api.AndroidSubtitleFetcher.formatTimestamp(seg.time)} --> ${com.readerq.app.api.AndroidSubtitleFetcher.formatTimestamp(endSec)}\n")
+                                srtBuilder.append("${seg.text}\n")
+                                if (!seg.zh.isNullOrBlank()) {
+                                    srtBuilder.append("${seg.zh}\n")
+                                }
+                                srtBuilder.append("\n")
+
+                                add(buildJsonObject {
+                                    put("time", seg.time)
+                                    put("timeStr", seg.timeStr)
+                                    put("duration", seg.duration)
+                                    put("text", seg.text)
+                                    if (!seg.zh.isNullOrBlank()) {
+                                        put("zh", seg.zh)
+                                    }
+                                })
+                            }
+                        }
+
+                        val nowIso = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", java.util.Locale.US).format(java.util.Date())
+                        val subEntity = SubtitleEntity(
+                            document_id = documentId,
+                            srt_content = srtBuilder.toString().trim(),
+                            parsed_segments_json = jsonArray.toString(),
+                            created_at = nowIso,
+                            updated_at = nowIso
+                        )
+
+                        try {
+                            subtitleDao.insertSubtitle(subEntity)
+                            _activeSubtitleProgress.value = "✅ [完成] 已成功原生提取与翻译 ${finalSegments.size} 句字幕"
+                        } catch (dbErr: Exception) {
+                            println("[downloadSubtitleFromServer] insertSubtitle error: ${dbErr.message}")
+                        }
+                    } else {
+                        _activeSubtitleProgress.value = "⚠️ 未能抓取到公开字幕轨"
+                    }
+                } else {
+                    _activeSubtitleProgress.value = "✅ [完成] 字幕与 AI 博客已成功就绪！"
+                }
+
+                // 重新刷新字幕与博客状态展示
                 loadSubtitles(documentId)
                 loadBlog(documentId)
             } catch (e: Exception) {
-                progressJob.cancel()
                 println("[downloadSubtitleFromServer] EXCEPTION: ${e.message}")
             } finally {
                 _subtitleDownloading.value = false
                 _downloadingDocId.value = null
                 _subtitleLoading.value = false
+                kotlinx.coroutines.delay(1500)
                 _activeSubtitleProgress.value = null
             }
         }
