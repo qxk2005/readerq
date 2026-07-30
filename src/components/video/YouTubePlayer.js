@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState, useCallback } from 'react';
+import CinemaSubtitleOverlay from './CinemaSubtitleOverlay';
 
 /**
  * YouTube 播放器组件 (使用 youtube-nocookie.com 与智能 Fallback，解决嵌入“登录以播放 / Sign in to confirm you're not a bot”限制)
@@ -10,8 +11,10 @@ import { useEffect, useRef, useState, useCallback } from 'react';
  * @param {function} onStateChange - 播放状态变化回调 (state: number)
  * @param {string} subtitleLang - 字幕语言代码 ('auto', 'zh', 'en', 'ja', 'ko' 等)
  * @param {React.Ref} playerRef - 暴露播放器实例的 ref
+ * @param {Object} activeSubtitle - 当前时间点活跃字幕对象
+ * @param {Object} cinemaConfig - 电影播放模式配置
  */
-export default function YouTubePlayer({ videoId, onTimeUpdate, onStateChange, subtitleLang = 'auto', playerRef }) {
+export default function YouTubePlayer({ videoId, onTimeUpdate, onStateChange, subtitleLang = 'auto', playerRef, activeSubtitle, cinemaConfig }) {
   const containerRef = useRef(null);
   const internalPlayerRef = useRef(null);
   const timerRef = useRef(null);
@@ -206,6 +209,7 @@ export default function YouTubePlayer({ videoId, onTimeUpdate, onStateChange, su
           allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
           allowFullScreen
         />
+        <CinemaSubtitleOverlay activeSubtitle={activeSubtitle} cinemaConfig={cinemaConfig} />
       </div>
     );
   }
@@ -213,6 +217,7 @@ export default function YouTubePlayer({ videoId, onTimeUpdate, onStateChange, su
   return (
     <div className="youtube-player-container" style={{ width: '100%', height: '100%', background: '#000', position: 'relative' }}>
       <div id="youtube-player-div" ref={containerRef} style={{ width: '100%', height: '100%' }} />
+      <CinemaSubtitleOverlay activeSubtitle={activeSubtitle} cinemaConfig={cinemaConfig} />
     </div>
   );
 }

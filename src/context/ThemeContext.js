@@ -28,6 +28,13 @@ export function ThemeProvider({ children }) {
     autoScroll: true,
     playerSize: 'medium',
     blogPrompt: '',
+    cinemaMode: {
+      enabled: true,
+      fontSize: 'medium',
+      position: 'bottom',
+      style: 'netflix',
+      displayLang: 'bilingual',
+    },
   });
 
   useEffect(() => {
@@ -151,6 +158,13 @@ export function ThemeProvider({ children }) {
       autoScroll: true,
       playerSize: 'medium',
       blogPrompt: '',
+      cinemaMode: {
+        enabled: true,
+        fontSize: 'medium',
+        position: 'bottom',
+        style: 'netflix',
+        displayLang: 'bilingual',
+      },
     });
   }, []);
 
