@@ -581,6 +581,15 @@ fun AdaptiveMainScreen(
                 }
             }
 
+            // Onboarding Wizard Dialog
+            val showOnboardingWizard by viewModel.showOnboardingWizard.collectAsState()
+            if (showOnboardingWizard) {
+                OnboardingWizardDialog(
+                    viewModel = viewModel,
+                    onDismiss = { viewModel.dismissOnboardingWizard() }
+                )
+            }
+
             // Settings Dialog can be triggered explicitly via Settings Tab
         }
     }
@@ -831,7 +840,8 @@ fun SettingsPane(
                                     openaiModelInput,
                                     openaiMaxTokensInput
                                 )
-                            }
+                            },
+                            onLaunchOnboarding = { viewModel.launchOnboardingWizard() }
                         )
                         "oss" -> TabOSSContent(
                             region = ossRegionInput,
@@ -984,7 +994,8 @@ fun TabAPIContent(
     testStages: List<TestStage>?,
     testResult: TestResult?,
     isDark: Boolean,
-    onTestClick: () -> Unit
+    onTestClick: () -> Unit,
+    onLaunchOnboarding: (() -> Unit)? = null
 ) {
     val cardBg = if (isDark) Color(0xFF242424) else Color(0xFFF3F4F6)
     val labelColor = if (isDark) Color.LightGray else Color.DarkGray
@@ -994,12 +1005,23 @@ fun TabAPIContent(
             colors = CardDefaults.cardColors(containerColor = cardBg),
             modifier = Modifier.fillMaxWidth()
         ) {
-            Text(
-                text = "💡 在此处配置的值会保存到本地数据库并优先使用。如果你在此处留空，系统将自动回退使用环境变量配置。",
-                style = MaterialTheme.typography.bodySmall,
-                color = labelColor,
-                modifier = Modifier.padding(12.dp)
-            )
+            Column(modifier = Modifier.padding(12.dp)) {
+                Text(
+                    text = "💡 在此处配置的值会保存到本地数据库并优先使用。你在向导中配置的凭证均自动存储在此处。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = labelColor
+                )
+                if (onLaunchOnboarding != null) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedButton(
+                        onClick = onLaunchOnboarding,
+                        shape = RoundedCornerShape(8.dp),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                    ) {
+                        Text("✨ 重新运行配置向导", fontSize = 11.sp, color = MaterialTheme.colorScheme.primary)
+                    }
+                }
+            }
         }
 
         OutlinedTextField(

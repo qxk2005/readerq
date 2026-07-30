@@ -38,6 +38,13 @@ export function AppProvider({ children }) {
   const [showSettings, setShowSettings] = useState(false);
   const [showAddUrl, setShowAddUrl] = useState(false);
   const [showTagsManager, setShowTagsManager] = useState(false);
+  const [showOnboardingWizard, setShowOnboardingWizard] = useState(false);
+  const [isReopeningOnboarding, setIsReopeningOnboarding] = useState(false);
+
+  const launchOnboardingWizard = useCallback(() => {
+    setIsReopeningOnboarding(true);
+    setShowOnboardingWizard(true);
+  }, []);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [isContentLoading, setIsContentLoading] = useState(false);
   const [contentError, setContentError] = useState(null);
@@ -400,8 +407,18 @@ export function AppProvider({ children }) {
     fetch('/api/settings')
       .then(res => res.json())
       .then(data => {
-        if (data && data.ui_sidebar_collapsed !== undefined && data.ui_sidebar_collapsed !== '') {
-          setSidebarCollapsed(data.ui_sidebar_collapsed === 'true');
+        if (data) {
+          if (data.ui_sidebar_collapsed !== undefined && data.ui_sidebar_collapsed !== '') {
+            setSidebarCollapsed(data.ui_sidebar_collapsed === 'true');
+          }
+          // 自动检测是否为首次启动：如果未完成向导且缺少关键凭证，则触发配置向导
+          const isCompleted = data.onboarding_completed === 'true';
+          const hasReadwise = data.readwise_token_set || !!data.env_readwise_token;
+          const hasAi = data.openai_api_key_set || !!data.env_openai_api_key;
+          if (!isCompleted && (!hasReadwise || !hasAi)) {
+            setIsReopeningOnboarding(false);
+            setShowOnboardingWizard(true);
+          }
         }
       })
       .catch(() => {})
@@ -465,6 +482,10 @@ export function AppProvider({ children }) {
     setShowAddUrl,
     showTagsManager,
     setShowTagsManager,
+    showOnboardingWizard,
+    setShowOnboardingWizard,
+    isReopeningOnboarding,
+    launchOnboardingWizard,
     sidebarCollapsed,
     setSidebarCollapsed,
     isContentLoading,

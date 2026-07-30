@@ -591,6 +591,64 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _ossPathPrefix = MutableStateFlow("readerq")
     val ossPathPrefix: StateFlow<String> = _ossPathPrefix.asStateFlow()
 
+    // Onboarding Wizard States
+    private val _showOnboardingWizard = MutableStateFlow(false)
+    val showOnboardingWizard: StateFlow<Boolean> = _showOnboardingWizard.asStateFlow()
+
+    private val _isOnboardingReopening = MutableStateFlow(false)
+    val isOnboardingReopening: StateFlow<Boolean> = _isOnboardingReopening.asStateFlow()
+
+    private val _readwiseTestLoading = MutableStateFlow(false)
+    val readwiseTestLoading: StateFlow<Boolean> = _readwiseTestLoading.asStateFlow()
+
+    private val _readwiseTestResult = MutableStateFlow<String?>(null)
+    val readwiseTestResult: StateFlow<String?> = _readwiseTestResult.asStateFlow()
+
+    private val _readwiseTestError = MutableStateFlow<String?>(null)
+    val readwiseTestError: StateFlow<String?> = _readwiseTestError.asStateFlow()
+
+    fun launchOnboardingWizard() {
+        _isOnboardingReopening.value = true
+        _showOnboardingWizard.value = true
+    }
+
+    fun dismissOnboardingWizard() {
+        _showOnboardingWizard.value = false
+    }
+
+    fun completeOnboardingWizard() {
+        _showOnboardingWizard.value = false
+        viewModelScope.launch(Dispatchers.IO) {
+            settingDao.setSetting(SettingEntity("onboarding_completed", "true"))
+        }
+    }
+
+    fun testReadwiseToken(tokenStr: String) {
+        _readwiseTestLoading.value = true
+        _readwiseTestResult.value = null
+        _readwiseTestError.value = null
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val cleanToken = tokenStr.trim()
+                if (cleanToken.isBlank()) {
+                    _readwiseTestError.value = "Readwise Token 不能为空"
+                    return@launch
+                }
+                val client = ReadwiseClient(cleanToken)
+                val authOk = client.validateToken()
+                if (authOk) {
+                    _readwiseTestResult.value = "Readwise Token 验证成功！"
+                } else {
+                    _readwiseTestError.value = "验证失败 (401 未授权): Access Token 无效"
+                }
+            } catch (e: Exception) {
+                _readwiseTestError.value = e.message ?: "网络连接失败"
+            } finally {
+                _readwiseTestLoading.value = false
+            }
+        }
+    }
+
     // API Test States
     private val _testStages = MutableStateFlow<List<TestStage>?>(null)
     val testStages: StateFlow<List<TestStage>?> = _testStages.asStateFlow()
@@ -860,6 +918,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val remoteCount = settingDao.getSetting("remote_doc_count")?.replace("\"", "")?.toIntOrNull() ?: 0
             val localCount = docDao.getDocumentCount()
             _syncCounts.value = SyncCounts(local = localCount, remote = remoteCount, lastSync = lastSync)
+
+            // 首次使用自动向导检测
+            val onboardingCompleted = settingDao.getSetting("onboarding_completed")?.replace("\"", "")
+            val tokenVal = _token.value
+            val aiKeyVal = _openaiApiKey.value
+            if (onboardingCompleted != "true") {
+                _isOnboardingReopening.value = false
+                _showOnboardingWizard.value = true
+            }
         }
     }
 

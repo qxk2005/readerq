@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useApp } from '@/context/AppContext';
 import { useTheme } from '@/context/ThemeContext';
-import { Settings, Key, Palette, Keyboard, Info, RefreshCw, Lightbulb, Save, Zap, CheckCircle2, XCircle, Wrench, PartyPopper, Sun, Moon, Check, X, Image, CloudUpload, History, Video, LayoutGrid, Loader2 } from 'lucide-react';
+import { Settings, Key, Palette, Keyboard, Info, RefreshCw, Lightbulb, Save, Zap, CheckCircle2, XCircle, Wrench, PartyPopper, Sun, Moon, Check, X, Image, CloudUpload, History, Video, LayoutGrid, Loader2, Sparkles } from 'lucide-react';
 import ChangelogPanel from './ChangelogPanel';
 
 const TABS = [
@@ -18,7 +18,7 @@ const TABS = [
 ];
 
 export default function SettingsModal() {
-  const { showSettings, setShowSettings, syncData, isSyncing, syncStatus: globalSyncStatus, syncProgress, syncCounts, syncError, cancelSync, tags } = useApp();
+  const { showSettings, setShowSettings, syncData, isSyncing, syncStatus: globalSyncStatus, syncProgress, syncCounts, syncError, cancelSync, tags, launchOnboardingWizard } = useApp();
   const { 
     theme, setTheme, fontSize, setFontSize, 
     lineHeight, setLineHeight, contentWidth, setContentWidth, 
@@ -321,6 +321,7 @@ export default function SettingsModal() {
           openaiMaxTokens, setOpenaiMaxTokens, envInfo,
           testConfig, testLoading, testStages, testResult,
           youtubeCookie, setYoutubeCookie, handleFetchYoutubeCookie, isFetchingCookie, cookieMsg,
+          launchOnboardingWizard, setShowSettings
         }} />;
       case 'oss':
         return <TabOSS {...{
@@ -358,7 +359,7 @@ export default function SettingsModal() {
       case 'shortcuts':
         return <TabShortcuts />;
       case 'about':
-        return <TabAbout showChangelog={showChangelog} setShowChangelog={setShowChangelog} />;
+        return <TabAbout showChangelog={showChangelog} setShowChangelog={setShowChangelog} launchOnboardingWizard={launchOnboardingWizard} setShowSettings={setShowSettings} />;
       default:
         return null;
     }
@@ -478,6 +479,7 @@ function TabAPI({
   openaiMaxTokens, setOpenaiMaxTokens, envInfo,
   testConfig, testLoading, testStages, testResult,
   youtubeCookie, setYoutubeCookie, handleFetchYoutubeCookie, isFetchingCookie, cookieMsg,
+  launchOnboardingWizard, setShowSettings
 }) {
   return (
     <>
@@ -490,9 +492,24 @@ function TabAPI({
         marginBottom: 'var(--space-4)',
         lineHeight: '1.6',
       }}>
-        <div className="help-text" style={{ display: 'flex', alignItems: 'flex-start', gap: '4px' }}>
-          <Lightbulb size={14} style={{ flexShrink: 0, marginTop: '2px' }} />
-          <span>在此处配置的值会保存到本地数据库并优先使用。配置保存后即刻生效，无需重启应用。</span>
+        <div className="help-text" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '4px', flex: 1 }}>
+            <Lightbulb size={14} style={{ flexShrink: 0, marginTop: '2px' }} />
+            <span>在此处配置的值会保存到本地数据库并优先使用。配置保存后即刻生效，无需重启应用。</span>
+          </div>
+          {launchOnboardingWizard && (
+            <button
+              className="btn btn-secondary btn-sm"
+              onClick={() => {
+                setShowSettings?.(false);
+                launchOnboardingWizard();
+              }}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', fontSize: '11px', whiteSpace: 'nowrap', marginLeft: '10px' }}
+            >
+              <Sparkles size={13} style={{ color: 'var(--color-accent, #007aff)' }} />
+              重新运行配置向导
+            </button>
+          )}
         </div>
       </div>
 
@@ -1337,7 +1354,7 @@ function TabShortcuts() {
 
 
 // ===== Tab: 关于 =====
-function TabAbout({ showChangelog, setShowChangelog }) {
+function TabAbout({ showChangelog, setShowChangelog, launchOnboardingWizard, setShowSettings }) {
   return (
     <div style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-secondary)', lineHeight: '1.8' }}>
       <p><strong>ReaderQ</strong> v{process.env.NEXT_PUBLIC_APP_VERSION || '未知'}</p>
@@ -1352,6 +1369,19 @@ function TabAbout({ showChangelog, setShowChangelog }) {
           <History size={14} />
           查看更新历史
         </button>
+        {launchOnboardingWizard && (
+          <button
+            className="btn btn-secondary btn-sm"
+            onClick={() => {
+              setShowSettings?.(false);
+              launchOnboardingWizard();
+            }}
+            style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+          >
+            <Sparkles size={14} style={{ color: 'var(--color-accent, #007aff)' }} />
+            重新运行配置向导
+          </button>
+        )}
         <a
           href="https://github.com/qxk2005/readerq"
           target="_blank"

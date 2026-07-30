@@ -8,6 +8,7 @@ import { NextResponse } from 'next/server';
 import { getSetting, setSetting } from '@/lib/db';
 
 const SETTING_KEYS = [
+  'onboarding_completed',
   'readwise_token',
   'daily_review_target',
   'readwise_official_streak',

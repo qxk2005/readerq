@@ -12,6 +12,7 @@ import CommandPalette from '@/components/layout/CommandPalette';
 import SettingsModal from '@/components/settings/SettingsModal';
 import AddUrlModal from '@/components/ui/AddUrlModal';
 import TagsManagerModal from '@/components/tags/TagsManagerModal';
+import OnboardingWizardModal from '@/components/onboarding/OnboardingWizardModal';
 import DailyReviewView from '@/components/review/DailyReviewView';
 import HomeFeedView from '@/components/home/HomeFeedView';
 import ZenReadView from '@/components/zen/ZenReadView';
@@ -33,6 +34,9 @@ export default function HomePage() {
     isSyncing,
     syncError,
     toast,
+    showOnboardingWizard,
+    setShowOnboardingWizard,
+    isReopeningOnboarding,
   } = useApp();
   const { toggleTheme } = useTheme();
 
@@ -305,6 +309,11 @@ export default function HomePage() {
       <SettingsModal />
       <AddUrlModal />
       <TagsManagerModal />
+      <OnboardingWizardModal
+        isOpen={showOnboardingWizard}
+        onClose={() => setShowOnboardingWizard(false)}
+        isReopening={isReopeningOnboarding}
+      />
     </>
   );
 }

@@ -32,7 +32,7 @@ export default function Sidebar({ width }) {
     currentView, currentCategory, currentTag,
     switchView, switchCategory, switchTag,
     tags, stats, sidebarCollapsed, setSidebarCollapsed,
-    setShowSettings, setShowAddUrl, setShowTagsManager, syncData, isSyncing,
+    setShowSettings, setShowAddUrl, setShowTagsManager, syncData, isSyncing, launchOnboardingWizard,
   } = useApp();
   const { theme, toggleTheme } = useTheme();
 
@@ -323,6 +323,13 @@ export default function Sidebar({ width }) {
           data-tooltip={theme === 'dark' ? '浅色模式' : '深色模式'}
         >
           {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
+        </button>
+        <button
+          className="btn-icon"
+          onClick={launchOnboardingWizard}
+          data-tooltip="配置向导"
+        >
+          <Sparkles size={18} style={{ color: 'var(--color-accent, #007aff)' }} />
         </button>
         <button
           className="btn-icon"
