@@ -5,6 +5,7 @@ import { formatTimestamp, formatSubtitlesForAI, parseTimestamp } from '@/lib/sub
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Loader2, FileText, BookOpen, RefreshCw, Sparkles, Upload, Trash2, CheckCircle, Play, Languages, DownloadCloud } from 'lucide-react';
+import { useApp } from '@/context/AppContext';
 
 // 动态解析包含时间戳的节点，并将时间戳转化为可点击跳转的跳播 Badge
 const renderTextWithTimestamps = (textNode, onSeek) => {
