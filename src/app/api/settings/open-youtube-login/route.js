@@ -7,7 +7,7 @@ import os from 'os';
 
 const execAsync = promisify(exec);
 const PROFILE_DIR = path.join(os.homedir(), '.gemini', 'antigravity-yt-profile');
-const CDP_PORT = 9222;
+const CDP_PORT = 9228; // 使用 9228 专用端口，避免与系统已有 9222 调试端口冲突
 
 /**
  * 通过 Chrome DevTools Protocol (CDP) 毫秒级无损抓取真实解密的 YouTube/Google 活 Cookie
@@ -81,15 +81,23 @@ async function fetchCookiesViaCDP() {
 
 /**
  * POST /api/settings/open-youtube-login
- * 唤起 Chrome 独立 App 窗口，并通过 Chrome CDP 端口 9222 自动轮询抓取全量活 Cookie
+ * 唤起 Chrome 独立 App 窗口，并通过 Chrome CDP 端口 9228 自动轮询抓取全量活 Cookie
  */
 export async function POST() {
   try {
-    // 1. 先尝试通过 CDP 直接读取已开启的 Chrome 实例 Cookies
+    // 0. 清理可能残留的旧 antigravity-yt-profile 登录进程，确保 9228 端口可用
+    try { await execAsync('pkill -f "antigravity-yt-profile"'); } catch (e) {}
+
+    // 1. 尝试直接获取
     let currentCookie = await fetchCookiesViaCDP();
     
-    // 如果现有 Cookie 中已经包含登录凭证（LOGIN_INFO 或 SID），说明已处在登录状态
-    if (currentCookie && (currentCookie.includes('LOGIN_INFO') || currentCookie.includes('SID'))) {
+    // 如果现有 Cookie 中已经包含登录凭证（LOGIN_INFO 或 SID 或 SAPISID），说明已处在登录状态
+    if (currentCookie && (
+      currentCookie.includes('LOGIN_INFO') || 
+      currentCookie.includes('SID') ||
+      currentCookie.includes('SAPISID') ||
+      currentCookie.includes('VISITOR_INFO1_LIVE')
+    )) {
       setSetting('youtube_cookie', currentCookie);
       return NextResponse.json({
         success: true,
@@ -98,7 +106,7 @@ export async function POST() {
       });
     }
 
-    // 2. 启动/唤起带 CDP 远程调试端口 9222 的独立 Chrome 登录 App 窗口
+    // 2. 启动/唤起带 CDP 远程调试端口 9228 的独立 Chrome 登录 App 窗口
     const loginUrl = 'https://accounts.google.com/ServiceLogin?service=youtube&continue=https%3A%2F%2Fwww.youtube.com%2F';
     const chromePath = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
     const launchCmd = `"${chromePath}" --remote-debugging-port=${CDP_PORT} '--remote-allow-origins=*' --app="${loginUrl}" --user-data-dir="${PROFILE_DIR}" &>/dev/null &`;
@@ -123,11 +131,12 @@ export async function POST() {
       if (capturedCookie && capturedCookie.length > 10) {
         latestCapturedCookie = capturedCookie;
         
-        // 关键判定：检测到绝对登录凭证 (LOGIN_INFO, SID, SAPISID, HSID)
+        // 关键判定：检测到登录凭证 (LOGIN_INFO, SID, SAPISID, HSID) 或经典凭证 (VISITOR_INFO1_LIVE)
         const isFullyLoggedIn = capturedCookie.includes('LOGIN_INFO') || 
                                 capturedCookie.includes('SID') || 
                                 capturedCookie.includes('SAPISID') ||
-                                capturedCookie.includes('HSID');
+                                capturedCookie.includes('HSID') ||
+                                capturedCookie.includes('VISITOR_INFO1_LIVE');
 
         if (isFullyLoggedIn) {
           setSetting('youtube_cookie', capturedCookie);
@@ -141,8 +150,7 @@ export async function POST() {
           });
         }
       } else if (!capturedCookie && latestCapturedCookie) {
-        // 说明用户刚刚手动关闭了 Chrome 窗口！
-        // 直接使用关窗前捕获到的最新 Cookie 存库！
+        // 用户手动关闭了 Chrome 窗口，使用关窗前的 Cookie 存库！
         setSetting('youtube_cookie', latestCapturedCookie);
 
         return NextResponse.json({
