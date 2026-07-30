@@ -120,9 +120,19 @@ async function fetchSubtitlesViaYtDlp(videoUrl, onRetryStatus = null) {
       cookieHeader = `--add-header "Cookie: ${userCookie.trim().replace(/"/g, '\\"')}"`;
     }
 
+    // 动态探测全局与常见 bin 路径的 yt-dlp
+    let ytdlpBin = 'yt-dlp';
+    const possiblePaths = ['/opt/homebrew/bin/yt-dlp', '/usr/local/bin/yt-dlp', '/usr/bin/yt-dlp', 'yt-dlp'];
+    for (const p of possiblePaths) {
+      if (fs.existsSync(p)) {
+        ytdlpBin = p;
+        break;
+      }
+    }
+
     // 优先按原生 srv1 / srv2 / ttml 原生格式抓取，杜绝 VTT 滚屏转码带来的重复
     const subLangs = "en,en-orig,en-US,en-GB,zh-Hans,zh-Hant,zh,ja,es,fr,de";
-    const cmd = `yt-dlp ${cookieHeader} --write-sub --write-auto-sub --sub-lang "${subLangs}" --sub-format "srv1/srv2/srv3/ttml/srt/best" --skip-download -o "${outTemplate}.%(ext)s" "${videoUrl}" 2>&1`;
+    const cmd = `${ytdlpBin} ${cookieHeader} --write-sub --write-auto-sub --sub-lang "${subLangs}" --sub-format "srv1/srv2/srv3/ttml/srt/best" --skip-download -o "${outTemplate}.%(ext)s" "${videoUrl}" 2>&1`;
 
     const { stdout, stderr } = await execAsync(cmd, { timeout: 35000 });
     const output = stdout + (stderr || '');

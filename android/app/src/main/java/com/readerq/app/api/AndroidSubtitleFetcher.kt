@@ -152,15 +152,16 @@ object AndroidSubtitleFetcher {
             if (!response.status.isSuccess()) return null
             val html = response.bodyAsText()
 
-            // 正则提取 captionTracks
-            val captionTracksMatch = Regex("\"captionTracks\":\\s*\\[(.*?)\\]").find(html)
+            // 提取与解析 captionTracks
+            val captionTracksMatch = Regex("\"captionTracks\":\\s*(\\[.*?\\])").find(html)
             var targetTrackUrl: String? = null
 
             if (captionTracksMatch != null) {
-                val jsonArrayStr = "[${captionTracksMatch.groupValues[1]}]"
+                var jsonArrayStr = captionTracksMatch.groupValues[1]
+                // 替换 unicode 转义
+                jsonArrayStr = jsonArrayStr.replace("\\u0026", "&")
                 try {
                     val array = jsonParser.parseToJsonElement(jsonArrayStr).jsonArray
-                    // 优先找英文 (en / en-orig / en-US)，其次找其他语言
                     var bestUrl: String? = null
                     var fallbackUrl: String? = null
 
@@ -177,7 +178,7 @@ object AndroidSubtitleFetcher {
                             fallbackUrl = baseUrl
                         }
                     }
-                    targetTrackUrl = bestUrl ?: fallbackUrl
+                    targetTrackUrl = (bestUrl ?: fallbackUrl)?.replace("\\u0026", "&")
                 } catch (e: Exception) {
                     println("[AndroidSubtitleFetcher] Parse captionTracks JSON error: ${e.message}")
                 }

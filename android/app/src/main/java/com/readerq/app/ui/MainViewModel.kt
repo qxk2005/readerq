@@ -1150,8 +1150,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         if (!custom.isNullOrBlank()) {
             return custom.removeSuffix("/")
         }
-        // 默认回退至 10.0.2.2:3000（供模拟器调试宿主服务）
-        return "http://10.0.2.2:3000"
+        // 当未配置自定义服务端时，返回空字符串，纯 Android 原生模式直连官方 API & 大模型
+        return ""
     }
 
     // --- Save Document Methods ---
@@ -1822,21 +1822,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 val token = settingDao.getSetting("readwise_token")?.replace("\"", "") ?: ""
                 val client = com.readerq.app.api.ReadwiseClient(token)
                 val serverUrl = getServerBaseUrl()
-
                 var serverSuccess = false
-                try {
-                    serverSuccess = client.triggerServerSubtitleDownload(serverUrl, documentId, videoUrl, title)
-                } catch (e: Exception) {
-                    println("[downloadSubtitleFromServer] Pipeline trigger error: ${e.message}")
-                }
 
-                // 尝试从服务端拉取最新字幕
-                val checkSub = try {
-                    client.fetchSubtitleFromServerFull(serverUrl, documentId)
-                } catch (_: Exception) { null }
+                if (serverUrl.isNotBlank()) {
+                    try {
+                        serverSuccess = client.triggerServerSubtitleDownload(serverUrl, documentId, videoUrl, title)
+                    } catch (e: Exception) {
+                        println("[downloadSubtitleFromServer] Pipeline trigger error: ${e.message}")
+                    }
 
-                if (checkSub != null && (checkSub.exists || checkSub.subtitles != null)) {
-                    serverSuccess = true
+                    val checkSub = try {
+                        client.fetchSubtitleFromServerFull(serverUrl, documentId)
+                    } catch (_: Exception) { null }
+
+                    if (checkSub != null && (checkSub.exists || checkSub.subtitles != null)) {
+                        serverSuccess = true
+                    }
                 }
 
                 // 🎯 核心 Android 原生兜底防线：如果服务端未抓取成功，自动使用 Android 本地原生引擎从 YouTube 提取并 AI 翻译
