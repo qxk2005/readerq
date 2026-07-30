@@ -17,6 +17,7 @@ const SETTING_KEYS = [
   'openai_base_url',
   'openai_model',
   'openai_max_tokens',
+  'youtube_cookie',
   'oss_region',
   'oss_bucket',
   'oss_access_key_id',
@@ -39,10 +40,10 @@ export async function GET() {
     const settings = {};
     for (const key of SETTING_KEYS) {
       const value = getSetting(key);
-      if (value && (key === 'readwise_token' || key === 'openai_api_key' || key === 'oss_access_key_id' || key === 'oss_access_key_secret')) {
-        // 脱敏：只显示前4位和后4位
-        settings[key] = value.length > 10
-          ? value.substring(0, 4) + '••••••••' + value.substring(value.length - 4)
+      if (value && (key === 'readwise_token' || key === 'openai_api_key' || key === 'oss_access_key_id' || key === 'oss_access_key_secret' || key === 'youtube_cookie')) {
+        // 脱敏：只显示前8位和后8位
+        settings[key] = value.length > 20
+          ? value.substring(0, 8) + '••••••••' + value.substring(value.length - 8)
           : '••••••••';
         settings[key + '_set'] = true;
       } else {
