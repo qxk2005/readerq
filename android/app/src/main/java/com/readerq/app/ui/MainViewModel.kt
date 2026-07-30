@@ -1256,8 +1256,44 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     docId = "doc_${Math.abs(cleanUrl.hashCode())}"
                 }
 
+                // 🎯 核心第二步：保存成功后，立即构造 DocumentEntity 写入本地 Room 数据库，确保即刻出现在【我的库 - 收件箱】中
+                val nowIso = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", java.util.Locale.US).format(java.util.Date())
+                val newDocEntity = DocumentEntity(
+                    id = docId,
+                    url = url,
+                    source_url = url,
+                    title = docTitle ?: (if (isVideoUrl) "YouTube 视频文章" else "已保存文章"),
+                    author = author,
+                    source = if (isVideoUrl) "youtube" else "web",
+                    category = if (isVideoUrl) "video" else "article",
+                    location = "new",
+                    site_name = if (isVideoUrl) "YouTube" else null,
+                    word_count = null,
+                    reading_time = null,
+                    created_at = nowIso,
+                    updated_at = nowIso,
+                    published_date = null,
+                    summary = null,
+                    notes = notes,
+                    image_url = null,
+                    reading_progress = 0f,
+                    html_content = null,
+                    tags_json = if (!tags.isNullOrEmpty()) {
+                        try {
+                            val tagMap = tags.associateWith { mapOf("name" to it) }
+                            kotlinx.serialization.json.Json.encodeToString(tagMap)
+                        } catch (_: Exception) { null }
+                    } else null,
+                    synced_at = nowIso
+                )
+                try {
+                    docDao.insertDocument(newDocEntity)
+                } catch (dbErr: Exception) {
+                    println("[saveDocumentByUrl] insertDocument error: ${dbErr.message}")
+                }
+
                 if (isVideoUrl) {
-                    _videoPipelineProgress.value = "✅ [1/4] 文章已保存 → ${docTitle ?: "视频文章"}"
+                    _videoPipelineProgress.value = "✅ [1/4] 文章已保存 → ${newDocEntity.title}"
                     kotlinx.coroutines.delay(500)
 
                     _videoPipelineProgress.value = "⌛ [2/4] 正在从 YouTube 提取字幕中..."
