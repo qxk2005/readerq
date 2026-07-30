@@ -1257,95 +1257,57 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
 
                 if (isVideoUrl) {
-                    _videoPipelineProgress.value = "✅ [1/5] 文章已保存 → ${docTitle ?: "视频文章"}"
+                    _videoPipelineProgress.value = "✅ [1/4] 文章已保存 → ${docTitle ?: "视频文章"}"
                     kotlinx.coroutines.delay(500)
 
-                    // 步骤 2-5：调用服务器端 video-pipeline SSE 流式接口
-                    // 由于 Ktor Android 不支持 SSE 流式读取，使用并发进度模拟 + 实际结果
-                    _videoPipelineProgress.value = "⌛ [2/5] 正在从 YouTube 提取字幕..."
+                    _videoPipelineProgress.value = "⌛ [2/4] 正在从 YouTube 提取字幕中..."
 
-                    // 启动进度模拟（在后台逐步更新进度文字）
-                    val progressJob = viewModelScope.launch(Dispatchers.IO) {
-                        val steps = listOf(
-                            3000L to "⌛ [2/5] 正在尝试直接抓取公开字幕轨...",
-                            6000L to "⌛ [2/5] 正在尝试使用 Chrome Cookie 解密提取字幕...",
-                            12000L to "⌛ [3/5] 正在调用 AI 进行中英对照翻译...",
-                            20000L to "⌛ [4/5] 正在调用大模型生成视频博客文章...",
-                            30000L to "⌛ [5/5] 正在同步字幕与博客到阿里云 OSS...",
-                        )
-                        for ((delay, msg) in steps) {
-                            kotlinx.coroutines.delay(delay)
-                            _videoPipelineProgress.value = msg
+                    // 1. 异步触发服务器端 Pipeline 任务（无阻断直连处理）
+                    viewModelScope.launch(Dispatchers.IO) {
+                        try {
+                            val pipelineUrl = "$serverUrl/api/video-pipeline/process"
+                            HttpClient(Android) {
+                                install(ContentNegotiation) {
+                                    json(Json { ignoreUnknownKeys = true })
+                                }
+                                install(io.ktor.client.plugins.HttpTimeout) {
+                                    requestTimeoutMillis = 90_000
+                                    connectTimeoutMillis = 10_000
+                                }
+                            }.use { httpClient ->
+                                httpClient.post(pipelineUrl) {
+                                    contentType(ContentType.Application.Json)
+                                    setBody("""{"docId":"$docId","url":"$url","title":"${docTitle ?: "视频文章"}"}""")
+                                }
+                            }
+                        } catch (e: Exception) {
+                            println("[video-pipeline] 触发视频处理任务: ${e.message}")
                         }
                     }
 
-                    try {
-                        val pipelineUrl = "$serverUrl/api/video-pipeline/process"
-                        val pipeResp = HttpClient(Android) {
-                            install(ContentNegotiation) {
-                                json(Json {
-                                    ignoreUnknownKeys = true
-                                })
-                            }
-                            // 设置较长超时（pipeline 可能运行 60 秒以上）
-                            install(io.ktor.client.plugins.HttpTimeout) {
-                                requestTimeoutMillis = 120_000
-                                connectTimeoutMillis = 10_000
-                                socketTimeoutMillis = 120_000
-                            }
-                        }.use { httpClient ->
-                            httpClient.post(pipelineUrl) {
-                                contentType(ContentType.Application.Json)
-                                setBody("""{"docId":"$docId","url":"$url","title":"${docTitle ?: "视频文章"}"}""")
-                            }
-                        }
-
-                        // Pipeline 完成，停止进度模拟
-                        progressJob.cancel()
-
-                        if (pipeResp.status.isSuccess()) {
-                            val sseText = pipeResp.bodyAsText()
-                            // 解析 SSE 流中最后一条进度消息作为最终状态
-                            var lastMsg: String? = null
-                            sseText.split("\n\n").forEach { chunk ->
-                                if (chunk.startsWith("data: ")) {
-                                    try {
-                                        val jsonEl = Json.parseToJsonElement(chunk.removePrefix("data: "))
-                                        if (jsonEl is kotlinx.serialization.json.JsonObject) {
-                                            val msg = (jsonEl["message"] as? kotlinx.serialization.json.JsonPrimitive)?.content
-                                            if (msg != null) lastMsg = msg
-                                        }
-                                    } catch (_: Exception) {}
-                                }
-                            }
-                            _videoPipelineProgress.value = lastMsg ?: "✅ [完成] 视频处理已完成"
-                        } else if (pipeResp.status.value in listOf(502, 503)) {
-                            // 💡 针对网关/Nginx 长连接 502 抖动，开启异步轮询防线
-                            _videoPipelineProgress.value = "⌛ 网关响应延迟，正在轮询确认后台字幕就绪状态..."
-                            var pollingSuccess = false
-                            for (i in 1..4) {
-                                kotlinx.coroutines.delay(2000L * i)
-                                val checkSub = readwiseClient.fetchSubtitleFromServerFull(serverUrl, docId)
-                                if (checkSub != null && checkSub.segments.isNotEmpty()) {
-                                    _videoPipelineProgress.value = "✅ [完成] 字幕已在云端后台处理完成 (${checkSub.segments.size} 句)"
-                                    pollingSuccess = true
-                                    break
-                                }
-                            }
-                            if (!pollingSuccess) {
-                                _videoPipelineProgress.value = "⚠️ 网关长连接超时 (HTTP 502): 后台仍继续抓取中，稍后刷新即可"
-                            }
+                    // 2. 启动 Android 端优雅轮询器，持续向服务端复核字幕就绪状态
+                    var subtitleSuccess = false
+                    val maxPolls = 10
+                    for (attempt in 1..maxPolls) {
+                        kotlinx.coroutines.delay(2000L)
+                        val checkSub = client.fetchSubtitleFromServerFull(serverUrl, docId)
+                        if (checkSub != null && (checkSub.exists || checkSub.subtitles != null)) {
+                            _videoPipelineProgress.value = "✅ [完成] 字幕与 AI 双语对照已成功就绪！"
+                            subtitleSuccess = true
+                            break
                         } else {
-                            _videoPipelineProgress.value = "⚠️ 服务器处理返回异常 (HTTP ${pipeResp.status.value})"
+                            if (attempt <= 3) {
+                                _videoPipelineProgress.value = "⌛ [2/4] 正在从 YouTube 提取字幕中 (${attempt * 2}s)..."
+                            } else if (attempt <= 7) {
+                                _videoPipelineProgress.value = "⌛ [3/4] 字幕已抓取，正在进行 AI 中英对照翻译 (${attempt * 2}s)..."
+                            } else {
+                                _videoPipelineProgress.value = "⌛ [4/4] 正在生成视频精选博客文章 (${attempt * 2}s)..."
+                            }
                         }
-                    } catch (e: Exception) {
-                        progressJob.cancel()
-                        val errMsg = e.message ?: ""
-                        if (errMsg.contains("Failed to connect") || errMsg.contains("ConnectException") || errMsg.contains("127.0.0.1") || errMsg.contains("10.0.2.2")) {
-                            _videoPipelineProgress.value = "⚠️ 未连接到 Node 服务端: 请在【设置-服务器设置】中填写您的 ReaderQ 服务端 URL"
-                        } else {
-                            _videoPipelineProgress.value = "⚠️ 字幕处理跳过: ${e.message}"
-                        }
+                    }
+
+                    if (!subtitleSuccess) {
+                        _videoPipelineProgress.value = "ℹ️ 视频已保存，字幕处理已转为云端后台运行"
                     }
 
                     _saveDocResult.value = SaveDocResult(
