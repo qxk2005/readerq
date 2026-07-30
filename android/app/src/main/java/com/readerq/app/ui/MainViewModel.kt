@@ -1319,6 +1319,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                                 }
                             }
                             _videoPipelineProgress.value = lastMsg ?: "✅ [完成] 视频处理已完成"
+                        } else if (pipeResp.status.value in listOf(502, 503)) {
+                            // 💡 针对网关/Nginx 长连接 502 抖动，开启异步轮询防线
+                            _videoPipelineProgress.value = "⌛ 网关响应延迟，正在轮询确认后台字幕就绪状态..."
+                            var pollingSuccess = false
+                            for (i in 1..4) {
+                                kotlinx.coroutines.delay(2000L * i)
+                                val checkSub = readwiseClient.fetchSubtitleFromServerFull(serverUrl, docId)
+                                if (checkSub != null && checkSub.segments.isNotEmpty()) {
+                                    _videoPipelineProgress.value = "✅ [完成] 字幕已在云端后台处理完成 (${checkSub.segments.size} 句)"
+                                    pollingSuccess = true
+                                    break
+                                }
+                            }
+                            if (!pollingSuccess) {
+                                _videoPipelineProgress.value = "⚠️ 网关长连接超时 (HTTP 502): 后台仍继续抓取中，稍后刷新即可"
+                            }
                         } else {
                             _videoPipelineProgress.value = "⚠️ 服务器处理返回异常 (HTTP ${pipeResp.status.value})"
                         }
