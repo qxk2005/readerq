@@ -1319,40 +1319,21 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                             }
 
                             val srtBuilder = StringBuilder()
-                            val jsonArray = buildJsonArray {
-                                finalSegments.forEachIndexed { index, seg ->
-                                    val endSec = seg.time + seg.duration
-                                    srtBuilder.append("${index + 1}\n")
-                                    srtBuilder.append("${com.readerq.app.api.AndroidSubtitleFetcher.formatTimestamp(seg.time)} --> ${com.readerq.app.api.AndroidSubtitleFetcher.formatTimestamp(endSec)}\n")
-                                    srtBuilder.append("${seg.text}\n")
-                                    if (!seg.zh.isNullOrBlank()) {
-                                        srtBuilder.append("${seg.zh}\n")
-                                    }
-                                    srtBuilder.append("\n")
-
-                                    add(buildJsonObject {
-                                        put("time", seg.time)
-                                        put("timeStr", seg.timeStr)
-                                        put("duration", seg.duration)
-                                        put("text", seg.text)
-                                        if (!seg.zh.isNullOrBlank()) {
-                                            put("zh", seg.zh)
-                                        }
-                                    })
+                            (finalSegments ?: emptyList()).forEachIndexed { index, seg ->
+                                val endSec = seg.time + seg.duration
+                                srtBuilder.append("${index + 1}\n")
+                                srtBuilder.append("${com.readerq.app.api.AndroidSubtitleFetcher.formatTimestamp(seg.time)} --> ${com.readerq.app.api.AndroidSubtitleFetcher.formatTimestamp(endSec)}\n")
+                                srtBuilder.append("${seg.text}\n")
+                                if (!seg.zh.isNullOrBlank()) {
+                                    srtBuilder.append("${seg.zh}\n")
                                 }
+                                srtBuilder.append("\n")
                             }
 
-                            val nowIso = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", java.util.Locale.US).format(java.util.Date())
-                            val subEntity = SubtitleEntity(
-                                document_id = docId,
-                                srt_content = srtBuilder.toString().trim(),
-                                parsed_segments_json = jsonArray.toString(),
-                                created_at = nowIso,
-                                updated_at = nowIso
-                            )
+                            val cleanSrt = srtBuilder.toString().trim()
                             try {
-                                subtitleDao.insertSubtitle(subEntity)
-                                _videoPipelineProgress.value = "✅ [完成] 原生字幕已落地生成 (${finalSegments.size} 句)"
+                                settingDao.setSetting(SettingEntity("subtitle_$docId", cleanSrt))
+                                _videoPipelineProgress.value = "✅ [完成] 原生字幕已落地生成 (${(finalSegments ?: emptyList()).size} 句)"
                                 subtitleSuccess = true
                             } catch (_: Exception) {}
                         }
@@ -1883,7 +1864,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         // 构造干净的 SRT 文本与 JSON 字符串存入本地 Room 数据库
                         val srtBuilder = StringBuilder()
                         val jsonArray = buildJsonArray {
-                            finalSegments.forEachIndexed { index, seg ->
+                            (finalSegments ?: emptyList()).forEachIndexed { index, seg ->
                                 val endSec = seg.time + seg.duration
                                 srtBuilder.append("${index + 1}\n")
                                 srtBuilder.append("${com.readerq.app.api.AndroidSubtitleFetcher.formatTimestamp(seg.time)} --> ${com.readerq.app.api.AndroidSubtitleFetcher.formatTimestamp(endSec)}\n")
@@ -1905,20 +1886,28 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                             }
                         }
 
-                        val nowIso = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", java.util.Locale.US).format(java.util.Date())
-                        val subEntity = SubtitleEntity(
-                            document_id = documentId,
-                            srt_content = srtBuilder.toString().trim(),
-                            parsed_segments_json = jsonArray.toString(),
-                            created_at = nowIso,
-                            updated_at = nowIso
-                        )
-
+                        val cleanSrt = srtBuilder.toString().trim()
                         try {
-                            subtitleDao.insertSubtitle(subEntity)
-                            _activeSubtitleProgress.value = "✅ [完成] 已成功原生提取与翻译 ${finalSegments.size} 句字幕"
+                            settingDao.setSetting(SettingEntity("subtitle_$documentId", cleanSrt))
+
+                            // 尝试生成 Android 原生 AI 视频精选博客
+                            if (openAiKey.isNotBlank()) {
+                                _activeSubtitleProgress.value = "⌛ [Android 原生] 正在调用 AI 生成视频精选 Markdown 博客文章..."
+                                try {
+                                    val blogMd = com.readerq.app.api.AndroidSubtitleFetcher.generateBlogNative(
+                                        title, finalSegments ?: emptyList(), openAiKey, openAiBase, openAiModel
+                                    )
+                                    if (!blogMd.isNullOrBlank()) {
+                                        settingDao.setSetting(SettingEntity("blog_$documentId", blogMd))
+                                    }
+                                } catch (blogErr: Exception) {
+                                    println("[downloadSubtitleFromServer] AI 博客生成跳过: ${blogErr.message}")
+                                }
+                            }
+
+                            _activeSubtitleProgress.value = "✅ [完成] 已成功原生提取字幕、翻译双语与生成 AI 博客"
                         } catch (dbErr: Exception) {
-                            println("[downloadSubtitleFromServer] insertSubtitle error: ${dbErr.message}")
+                            println("[downloadSubtitleFromServer] save subtitle error: ${dbErr.message}")
                         }
                     } else {
                         _activeSubtitleProgress.value = "⚠️ 未能抓取到公开字幕轨"

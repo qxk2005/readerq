@@ -316,4 +316,73 @@ object AndroidSubtitleFetcher {
 
         return result
     }
+
+    /**
+     * 100% Android 原生调用 OpenAI 兼容大模型生成带时间戳的 Markdown 结构化博客文章
+     */
+    suspend fun generateBlogNative(
+        title: String,
+        segments: List<NativeSubtitleSegment>,
+        apiKey: String,
+        baseUrl: String = "https://api.openai.com/v1",
+        model: String = "gpt-3.5-turbo"
+    ): String? {
+        if (segments.isEmpty() || apiKey.isBlank()) return null
+
+        val cleanBaseUrl = baseUrl.trim().removeSuffix("/")
+        val endpoint = "$cleanBaseUrl/chat/completions"
+
+        val subtitleTranscript = segments.take(120).joinToString("\n") { seg ->
+            "[${seg.timeStr}] ${seg.text}" + if (!seg.zh.isNullOrBlank()) " (${seg.zh})" else ""
+        }
+
+        val prompt = """
+你是一个顶级的英文科技与知识类视频博客编辑。请将以下带有时间戳的视频字幕，转换为一篇结构精美、逻辑清晰的中文 Markdown 博客文章。
+
+要求：
+1. 主标题：为文章拟定一个引人入胜的中文 Markdown `# 标题`；
+2. 核心摘要：在开头提供 3-5 句核心观点总结；
+3. 章节结构：按主题划分为 3-5 个 `## 章节标题`，每个章节包含详细阐述；
+4. 时间戳嵌入：在重点段落中嵌入原视频时间戳标签，格式为 `[mm:ss]`；
+5. 请直接输出标准 Markdown 正文。
+
+视频标题: $title
+字幕文本:
+$subtitleTranscript
+""".trim()
+
+        try {
+            val payload = buildJsonObject {
+                put("model", model)
+                put("messages", buildJsonArray {
+                    add(buildJsonObject {
+                        put("role", "user")
+                        put("content", prompt)
+                    })
+                })
+                put("temperature", 0.5)
+            }.toString()
+
+            val response = client.post(endpoint) {
+                header(HttpHeaders.Authorization, "Bearer $apiKey")
+                header(HttpHeaders.ContentType, ContentType.Application.Json)
+                setBody(payload)
+            }
+
+            if (response.status.isSuccess()) {
+                val respText = response.bodyAsText()
+                val jsonResponse = jsonParser.parseToJsonElement(respText).jsonObject
+                val content = jsonResponse["choices"]?.jsonArray?.firstOrNull()?.jsonObject
+                    ?.get("message")?.jsonObject?.get("content")?.jsonPrimitive?.content ?: ""
+
+                return content.replace(Regex("^```markdown\\s*"), "")
+                    .replace(Regex("^```\\s*"), "")
+                    .replace(Regex("\\s*```$"), "")
+                    .trim()
+            }
+        } catch (e: Exception) {
+            println("[AndroidSubtitleFetcher] generateBlogNative exception: ${e.message}")
+        }
+        return null
+    }
 }
