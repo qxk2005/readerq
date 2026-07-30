@@ -10,21 +10,26 @@ const PROFILE_DIR = path.join(os.homedir(), '.gemini', 'antigravity-yt-profile')
 const CDP_PORT = 9228; // 使用 9228 专用端口，避免与系统已有 9222 调试端口冲突
 
 /**
- * 通过 Chrome DevTools Protocol (CDP) 毫秒级无损抓取真实解密的 YouTube/Google 活 Cookie
+ * 通过 Chrome DevTools Protocol (CDP) Page Target 毫秒级无损抓取真实解密的 YouTube/Google 活 Cookie
  */
 async function fetchCookiesViaCDP() {
   try {
-    const versionRes = await fetch(`http://127.0.0.1:${CDP_PORT}/json/version`, {
+    const listRes = await fetch(`http://127.0.0.1:${CDP_PORT}/json/list`, {
       signal: AbortSignal.timeout(2000)
     });
-    if (!versionRes.ok) return null;
-    const versionData = await versionRes.json();
-    const wsUrl = versionData.webSocketDebuggerUrl;
-    if (!wsUrl) return null;
+    if (!listRes.ok) return null;
+    const listData = await listRes.json();
+    if (!Array.isArray(listData) || listData.length === 0) return null;
+
+    // 优先选择类型为 page 且包含 webSocketDebuggerUrl 的页面目标
+    const pageTarget = listData.find(t => (t.type === 'page' || t.type === 'background_page') && t.webSocketDebuggerUrl)
+      || listData.find(t => t.webSocketDebuggerUrl);
+
+    if (!pageTarget || !pageTarget.webSocketDebuggerUrl) return null;
 
     return new Promise((resolve) => {
       let resolved = false;
-      const ws = new WebSocket(wsUrl);
+      const ws = new WebSocket(pageTarget.webSocketDebuggerUrl);
 
       const timeoutTimer = setTimeout(() => {
         if (!resolved) {
@@ -37,7 +42,15 @@ async function fetchCookiesViaCDP() {
       ws.onopen = () => {
         ws.send(JSON.stringify({
           id: 1,
-          method: 'Network.getAllCookies'
+          method: 'Network.getCookies',
+          params: {
+            urls: [
+              'https://www.youtube.com',
+              'https://accounts.google.com',
+              'https://youtube.com',
+              'https://google.com'
+            ]
+          }
         }));
       };
 
@@ -62,7 +75,7 @@ async function fetchCookiesViaCDP() {
             }
           }
         } catch (e) {
-          console.warn('解析 CDP Cookie 消息出错:', e.message);
+          console.warn('解析 CDP Page Cookie 消息出错:', e.message);
         }
       };
 
@@ -131,12 +144,14 @@ export async function POST() {
       if (capturedCookie && capturedCookie.length > 10) {
         latestCapturedCookie = capturedCookie;
         
-        // 关键判定：检测到登录凭证 (LOGIN_INFO, SID, SAPISID, HSID) 或经典凭证 (VISITOR_INFO1_LIVE)
+        // 关键判定：检测到登录凭证 (LOGIN_INFO, SID, SAPISID, HSID, APISID, __Secure-1PAPISID 等)
         const isFullyLoggedIn = capturedCookie.includes('LOGIN_INFO') || 
                                 capturedCookie.includes('SID') || 
                                 capturedCookie.includes('SAPISID') ||
+                                capturedCookie.includes('APISID') ||
                                 capturedCookie.includes('HSID') ||
-                                capturedCookie.includes('VISITOR_INFO1_LIVE');
+                                capturedCookie.includes('VISITOR_INFO1_LIVE') ||
+                                capturedCookie.includes('__Secure-');
 
         if (isFullyLoggedIn) {
           setSetting('youtube_cookie', capturedCookie);
