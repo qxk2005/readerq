@@ -351,6 +351,7 @@ fun ReadingPane(
             }
 
             val blogContent by viewModel.blogContent.collectAsState()
+            val blogLoading by viewModel.blogLoading.collectAsState()
 
             val articleContent = @Composable { articleModifier: Modifier, seekCb: ((Float) -> Unit)? ->
                 Box(
@@ -361,7 +362,7 @@ fun ReadingPane(
                     if (!markdown.isNullOrBlank()) {
                         markdownToHtml(markdown)
                     } else {
-                        "<div style='display:flex;flex-direction:column;align-items:center;justify-content:center;height:80vh;color:#888;font-style:italic;'><p>暂未生成博客文章。请在桌面端生成博客后，开启 OSS 跨设备同步。</p></div>"
+                        "<div style='display:flex;flex-direction:column;align-items:center;justify-content:center;height:80vh;color:#888;font-style:italic;'><p>暂未生成博客文章。</p></div>"
                     }
                 } else {
                     currentDoc.html_content ?: "加载中..."
@@ -393,6 +394,79 @@ fun ReadingPane(
                     initialProgress = currentDoc.reading_progress,
                     isVideo = currentDoc.category == "video"
                 )
+
+                // 🎯 安卓端原生 AI 视频博客交互状态覆盖层 (未生成 / 生成中)
+                if (currentDoc.category == "video" && blogContent.isNullOrBlank()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(MaterialTheme.colorScheme.background)
+                            .padding(24.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (blogLoading) {
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.Center
+                            ) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(40.dp),
+                                    color = MaterialTheme.colorScheme.primary,
+                                    strokeWidth = 3.dp
+                                )
+                                Spacer(modifier = Modifier.height(16.dp))
+                                Text(
+                                    text = "正在调用 AI 生成精选视频博客...",
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onBackground
+                                )
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Text(
+                                    text = "AI 正在梳理原视频字幕、归纳核心要点与嵌入时间戳",
+                                    fontSize = 12.5.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        } else {
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.Center,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp)
+                            ) {
+                                Text(
+                                    text = "✨ 暂未生成 AI 视频博客",
+                                    fontSize = 18.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onBackground
+                                )
+                                Spacer(modifier = Modifier.height(10.dp))
+                                Text(
+                                    text = "AI 将把视频字幕整理归纳为带有章节划分与时间戳跳播的 Markdown 结构化博客文章",
+                                    fontSize = 13.5.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                    lineHeight = 20.sp
+                                )
+                                Spacer(modifier = Modifier.height(24.dp))
+                                Button(
+                                    onClick = { viewModel.generateBlogForDocument(currentDoc.id, currentDoc.title) },
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                                    contentPadding = PaddingValues(horizontal = 20.dp, vertical = 12.dp)
+                                ) {
+                                    Text(
+                                        text = "✨ 生成 AI 视频博客",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 14.5.sp
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
 
 
 

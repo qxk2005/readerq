@@ -1402,6 +1402,23 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                                 settingDao.setSetting(SettingEntity("subtitle_$docId", cleanSrt))
                                 _videoPipelineProgress.value = "✅ [完成] 原生字幕已落地生成 (${(finalSegments ?: emptyList()).size} 句)"
                                 subtitleSuccess = true
+
+                                // 🎯 自动生成 Android 原生 AI 视频精选 Markdown 博客文章
+                                if (openAiKey.isNotBlank()) {
+                                    _videoPipelineProgress.value = "⌛ [Android 原生] 正在由 AI 生成结构化视频博客文章..."
+                                    try {
+                                        val blogMd = com.readerq.app.api.AndroidSubtitleFetcher.generateBlogNative(
+                                            newDocEntity.title, finalSegments ?: emptyList(), openAiKey, openAiBase, openAiModel
+                                        )
+                                        if (!blogMd.isNullOrBlank()) {
+                                            settingDao.setSetting(SettingEntity("blog_$docId", blogMd))
+                                            println("[saveDocumentByUrl] Blog saved to database for doc=$docId")
+                                            _videoPipelineProgress.value = "✅ [完成] 原生字幕、双语翻译与 AI 博客已全部处理就绪！"
+                                        }
+                                    } catch (blogErr: Exception) {
+                                        println("[saveDocumentByUrl] AI 博客生成报错: ${blogErr.message}")
+                                    }
+                                }
                             } catch (_: Exception) {}
                         }
                     }
@@ -2033,6 +2050,63 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 _subtitleLoading.value = false
                 kotlinx.coroutines.delay(1500)
                 _activeSubtitleProgress.value = null
+            }
+        }
+    }
+
+    /**
+     * 手动触发或重试 Android 原生 AI 视频博客生成
+     */
+    fun generateBlogForDocument(documentId: String, docTitle: String? = null) {
+        viewModelScope.launch(Dispatchers.IO) {
+            _blogLoading.value = true
+            try {
+                val openAiKey = settingDao.getSetting("openai_api_key")?.replace("\"", "")?.trim() ?: ""
+                val openAiBase = settingDao.getSetting("openai_base_url")?.replace("\"", "")?.trim() ?: "https://api.openai.com/v1"
+                val openAiModel = settingDao.getSetting("openai_model")?.replace("\"", "")?.trim() ?: "gpt-3.5-turbo"
+
+                if (openAiKey.isBlank()) {
+                    _aiErrorMessage.value = "⚠️ 未配置 AI API Key，无法生成博客。请在设置中添加 OpenAI 兼容 API Key。"
+                    _blogLoading.value = false
+                    return@launch
+                }
+
+                val doc = docDao.getDocumentById(documentId)
+                val titleToUse = docTitle ?: doc?.title ?: "视频文章"
+                val rawSrt = settingDao.getSetting("subtitle_$documentId")
+
+                if (rawSrt.isNullOrBlank()) {
+                    _aiErrorMessage.value = "⚠️ 未找到该视频的字幕数据，请先下载或抓取字幕。"
+                    _blogLoading.value = false
+                    return@launch
+                }
+
+                val parsedSegments = com.readerq.app.api.SrtParser.parseAnySubtitle(rawSrt).map { seg ->
+                    com.readerq.app.api.NativeSubtitleSegment(
+                        time = seg.startTime,
+                        timeStr = com.readerq.app.api.AndroidSubtitleFetcher.formatTimestamp(seg.startTime),
+                        duration = seg.endTime - seg.startTime,
+                        text = seg.text,
+                        zh = seg.zh
+                    )
+                }
+
+                val blogMd = com.readerq.app.api.AndroidSubtitleFetcher.generateBlogNative(
+                    titleToUse, parsedSegments, openAiKey, openAiBase, openAiModel
+                )
+
+                if (!blogMd.isNullOrBlank()) {
+                    settingDao.setSetting(SettingEntity("blog_$documentId", blogMd))
+                    _aiErrorMessage.value = null
+                    loadBlog(documentId)
+                } else {
+                    _aiErrorMessage.value = "⚠️ AI 博客生成结果为空，请稍后重试。"
+                }
+            } catch (e: Exception) {
+                println("[generateBlogForDocument] Error: ${e.message}")
+                _aiErrorMessage.value = "⚠️ 生成 AI 视频博客失败: ${e.message}"
+            } finally {
+                _blogLoading.value = false
             }
         }
     }

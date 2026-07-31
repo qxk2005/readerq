@@ -475,29 +475,70 @@ object AndroidSubtitleFetcher {
                         .replace(Regex("\\s*```$"), "")
                         .trim()
 
-                    val translatedArray = jsonParser.parseToJsonElement(cleanJsonStr).jsonArray
-                    println("[AndroidSubtitleFetcher] Batch ${i / batchSize + 1}: Parsed ${translatedArray.size} translated items")
-                    var matchCount = 0
-                    for (item in translatedArray) {
-                        val obj = item.jsonObject
-                        val idIdx = obj["id"]?.jsonPrimitive?.intOrNull ?: continue
-                        val zhText = obj["zh"]?.jsonPrimitive?.content ?: continue
-                        val targetGlobalIdx = i + idIdx
-                        if (targetGlobalIdx in result.indices) {
-                            val orig = result[targetGlobalIdx]
-                            result[targetGlobalIdx] = orig.copy(zh = zhText)
-                            matchCount++
+                    // 🎯 高强度的 JSON Array 容错解析：处理外层 Root 对象 或 Markdown 包裹的情况
+                    var translatedArray: JsonArray? = null
+                    try {
+                        val parsedElem = jsonParser.parseToJsonElement(cleanJsonStr)
+                        if (parsedElem is JsonArray) {
+                            translatedArray = parsedElem
+                        } else if (parsedElem is JsonObject) {
+                            translatedArray = parsedElem["subtitles"]?.jsonArray
+                                ?: parsedElem["items"]?.jsonArray
+                                ?: parsedElem["results"]?.jsonArray
+                                ?: parsedElem["data"]?.jsonArray
+                        }
+                    } catch (_: Exception) {
+                        // 正则后备提取 [ ... ]
+                        val arrayMatch = Regex("\\[[\\s\\S]*\\]").find(cleanJsonStr)
+                        if (arrayMatch != null) {
+                            try {
+                                translatedArray = jsonParser.parseToJsonElement(arrayMatch.value).jsonArray
+                            } catch (_: Exception) {}
                         }
                     }
-                    println("[AndroidSubtitleFetcher] Batch ${i / batchSize + 1}: Applied $matchCount zh translations")
+
+                    if (translatedArray != null) {
+                        println("[AndroidSubtitleFetcher] Batch ${i / batchSize + 1}: Parsed ${translatedArray.size} translated items")
+                        var matchCount = 0
+                        for (item in translatedArray) {
+                            if (item !is JsonObject) continue
+                            val obj = item.jsonObject
+                            // 🎯 修复 Bug 1：兼容 String 与 Int 类型的 id（如 "id": "0" 或 "id": 0）
+                            val idRaw = obj["id"]?.jsonPrimitive
+                            val idIdx = idRaw?.intOrNull ?: idRaw?.contentOrNull?.toIntOrNull()
+                            if (idIdx == null) continue
+
+                            // 🎯 修复 Bug 2：兼容多个中文翻译字段名称（zh, translation, text_zh, cn, chinese）
+                            val zhText = (obj["zh"] ?: obj["translation"] ?: obj["text_zh"] ?: obj["cn"] ?: obj["chinese"])
+                                ?.jsonPrimitive?.contentOrNull
+                            if (zhText.isNullOrBlank()) continue
+
+                            // 🎯 修复 Bug 3：自动识别是相对 Index (0~24) 还是全局 Index (i ~ end-1)
+                            val targetGlobalIdx = if (idIdx in 0 until batch.size) {
+                                i + idIdx
+                            } else if (idIdx in i until end) {
+                                idIdx
+                            } else {
+                                -1
+                            }
+
+                            if (targetGlobalIdx in result.indices) {
+                                val orig = result[targetGlobalIdx]
+                                result[targetGlobalIdx] = orig.copy(zh = zhText)
+                                matchCount++
+                            }
+                        }
+                        println("[AndroidSubtitleFetcher] Batch ${i / batchSize + 1}: Applied $matchCount zh translations")
+                    } else {
+                        println("[AndroidSubtitleFetcher] Batch ${i / batchSize + 1}: Failed to parse JSON array from AI response")
+                    }
                 } else {
                     val errBody = response.bodyAsText().take(300)
                     println("[AndroidSubtitleFetcher] Batch ${i / batchSize + 1}: HTTP error ${response.status}, body=$errBody")
-                    throw Exception("AI API 错误 (${response.status.value}): $errBody")
                 }
             } catch (e: Exception) {
-                println("[AndroidSubtitleFetcher] Batch translation exception: ${e.message}")
-                throw e
+                // 🎯 修复 Bug 4：隔离 Batch 级异常，记录日志并继续翻译下一个 Batch，不抛出导致整体流程截断
+                println("[AndroidSubtitleFetcher] Batch ${i / batchSize + 1} translation exception: ${e.message}")
             }
         }
 
@@ -519,19 +560,20 @@ object AndroidSubtitleFetcher {
         val cleanBaseUrl = baseUrl.trim().removeSuffix("/")
         val endpoint = "$cleanBaseUrl/chat/completions"
 
-        val subtitleTranscript = segments.take(120).joinToString("\n") { seg ->
+        val subtitleTranscript = segments.take(300).joinToString("\n") { seg ->
             "[${seg.timeStr}] ${seg.text}" + if (!seg.zh.isNullOrBlank()) " (${seg.zh})" else ""
         }
 
         val prompt = """
-你是一个顶级的英文科技与知识类视频博客编辑。请将以下带有时间戳的视频字幕，转换为一篇结构精美、逻辑清晰的中文 Markdown 博客文章。
+你是一位资深的技术博客编辑。请将以下带有时间戳的视频字幕，转换为一篇结构清晰、内容丰富的 Markdown 博客文章。
 
 要求：
-1. 主标题：为文章拟定一个引人入胜的中文 Markdown `# 标题`；
-2. 核心摘要：在开头提供 3-5 句核心观点总结；
-3. 章节结构：按主题划分为 3-5 个 `## 章节标题`，每个章节包含详细阐述；
-4. 时间戳嵌入：在重点段落中嵌入原视频时间戳标签，格式为 `[mm:ss]`；
-5. 请直接输出标准 Markdown 正文。
+1. **输出语言**：必须使用简体中文撰写；
+2. **文章结构**：使用 Markdown 格式，包含标题（使用 # 和 ##）、摘要段落、核心要点列表等；
+3. **时间戳嵌入（非常重要）**：
+   - 在每一个 Markdown 章节标题（如 ## 或 ###）的结尾，必须标注对应视频的时间戳标记 `[MM:SS]`，例如 `## 一、背景介绍 [01:25]`；
+   - 在正文核心段落开头也可附带对应的时间戳标记如 `[08:15]`，方便读者点击跳转观看。
+4. 请直接输出标准的 Markdown 正文，不要包含多余外层说明。
 
 视频标题: $title
 字幕文本:
