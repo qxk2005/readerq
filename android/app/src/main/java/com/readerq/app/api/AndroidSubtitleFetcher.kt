@@ -97,6 +97,18 @@ object AndroidSubtitleFetcher {
     }
 
     /**
+     * 输出标准的 SRT 规范时间轴 (HH:mm:ss,SSS) 格式
+     */
+    fun formatSrtTimestamp(seconds: Double): String {
+        val totalMs = (seconds * 1000).toLong()
+        val hours = totalMs / 3600000
+        val minutes = (totalMs % 3600000) / 60000
+        val secs = (totalMs % 60000) / 1000
+        val ms = totalMs % 1000
+        return String.format("%02d:%02d:%02d,%03d", hours, minutes, secs, ms)
+    }
+
+    /**
      * 按完整句子语义与优雅时间窗合并字幕段落 (Sentence-level Subtitle Merging)
      */
     fun mergeSubtitlesBySentence(

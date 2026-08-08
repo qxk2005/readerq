@@ -360,6 +360,48 @@ export function cleanRollingSrtSegments(segments) {
   return finalResult;
 }
 
+/**
+ * 智能分离可能混杂在同一字符串里的英文/外文原文与中文译文
+ * @param {string} str - 待分离的文本
+ * @returns {{ text: string, zh?: string }} 分离后的对象
+ */
+export function separateBilingualText(str) {
+  if (!str || typeof str !== 'string') return { text: '', zh: undefined };
+  const trimmed = str.trim();
+  if (!trimmed) return { text: '', zh: undefined };
+
+  const hasChinese = /[\u4e00-\u9fa5]/.test(trimmed);
+  const hasLatin = /[a-zA-Z]/.test(trimmed);
+
+  if (hasChinese && hasLatin) {
+    // 模式 1: 英文在前面，中文在后面 (如 "In this video... 在本期视频中...")
+    const matchEnFirst = trimmed.match(/^([a-zA-Z0-9\s\p{P}]+?)\s*([\u4e00-\u9fa5][\s\S]*)$/u);
+    if (matchEnFirst && matchEnFirst[1].trim() && matchEnFirst[2].trim()) {
+      return {
+        text: matchEnFirst[1].trim(),
+        zh: matchEnFirst[2].trim()
+      };
+    }
+
+    // 模式 2: 中文在前面，英文在后面 (如 "在本期视频中... In this video...")
+    const matchZhFirst = trimmed.match(/^([\u4e00-\u9fa5\s\p{P}]+?)\s*([a-zA-Z][\s\S]*)$/u);
+    if (matchZhFirst && matchZhFirst[1].trim() && matchZhFirst[2].trim()) {
+      return {
+        text: matchZhFirst[2].trim(),
+        zh: matchZhFirst[1].trim()
+      };
+    }
+  }
+
+  // 只有中文
+  if (hasChinese && !hasLatin) {
+    return { text: trimmed, zh: trimmed };
+  }
+
+  // 只有英文
+  return { text: trimmed, zh: undefined };
+}
+
 export function parseSRT(srtContent) {
   if (!srtContent || typeof srtContent !== 'string') return [];
 
@@ -395,35 +437,57 @@ export function parseSRT(srtContent) {
     const startSeconds = parseSRTTimestamp(startTimeStr);
 
     // 提取文本内容 (时间轴行之后的所有行)
-    const textLines = lines.slice(timeLineIndex + 1);
-    const text = textLines
+    const rawLines = lines.slice(timeLineIndex + 1)
       .map(l => l.trim())
-      .filter(l => l.length > 0)
-      .join(' ');
+      .filter(l => l.length > 0);
 
-    if (text) {
+    if (rawLines.length === 0) continue;
+
+    let segmentText = '';
+    let segmentZh = undefined;
+
+    if (rawLines.length === 1) {
+      const sep = separateBilingualText(rawLines[0]);
+      segmentText = sep.text;
+      segmentZh = sep.zh;
+    } else {
+      const zhLines = [];
+      const nonZhLines = [];
+
+      for (const l of rawLines) {
+        if (/[\u4e00-\u9fa5]/.test(l)) {
+          zhLines.push(l);
+        } else {
+          nonZhLines.push(l);
+        }
+      }
+
+      if (zhLines.length > 0 && nonZhLines.length > 0) {
+        segmentText = nonZhLines.join(' ');
+        segmentZh = zhLines.join(' ');
+      } else {
+        const joined = rawLines.join(' ');
+        const sep = separateBilingualText(joined);
+        segmentText = sep.text;
+        segmentZh = sep.zh;
+      }
+    }
+
+    if (segmentText || segmentZh) {
       segments.push({
         time: startSeconds,
         timeStr: formatTimestamp(startSeconds),
-        text: text,
+        text: segmentText || segmentZh || '',
+        zh: segmentZh,
       });
     }
   }
 
-  const cleaned = cleanRollingSrtSegments(segments);
-  return mergeSubtitlesBySentence(cleaned);
+  return segments;
 }
 
 /**
  * 智能合并字幕段落
- * 规则：
- * 1. 单个合并段落的时长不超过 maxDuration (默认 10 秒)
- * 2. 保留第一条句子的精准起始时间 time 和 timeStr
- * 3. 避免单句过于碎片化，提高阅读体验
- * 
- * @param {Array<{time: number, timeStr: string, text: string, duration?: number}>} segments - 原始字幕段落
- * @param {number} [maxDuration=10] - 单个段落的最大秒数限制
- * @returns {Array<{time: number, timeStr: string, text: string, duration?: number}>} 合并后的字幕段落
  */
 export function deduplicateRollingText(text) {
   if (!text || typeof text !== 'string') return '';
@@ -460,13 +524,26 @@ export function mergeSubtitlesSmartly(segments, maxDuration = 10) {
       const sentenceEnded = /[。！？.!?]$/.test(lastText);
 
       if (durationSpan >= maxDuration || (sentenceEnded && durationSpan >= 5)) {
-        const rawText = currentGroup.map(s => s.text.trim()).join(' ');
+        const rawTexts = currentGroup.map(s => (s.text || '').trim()).filter(Boolean);
+        const rawZhs = currentGroup.map(s => (s.zh || '').trim()).filter(Boolean);
+        
+        const combinedText = deduplicateRollingText(rawTexts.join(' '));
+        const combinedZh = rawZhs.join(' ').trim();
+
+        let finalText = combinedText;
+        let finalZh = combinedZh || undefined;
+
+        if (!finalZh && /[\u4e00-\u9fa5]/.test(finalText) && /[a-zA-Z]/.test(finalText)) {
+          const sep = separateBilingualText(finalText);
+          finalText = sep.text;
+          finalZh = sep.zh;
+        }
+
         merged.push({
           time: currentGroup[0].time,
           timeStr: currentGroup[0].timeStr || formatTimestamp(currentGroup[0].time),
-          text: deduplicateRollingText(rawText),
-          zh: currentGroup.map(s => s.zh || '').filter(Boolean).join(' ') || undefined,
-          en: currentGroup.map(s => s.en || '').filter(Boolean).join(' ') || undefined,
+          text: finalText,
+          zh: finalZh,
           duration: segTime - currentGroup[0].time
         });
         currentGroup = [seg];
@@ -554,22 +631,38 @@ export function splitLongSegments(segments, maxChars = 120) {
 
 /**
  * 解析 SRT 时间戳为秒数
- * 支持格式: "00:01:23,456" 或 "00:01:23.456"
+ * 支持标准格式: "00:01:23,456" / "00:01:23.456"
+ * 支持简写格式: "01:23,456" / "01:23" / "0:03"
  * @param {string} timeStr - SRT 时间戳
  * @returns {number} 秒数
  */
-function parseSRTTimestamp(timeStr) {
-  if (!timeStr) return 0;
-  // 将逗号替换为点号以统一处理毫秒
-  const normalized = timeStr.replace(',', '.');
-  const match = normalized.match(/(\d{1,2}):(\d{2}):(\d{2})(?:\.(\d+))?/);
-  if (!match) return 0;
+export function parseSRTTimestamp(timeStr) {
+  if (!timeStr || typeof timeStr !== 'string') return 0;
+  const normalized = timeStr.trim().replace(',', '.');
 
-  const hours = parseInt(match[1], 10);
-  const minutes = parseInt(match[2], 10);
-  const seconds = parseInt(match[3], 10);
-  const ms = match[4] ? parseInt(match[4].padEnd(3, '0').substring(0, 3), 10) : 0;
+  // 1. 模式 A: HH:MM:SS.mmm 或 H:MM:SS (包含两个冒号)
+  let match = normalized.match(/(\d{1,2}):(\d{2}):(\d{2})(?:\.(\d+))?/);
+  if (match) {
+    const hours = parseInt(match[1], 10);
+    const minutes = parseInt(match[2], 10);
+    const seconds = parseInt(match[3], 10);
+    const ms = match[4] ? parseInt(match[4].padEnd(3, '0').substring(0, 3), 10) : 0;
+    return hours * 3600 + minutes * 60 + seconds + ms / 1000;
+  }
 
-  return hours * 3600 + minutes * 60 + seconds + ms / 1000;
+  // 2. 模式 B: MM:SS.mmm 或 M:SS (包含一个冒号，如 0:03 或 12:34)
+  match = normalized.match(/(\d{1,2}):(\d{2})(?:\.(\d+))?/);
+  if (match) {
+    const minutes = parseInt(match[1], 10);
+    const seconds = parseInt(match[2], 10);
+    const ms = match[3] ? parseInt(match[3].padEnd(3, '0').substring(0, 3), 10) : 0;
+    return minutes * 60 + seconds + ms / 1000;
+  }
+
+  // 3. 模式 C: 纯数字秒数
+  const secNum = parseFloat(normalized);
+  if (!isNaN(secNum)) return secNum;
+
+  return 0;
 }
 

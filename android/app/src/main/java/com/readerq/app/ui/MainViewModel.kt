@@ -1389,7 +1389,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                             (finalSegments ?: emptyList()).forEachIndexed { index, seg ->
                                 val endSec = seg.time + seg.duration
                                 srtBuilder.append("${index + 1}\n")
-                                srtBuilder.append("${com.readerq.app.api.AndroidSubtitleFetcher.formatTimestamp(seg.time)} --> ${com.readerq.app.api.AndroidSubtitleFetcher.formatTimestamp(endSec)}\n")
+                                srtBuilder.append("${com.readerq.app.api.AndroidSubtitleFetcher.formatSrtTimestamp(seg.time)} --> ${com.readerq.app.api.AndroidSubtitleFetcher.formatSrtTimestamp(endSec)}\n")
                                 srtBuilder.append("${seg.text}\n")
                                 if (!seg.zh.isNullOrBlank()) {
                                     srtBuilder.append("${seg.zh}\n")
@@ -1943,28 +1943,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 val token = settingDao.getSetting("readwise_token")?.replace("\"", "") ?: ""
                 val client = com.readerq.app.api.ReadwiseClient(token)
                 val serverUrl = getServerBaseUrl()
-                var serverSuccess = false
-
-                if (serverUrl.isNotBlank()) {
-                    try {
-                        serverSuccess = client.triggerServerSubtitleDownload(serverUrl, documentId, videoUrl, title)
-                    } catch (e: Exception) {
-                        println("[downloadSubtitleFromServer] Pipeline trigger error: ${e.message}")
-                    }
-
-                    val checkSub = try {
-                        client.fetchSubtitleFromServerFull(serverUrl, documentId)
-                    } catch (_: Exception) { null }
-
-                    if (checkSub != null && (checkSub.exists || checkSub.subtitles != null)) {
-                        serverSuccess = true
-                    }
-                }
-
-                // 🎯 核心 Android 原生兜底防线：如果服务端未抓取成功，自动使用 Android 本地原生引擎从 YouTube 提取并 AI 翻译
-                if (!serverSuccess) {
-                    _activeSubtitleProgress.value = "⌛ [Android 原生] 正在从 YouTube 提取公开字幕轨..."
-                    val nativeSegments = com.readerq.app.api.AndroidSubtitleFetcher.fetchYouTubeSubtitlesNative(videoUrl)
+                // 🎯 用户显式点击【下载字幕】：使用 Android 原生引擎从 YouTube 抓取最新字幕轨，并使用 AI 翻译后覆盖同步上传给云端与服务器
+                _activeSubtitleProgress.value = "⌛ [Android 原生] 正在从 YouTube 提取公开字幕轨..."
+                val nativeSegments = com.readerq.app.api.AndroidSubtitleFetcher.fetchYouTubeSubtitlesNative(videoUrl)
 
                     if (nativeSegments != null && nativeSegments.isNotEmpty()) {
                         _activeSubtitleProgress.value = "⌛ [Android 原生] 成功抓取 ${nativeSegments.size} 句字幕，正在调用 AI 进行双语翻译..."
@@ -2005,7 +1986,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                             (finalSegments ?: emptyList()).forEachIndexed { index, seg ->
                                 val endSec = seg.time + seg.duration
                                 srtBuilder.append("${index + 1}\n")
-                                srtBuilder.append("${com.readerq.app.api.AndroidSubtitleFetcher.formatTimestamp(seg.time)} --> ${com.readerq.app.api.AndroidSubtitleFetcher.formatTimestamp(endSec)}\n")
+                                srtBuilder.append("${com.readerq.app.api.AndroidSubtitleFetcher.formatSrtTimestamp(seg.time)} --> ${com.readerq.app.api.AndroidSubtitleFetcher.formatSrtTimestamp(endSec)}\n")
                                 srtBuilder.append("${seg.text}\n")
                                 if (!seg.zh.isNullOrBlank()) {
                                     srtBuilder.append("${seg.zh}\n")
@@ -2028,6 +2009,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         try {
                             settingDao.setSetting(SettingEntity("subtitle_$documentId", cleanSrt))
 
+                            // 🎯 自动上传同步双语字幕至云端 OSS 与自建 ReaderQ 服务器
+                            uploadSubtitle(documentId, cleanSrt)
+
                             // 尝试生成 Android 原生 AI 视频精选博客
                             if (openAiKey.isNotBlank()) {
                                 _activeSubtitleProgress.value = "⌛ [Android 原生] 正在调用 AI 生成视频精选 Markdown 博客文章..."
@@ -2039,6 +2023,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                                     if (!blogMd.isNullOrBlank()) {
                                         settingDao.setSetting(SettingEntity("blog_$documentId", blogMd))
                                         println("[downloadSubtitleFromServer] Blog saved to database for doc=$documentId")
+
+                                        // 🎯 自动上传同步 AI 博客文章至云端 OSS 与自建 ReaderQ 服务器
+                                        saveBlog(documentId, blogMd)
                                     }
                                 } catch (blogErr: Exception) {
                                     blogErrorMsg = blogErr.message
@@ -2068,9 +2055,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     } else {
                         _activeSubtitleProgress.value = "⚠️ 未能抓取到公开字幕轨"
                     }
-                } else {
-                    _activeSubtitleProgress.value = "✅ [完成] 字幕与 AI 博客已成功就绪！"
-                }
 
                 // 重新刷新字幕与博客状态展示
                 loadSubtitles(documentId)

@@ -2,7 +2,7 @@
 
 import React, { useRef, useEffect, useMemo, useState, useCallback } from 'react';
 import { Play, Music, Sparkles, FileText, AlignLeft, RefreshCw } from 'lucide-react';
-import { formatTimestamp } from '@/lib/subtitleParser';
+import { formatTimestamp, separateBilingualText } from '@/lib/subtitleParser';
 
 /**
  * Apple Music 沉浸歌词视效字幕面板 (Apple Music Lyrics Panel)
@@ -147,10 +147,16 @@ export default function AppleMusicLyricsPanel({
         {subtitles.map((seg, idx) => {
           const isActive = idx === activeIndex;
 
-          // 中文主行 (Top)
-          const zhText = seg.zh || (displayLang === 'zh' ? seg.text : seg.text);
-          // 英文副行 (Bottom)
-          const enText = seg.en || (seg.zh && seg.text !== seg.zh ? seg.text : '');
+          let zh = seg.zh;
+          let text = seg.text || '';
+          if (!zh && /[\u4e00-\u9fa5]/.test(text) && /[a-zA-Z]/.test(text)) {
+            const sep = separateBilingualText(text);
+            text = sep.text;
+            zh = sep.zh;
+          }
+
+          const zhText = zh || (/[\u4e00-\u9fa5]/.test(text) ? text : '');
+          const enText = (text && text !== zhText && /[a-zA-Z]/.test(text)) ? text : (seg.en || '');
 
           return (
             <div

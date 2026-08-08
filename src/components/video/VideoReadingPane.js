@@ -128,8 +128,11 @@ export default function VideoReadingPane({ selectedDoc, articleRef, updateDocume
         }),
       });
       const data = await res.json();
-      if (res.ok && data.subtitles) {
-        setUploadedSubtitles(data.subtitles);
+      if (res.ok) {
+        const finalSubs = (data.subtitles && data.subtitles.length > 0) ? data.subtitles : parseSRT(newerSrtContent);
+        if (finalSubs && finalSubs.length > 0) {
+          setUploadedSubtitles(finalSubs);
+        }
         setHasNewerSubtitleVersion(false);
         setNewerSrtContent('');
         // 清除忽略记录

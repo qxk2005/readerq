@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { formatTimestamp, formatSubtitlesForAI, parseTimestamp } from '@/lib/subtitleParser';
+import { formatTimestamp, formatSubtitlesForAI, parseTimestamp, separateBilingualText } from '@/lib/subtitleParser';
 import { cleanBlogMarkdownText } from '@/lib/textSanitizer';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -829,37 +829,47 @@ export default function SubtitlePanel({
 
             {subtitles && subtitles.length > 0 ? (
               <div className="subtitle-segments">
-              {subtitles.map((seg, index) => (
-                <div
-                  key={index}
-                  ref={index === activeIndex ? activeSegmentRef : null}
-                  className={`subtitle-segment ${index === activeIndex ? 'active' : ''}`}
-                  onClick={() => onSeek && onSeek(seg.time)}
-                  style={{ display: 'flex', gap: '12px', alignItems: 'flex-start' }}
-                >
-                  {!seg.estimated && (
-                    <span className="subtitle-timestamp" style={{ cursor: 'pointer', flexShrink: 0, marginTop: '2px' }}>
-                      {seg.timeStr}
-                    </span>
-                  )}
-                  <div className="subtitle-bilingual-content" style={{ display: 'flex', flexDirection: 'column', gap: '3px', flex: 1 }}>
-                    {/* 上面：中文 */}
-                    <div className="subtitle-text-zh" style={{ fontWeight: '500', color: 'var(--color-text-primary)', fontSize: '14px', lineHeight: '1.5' }}>
-                      {seg.zh || seg.text}
-                    </div>
-                    {/* 下面：英文 (只要源文本包含英文或拥有 seg.en，统一规范呈现下面英文) */}
-                    {(() => {
-                      const enText = seg.en || (/[a-zA-Z]{2,}/.test(seg.text) ? seg.text : '');
-                      if (!enText || enText === seg.zh) return null;
-                      return (
+              {subtitles.map((seg, index) => {
+                let zh = seg.zh;
+                let text = seg.text || '';
+
+                if (!zh && /[\u4e00-\u9fa5]/.test(text) && /[a-zA-Z]/.test(text)) {
+                  const sep = separateBilingualText(text);
+                  text = sep.text;
+                  zh = sep.zh;
+                }
+
+                const displayZh = zh || (/[\u4e00-\u9fa5]/.test(text) ? text : '');
+                const displayEn = (text && text !== displayZh && /[a-zA-Z]/.test(text)) ? text : (seg.en || '');
+
+                return (
+                  <div
+                    key={index}
+                    ref={index === activeIndex ? activeSegmentRef : null}
+                    className={`subtitle-segment ${index === activeIndex ? 'active' : ''}`}
+                    onClick={() => onSeek && onSeek(seg.time)}
+                    style={{ display: 'flex', gap: '12px', alignItems: 'flex-start' }}
+                  >
+                    {!seg.estimated && (
+                      <span className="subtitle-timestamp" style={{ cursor: 'pointer', flexShrink: 0, marginTop: '2px' }}>
+                        {seg.timeStr}
+                      </span>
+                    )}
+                    <div className="subtitle-bilingual-content" style={{ display: 'flex', flexDirection: 'column', gap: '3px', flex: 1 }}>
+                      {/* 上面：中文主行 */}
+                      <div className="subtitle-text-zh" style={{ fontWeight: '500', color: 'var(--color-text-primary)', fontSize: '14px', lineHeight: '1.5' }}>
+                        {displayZh || displayEn}
+                      </div>
+                      {/* 下面：英文副行 (仅当存在不同于主行的英文文本时显示) */}
+                      {displayEn && displayEn !== displayZh && (
                         <div className="subtitle-text-en" style={{ fontSize: '12px', color: 'var(--color-text-tertiary)', lineHeight: '1.4' }}>
-                          {enText}
+                          {displayEn}
                         </div>
-                      );
-                    })()}
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           ) : (
             /* 无字幕时的上传入口 */

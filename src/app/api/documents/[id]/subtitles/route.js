@@ -46,12 +46,22 @@ export async function GET(request, { params }) {
     if (localSubtitle) {
       if (localSubtitle.bilingual_json) {
         try {
-          localSegments = JSON.parse(localSubtitle.bilingual_json);
+          const parsed = JSON.parse(localSubtitle.bilingual_json);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            // 🎯 自愈校验：如果前 5 项中包含 2 项以上 time 为 0（且 Segment 总数 > 1），说明是先前残留的受损旧缓存
+            const zeroCount = parsed.slice(0, 5).filter(s => (s.time || 0) === 0).length;
+            if (parsed.length > 1 && zeroCount >= 2) {
+              console.warn('[subtitles/route.js] 发现受损的旧 bilingual_json 时间戳，自动清理并从 SRT 重新无损提取');
+              localSegments = parseSRT(localSubtitle.srt_content);
+              saveSubtitle(id, localSubtitle.srt_content, localSegments, localUpdatedAt);
+            } else {
+              localSegments = parsed;
+            }
+          }
         } catch { /* ignore */ }
       }
       if (!localSegments || localSegments.length === 0) {
-        const rawSegments = parseSRT(localSubtitle.srt_content);
-        localSegments = mergeSubtitlesSmartly(rawSegments, 10);
+        localSegments = parseSRT(localSubtitle.srt_content);
       }
     }
 
@@ -73,8 +83,7 @@ export async function GET(request, { params }) {
               try { segments = JSON.parse(ossSrt); } catch { /* ignore */ }
             }
             if (!segments || segments.length === 0) {
-              const rawSegments = parseSRT(ossSrt);
-              segments = mergeSubtitlesSmartly(rawSegments, 10);
+              segments = parseSRT(ossSrt);
             }
             saveSubtitle(id, ossSrt, segments, ossUpdatedAt);
             return NextResponse.json({
@@ -109,8 +118,7 @@ export async function GET(request, { params }) {
                 try { ossSegments = JSON.parse(ossSrt); } catch { /* ignore */ }
               }
               if (!ossSegments || ossSegments.length === 0) {
-                const rawSegments = parseSRT(ossSrt);
-                ossSegments = mergeSubtitlesSmartly(rawSegments, 10);
+                ossSegments = parseSRT(ossSrt);
               }
               const ossHasZh = Array.isArray(ossSegments) && ossSegments.some(s => s.zh);
 
@@ -226,44 +234,52 @@ export async function POST(request, { params }) {
       saveSubtitle(id, srtContent, bilingualSegments, ossTimestamp);
 
     } else {
-      // 原始 SRT 格式（用户上传场景）
+      // 原始 SRT 格式（用户上传或云端同步场景）
       const rawSegments = parseSRT(srtContent);
       if (rawSegments.length === 0) {
         return NextResponse.json({ error: '无法解析出有效的 SRT 字幕，请检查文件格式是否正确' }, { status: 400 });
       }
 
-      // 1. 智能分段合并 (约束单段时长 ≤ 10 秒)
-      const mergedSegments = mergeSubtitlesSmartly(rawSegments, 10);
+      // 🎯 检测 SRT 是否已经具备中文双语翻译
+      const hasZhInSrt = rawSegments.some(s => s.zh && s.zh.trim().length > 0);
 
-      // 2. 调用 AI 大模型生成中英文双语对照 (上面中文，下面英文)
-      bilingualSegments = mergedSegments;
-      try {
-        bilingualSegments = await translateSubtitlesToBilingual(mergedSegments, (completed, total, currentSegments) => {
-          try {
-            saveSubtitle(id, srtContent, currentSegments, ossTimestamp);
-          } catch (_) {}
-        });
-      } catch (err) {
-        console.warn('[字幕双语化] AI 翻译中途部分异常，保留当前已完成双语片段:', err.message);
-      }
-
-      // 3. 全自动触发精选博客文章转换
-      try {
-        const doc = getCachedDocument(id);
-        const blogHtml = await convertSubtitlesToBlog(bilingualSegments, doc?.title || '视频精选博客');
-        if (blogHtml) {
-          updateDocumentBlog(id, blogHtml);
-          setSetting(`blog_updated_at_${id}`, new Date().toISOString());
-          if (isOssAvailable()) {
-            await uploadBlogToOss(id, blogHtml);
-          }
+      if (hasZhInSrt) {
+        // ✅ 来自安卓或云端的已双语 SRT：直接无缝入库保存，极速返回，无需重复调用 AI 翻译
+        bilingualSegments = rawSegments;
+        saveSubtitle(id, srtContent, bilingualSegments, ossTimestamp);
+        console.log(`[subtitles/route.js] 极速同步完成：使用已包含双语的 SRT，共 ${bilingualSegments.length} 条记录`);
+      } else {
+        // 原始单语 SRT：调用 AI 大模型生成中英文双语对照
+        const mergedSegments = mergeSubtitlesSmartly(rawSegments, 10);
+        bilingualSegments = mergedSegments;
+        try {
+          bilingualSegments = await translateSubtitlesToBilingual(mergedSegments, (completed, total, currentSegments) => {
+            try {
+              saveSubtitle(id, srtContent, currentSegments, ossTimestamp);
+            } catch (_) {}
+          });
+        } catch (err) {
+          console.warn('[字幕双语化] AI 翻译中途部分异常，保留当前已完成双语片段:', err.message);
         }
-      } catch (blogErr) {
-        console.warn('[字幕博客自动转换] 转换失败:', blogErr.message);
-      }
 
-      // 保存到本地数据库
-      saveSubtitle(id, srtContent, bilingualSegments, ossTimestamp);
+        // 全自动触发精选博客文章转换
+        try {
+          const doc = getCachedDocument(id);
+          const blogHtml = await convertSubtitlesToBlog(bilingualSegments, doc?.title || '视频精选博客');
+          if (blogHtml) {
+            updateDocumentBlog(id, blogHtml);
+            setSetting(`blog_updated_at_${id}`, new Date().toISOString());
+            if (isOssAvailable()) {
+              await uploadBlogToOss(id, blogHtml);
+            }
+          }
+        } catch (blogErr) {
+          console.warn('[字幕博客自动转换] 转换失败:', blogErr.message);
+        }
+        
+        // 保存到本地数据库
+        saveSubtitle(id, srtContent, bilingualSegments, ossTimestamp);
+      }
     }
 
     // 同步到 OSS（后台执行，不阻塞响应）
