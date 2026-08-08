@@ -15,6 +15,8 @@ import kotlinx.serialization.json.Json
 import io.ktor.client.plugins.HttpTimeout
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 
 class ReadwiseClient(private val token: String) {
 
@@ -542,6 +544,44 @@ class ReadwiseClient(private val token: String) {
         } catch (e: Exception) {
             println("[fetchSubtitleFromServer] EXCEPTION: ${e.javaClass.simpleName}: ${e.message}")
             null
+        }
+    }
+
+    // 20. 提交博客文章给自建服务器 API
+    suspend fun uploadBlogToServer(baseUrl: String, documentId: String, blogContent: String): Boolean {
+        val cleanBaseUrl = baseUrl.trim().removeSuffix("/")
+        if (cleanBaseUrl.isBlank() || blogContent.isBlank()) return false
+        val url = "$cleanBaseUrl/api/documents/$documentId/blog"
+        return try {
+            val response = client.post(url) {
+                contentType(ContentType.Application.Json)
+                setBody(buildJsonObject {
+                    put("blogContent", blogContent)
+                })
+            }
+            response.status.isSuccess()
+        } catch (e: Exception) {
+            println("[uploadBlogToServer] EXCEPTION: ${e.message}")
+            false
+        }
+    }
+
+    // 21. 提交字幕给自建服务器 API
+    suspend fun uploadSubtitleToServer(baseUrl: String, documentId: String, srtContent: String): Boolean {
+        val cleanBaseUrl = baseUrl.trim().removeSuffix("/")
+        if (cleanBaseUrl.isBlank() || srtContent.isBlank()) return false
+        val url = "$cleanBaseUrl/api/documents/$documentId/subtitles"
+        return try {
+            val response = client.post(url) {
+                contentType(ContentType.Application.Json)
+                setBody(buildJsonObject {
+                    put("srtContent", srtContent)
+                })
+            }
+            response.status.isSuccess()
+        } catch (e: Exception) {
+            println("[uploadSubtitleToServer] EXCEPTION: ${e.message}")
+            false
         }
     }
 

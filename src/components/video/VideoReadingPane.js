@@ -69,13 +69,34 @@ export default function VideoReadingPane({ selectedDoc, articleRef, updateDocume
             // 检查是否已被忽略（sessionStorage 持久化）
             const ignoredKey = `ignored_subtitle_${selectedDoc.id}`;
             const ignoredOssTime = sessionStorage.getItem(ignoredKey);
-            if (ignoredOssTime && data.ossUpdatedAt && ignoredOssTime === data.ossUpdatedAt) {
-              // 同一云端版本已被忽略，不再提醒
-              setHasNewerSubtitleVersion(false);
-              setNewerSrtContent('');
-            } else {
+            const isIgnored = ignoredOssTime && data.ossUpdatedAt && ignoredOssTime === data.ossUpdatedAt;
+
+            // 自动无缝升级策略：若未显式忽略，且本地无双语翻译或为空，首次直接自动载入云端最新双语字幕
+            const localHasZh = data.subtitles?.some(s => s.zh);
+            if (!isIgnored && !localHasZh) {
+              fetch(`/api/documents/${selectedDoc.id}/subtitles`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  srtContent: data.newerSrtContent,
+                  ossTimestamp: data.ossUpdatedAt || new Date().toISOString(),
+                }),
+              }).then(r => r.json()).then(appliedData => {
+                if (appliedData.subtitles) {
+                  setUploadedSubtitles(appliedData.subtitles);
+                  setHasNewerSubtitleVersion(false);
+                  setNewerSrtContent('');
+                }
+              }).catch(() => {
+                setHasNewerSubtitleVersion(true);
+                setNewerSrtContent(data.newerSrtContent);
+              });
+            } else if (!isIgnored) {
               setHasNewerSubtitleVersion(true);
               setNewerSrtContent(data.newerSrtContent);
+            } else {
+              setHasNewerSubtitleVersion(false);
+              setNewerSrtContent('');
             }
           } else {
             setHasNewerSubtitleVersion(false);

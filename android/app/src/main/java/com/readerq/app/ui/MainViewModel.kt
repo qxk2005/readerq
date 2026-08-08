@@ -1403,6 +1403,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                                 _videoPipelineProgress.value = "✅ [完成] 原生字幕已落地生成 (${(finalSegments ?: emptyList()).size} 句)"
                                 subtitleSuccess = true
 
+                                // 🎯 自动上传同步双语字幕至云端/自建服务器
+                                uploadSubtitle(docId, cleanSrt)
+
                                 // 🎯 自动生成 Android 原生 AI 视频精选 Markdown 博客文章
                                 if (openAiKey.isNotBlank()) {
                                     _videoPipelineProgress.value = "⌛ [Android 原生] 正在由 AI 生成结构化视频博客文章..."
@@ -1414,6 +1417,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                                             settingDao.setSetting(SettingEntity("blog_$docId", blogMd))
                                             println("[saveDocumentByUrl] Blog saved to database for doc=$docId")
                                             _videoPipelineProgress.value = "✅ [完成] 原生字幕、双语翻译与 AI 博客已全部处理就绪！"
+
+                                            // 🎯 自动上传同步 AI 博客文章至云端/自建服务器
+                                            saveBlog(docId, blogMd)
                                         }
                                     } catch (blogErr: Exception) {
                                         println("[saveDocumentByUrl] AI 博客生成报错: ${blogErr.message}")
@@ -1808,6 +1814,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         // 忽略 OSS 同步失败
                     }
                 }
+
+                // 同步到自建 ReaderQ 服务器
+                val serverUrl = getServerBaseUrl()
+                if (serverUrl.isNotBlank()) {
+                    try {
+                        val token = settingDao.getSetting("readwise_token")?.replace("\"", "") ?: ""
+                        val client = com.readerq.app.api.ReadwiseClient(token)
+                        client.uploadBlogToServer(serverUrl, documentId, content)
+                    } catch (e: Exception) {
+                        // 忽略自建服务器同步失败
+                    }
+                }
             } catch (e: Exception) {
                 // 忽略异常
             } finally {
@@ -1846,6 +1864,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         oss.uploadSubtitle(documentId, srtContent)
                     } catch (e: Exception) {
                         // OSS 同步失败不影响本地使用
+                    }
+                }
+
+                // 同步到自建 ReaderQ 服务器
+                val serverUrl = getServerBaseUrl()
+                if (serverUrl.isNotBlank()) {
+                    try {
+                        val token = settingDao.getSetting("readwise_token")?.replace("\"", "") ?: ""
+                        val client = com.readerq.app.api.ReadwiseClient(token)
+                        client.uploadSubtitleToServer(serverUrl, documentId, srtContent)
+                    } catch (e: Exception) {
+                        // 忽略自建服务器同步失败
                     }
                 }
             } catch (e: Exception) {

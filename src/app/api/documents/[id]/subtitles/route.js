@@ -103,6 +103,30 @@ export async function GET(request, { params }) {
             }
 
             if (hasNewer) {
+              const localHasZh = Array.isArray(localSegments) && localSegments.some(s => s.zh);
+              let ossSegments = [];
+              if (ossSrt.trim().startsWith('[')) {
+                try { ossSegments = JSON.parse(ossSrt); } catch { /* ignore */ }
+              }
+              if (!ossSegments || ossSegments.length === 0) {
+                const rawSegments = parseSRT(ossSrt);
+                ossSegments = mergeSubtitlesSmartly(rawSegments, 10);
+              }
+              const ossHasZh = Array.isArray(ossSegments) && ossSegments.some(s => s.zh);
+
+              // 自动无缝升轨策略：若本地只有单语字幕而云端包含双语字幕，服务端直接自动落库并返回双语字幕
+              if (!localHasZh && ossHasZh) {
+                saveSubtitle(id, ossSrt, ossSegments, ossUpdatedAt);
+                return NextResponse.json({
+                  exists: true,
+                  subtitles: ossSegments,
+                  source: 'oss',
+                  hasNewerVersion: false,
+                  localUpdatedAt: formatVersionTime(ossUpdatedAt),
+                  ossUpdatedAt: formatVersionTime(ossUpdatedAt),
+                });
+              }
+
               return NextResponse.json({
                 exists: true,
                 subtitles: localSegments,

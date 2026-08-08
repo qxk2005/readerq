@@ -248,31 +248,44 @@ export default function SubtitlePanel({
     fetch(`/api/documents/${documentId}/blog`)
       .then(res => res.json())
       .then(data => {
-        if (data.exists && data.blogContent) {
+        setBlogVersionInfo({
+          localUpdatedAt: data.localUpdatedAt || null,
+          ossUpdatedAt: data.ossUpdatedAt || null,
+        });
+
+        const ignoredKey = `ignored_blog_${documentId}`;
+        const ignoredOssTime = sessionStorage.getItem(ignoredKey);
+        const isIgnored = ignoredOssTime && data.ossUpdatedAt && ignoredOssTime === data.ossUpdatedAt;
+
+        // 自动无缝加载策略：若本地无博客内容（或未同步），但云端包含最新博客，自动无缝呈现并落库
+        if (data.hasNewerVersion && data.newerBlogContent && !isIgnored && (!data.blogContent || !data.exists)) {
+          setBlogContent(data.newerBlogContent);
+          onBlogUpdated?.(data.newerBlogContent);
+          setHasNewerBlogVersion(false);
+          setNewerBlogContent('');
+
+          fetch(`/api/documents/${documentId}/blog`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              blogContent: data.newerBlogContent,
+              ossTimestamp: data.ossUpdatedAt || new Date().toISOString(),
+            }),
+          }).catch(() => {});
+        } else if (data.exists && data.blogContent) {
           setBlogContent(data.blogContent);
           onBlogUpdated?.(data.blogContent);
 
-          // 保存版本时间信息
-          setBlogVersionInfo({
-            localUpdatedAt: data.localUpdatedAt || null,
-            ossUpdatedAt: data.ossUpdatedAt || null,
-          });
-
-          if (data.hasNewerVersion && data.newerBlogContent) {
-            // 检查是否已被忽略（sessionStorage 持久化）
-            const ignoredKey = `ignored_blog_${documentId}`;
-            const ignoredOssTime = sessionStorage.getItem(ignoredKey);
-            if (ignoredOssTime && data.ossUpdatedAt && ignoredOssTime === data.ossUpdatedAt) {
-              setHasNewerBlogVersion(false);
-              setNewerBlogContent('');
-            } else {
-              setHasNewerBlogVersion(true);
-              setNewerBlogContent(data.newerBlogContent);
-            }
+          if (data.hasNewerVersion && data.newerBlogContent && !isIgnored) {
+            setHasNewerBlogVersion(true);
+            setNewerBlogContent(data.newerBlogContent);
           } else {
             setHasNewerBlogVersion(false);
             setNewerBlogContent('');
           }
+        } else if (data.hasNewerVersion && data.newerBlogContent && !isIgnored) {
+          setBlogContent(data.newerBlogContent);
+          onBlogUpdated?.(data.newerBlogContent);
         } else {
           setBlogContent('');
         }
