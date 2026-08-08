@@ -674,7 +674,7 @@ export default function ReadingPane() {
       return;
     }
 
-    if (!articleContainer.contains(sel.anchorNode)) return;
+    if (!articleContainer.contains(sel.anchorNode) && !articleContainer.contains(sel.focusNode) && !articleContainer.contains(sel.getRangeAt(0).startContainer)) return;
 
     const range = sel.getRangeAt(0);
     const rect = range.getBoundingClientRect();

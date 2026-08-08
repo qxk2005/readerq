@@ -88,6 +88,52 @@ const processChildrenForTimestamps = (children, onSeek) => {
   return children;
 };
 
+// 过滤段落/列表项内部可能包含的 [xx:xx] 或 [x:xx:xx] 无效时间戳指示
+const cleanParagraphTimestamps = (textNode) => {
+  if (typeof textNode !== 'string') return textNode;
+  const cleanedTextNode = cleanBlogMarkdownText(textNode);
+  if (!cleanedTextNode) return '';
+  // 正则替换 [0:22] [01:25] [1:23:45] 等段落内部时间戳
+  const cleaned = cleanedTextNode.replace(/\[?\b\d{1,2}:\d{2}(?::\d{2})?\b\]?/g, '');
+  return cleaned.replace(/ {2,}/g, ' ');
+};
+
+const processChildrenForParagraph = (children) => {
+  if (typeof children === 'string') {
+    return cleanParagraphTimestamps(children);
+  }
+  if (Array.isArray(children)) {
+    return children.map((child, idx) =>
+      typeof child === 'string'
+        ? <span key={idx}>{cleanParagraphTimestamps(child)}</span>
+        : child
+    );
+  }
+  return children;
+};
+
+// 受 React.memo 保护的博客文章独立渲染组件
+// 隔离父组件 SubtitlePanel 因 currentTime 频繁 update 导致的 Re-render，彻底避免 DOM 选区失焦
+const BlogArticleRenderer = React.memo(function BlogArticleRenderer({ blogContent, onSeek, articleRef }) {
+  const components = useMemo(() => ({
+    h1: ({ children }) => <h1>{processChildrenForTimestamps(children, onSeek)}</h1>,
+    h2: ({ children }) => <h2>{processChildrenForTimestamps(children, onSeek)}</h2>,
+    h3: ({ children }) => <h3>{processChildrenForTimestamps(children, onSeek)}</h3>,
+    h4: ({ children }) => <h4>{processChildrenForTimestamps(children, onSeek)}</h4>,
+    p: ({ children }) => <p>{processChildrenForParagraph(children)}</p>,
+    li: ({ children }) => <li>{processChildrenForParagraph(children)}</li>,
+    blockquote: ({ children }) => <blockquote>{processChildrenForParagraph(children)}</blockquote>,
+  }), [onSeek]);
+
+  return (
+    <div className="blog-article reading-article-body" ref={articleRef}>
+      <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
+        {blogContent}
+      </ReactMarkdown>
+    </div>
+  );
+});
+
 /**
  * 字幕面板组件
  * 支持字幕视图（自动滚动同步）和博客视图（AI 转译）
@@ -912,21 +958,11 @@ export default function SubtitlePanel({
               </div>
             )}
             {blogContent ? (
-              <div className="blog-article reading-article-body" ref={articleRef}>
-                <ReactMarkdown
-                  remarkPlugins={[remarkGfm]}
-                  components={{
-                    h1: ({ children }) => <h1>{processChildrenForTimestamps(children, onSeek)}</h1>,
-                    h2: ({ children }) => <h2>{processChildrenForTimestamps(children, onSeek)}</h2>,
-                    h3: ({ children }) => <h3>{processChildrenForTimestamps(children, onSeek)}</h3>,
-                    h4: ({ children }) => <h4>{processChildrenForTimestamps(children, onSeek)}</h4>,
-                    p: ({ children }) => <p>{processChildrenForTimestamps(children, onSeek)}</p>,
-                    li: ({ children }) => <li>{processChildrenForTimestamps(children, onSeek)}</li>,
-                  }}
-                >
-                  {blogContent}
-                </ReactMarkdown>
-              </div>
+              <BlogArticleRenderer
+                blogContent={blogContent}
+                onSeek={onSeek}
+                articleRef={articleRef}
+              />
             ) : !isBlogLoading ? (
               <div className="subtitle-empty">
                 <Sparkles size={32} />

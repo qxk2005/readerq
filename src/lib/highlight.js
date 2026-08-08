@@ -1,11 +1,64 @@
 export function getTextOffset(root, node, offset) {
+  if (!root || !node) return -1;
+
+  let targetTextNode = null;
+  let targetTextOffset = offset;
+
+  if (node.nodeType === Node.TEXT_NODE) {
+    targetTextNode = node;
+  } else if (node.nodeType === Node.ELEMENT_NODE) {
+    const childNodes = node.childNodes;
+    if (offset < childNodes.length) {
+      const child = childNodes[offset];
+      if (child.nodeType === Node.TEXT_NODE) {
+        targetTextNode = child;
+        targetTextOffset = 0;
+      } else {
+        const walker = document.createTreeWalker(child, NodeFilter.SHOW_TEXT, null, false);
+        const firstText = walker.nextNode();
+        if (firstText) {
+          targetTextNode = firstText;
+          targetTextOffset = 0;
+        } else {
+          // 如果该 child 子树中没有任何 Text 节点，在 root 的 TreeWalker 中找它之后的第一个 Text 节点
+          const rootWalker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null, false);
+          let n;
+          while ((n = rootWalker.nextNode())) {
+            if (n.compareDocumentPosition(child) & Node.DOCUMENT_POSITION_PRECEDING) {
+              targetTextNode = n;
+              targetTextOffset = 0;
+              break;
+            }
+          }
+        }
+      }
+    } else if (childNodes.length > 0) {
+      const lastChild = childNodes[childNodes.length - 1];
+      if (lastChild.nodeType === Node.TEXT_NODE) {
+        targetTextNode = lastChild;
+        targetTextOffset = lastChild.textContent.length;
+      } else {
+        const walker = document.createTreeWalker(lastChild, NodeFilter.SHOW_TEXT, null, false);
+        let lastText = null;
+        let n;
+        while ((n = walker.nextNode())) lastText = n;
+        if (lastText) {
+          targetTextNode = lastText;
+          targetTextOffset = lastText.textContent.length;
+        }
+      }
+    }
+  }
+
+  if (!targetTextNode) return -1;
+
   let currentOffset = 0;
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null, false);
   let currentNode = walker.nextNode();
 
   while (currentNode) {
-    if (currentNode === node) {
-      return currentOffset + offset;
+    if (currentNode === targetTextNode) {
+      return currentOffset + Math.min(targetTextOffset, currentNode.textContent.length);
     }
     currentOffset += currentNode.textContent.length;
     currentNode = walker.nextNode();
