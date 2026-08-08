@@ -1988,6 +1988,21 @@ private fun parseTimestampSeconds(timeStr: String): Double {
     }
 }
 
+private fun renderHeadingWithTimestampBadge(text: String): String {
+    val timestampRegex = Regex("(?:▶\\s*)?\\[?(\\d{1,2}:\\d{2}(?::\\d{2})?)\\]?")
+    return text.replace(timestampRegex) { matchResult ->
+        val timeStr = matchResult.groupValues[1]
+        val seconds = parseTimestampSeconds(timeStr)
+        " <a href=\"javascript:void(0);\" onclick=\"if(window.AndroidBridge && window.AndroidBridge.seekTo){window.AndroidBridge.seekTo($seconds);}else{location.href='seekto:$seconds';}\" style=\"display:inline-block;margin:0 4px;padding:2px 8px;background:rgba(59,130,246,0.15);color:#3B82F6;border-radius:12px;text-decoration:none;font-weight:600;font-size:12px;vertical-align:middle;\">▶ $timeStr</a>"
+    }
+}
+
+private fun stripParagraphTimestamps(text: String): String {
+    val timestampRegex = Regex("\\[?\\b\\d{1,2}:\\d{2}(?::\\d{2})?\\b\\]?")
+    val cleaned = text.replace(timestampRegex, "")
+    return cleaned.replace(Regex(" {2,}"), " ").trim()
+}
+
 private fun markdownToHtml(markdown: String): String {
     var html = markdown
     val lines = html.split("\n")
@@ -1998,22 +2013,25 @@ private fun markdownToHtml(markdown: String): String {
         if (trimmed.startsWith("#")) {
             if (inList) { sb.append("</ul>\n"); inList = false }
             val level = trimmed.takeWhile { it == '#' }.length
-            val text = trimmed.drop(level).trim()
-            sb.append("<h$level>$text</h$level>\n")
+            val rawText = trimmed.drop(level).trim()
+            val headingText = renderHeadingWithTimestampBadge(rawText)
+            sb.append("<h$level>$headingText</h$level>\n")
         } else if (trimmed.matches(Regex("^([-*_]\\s*){3,}$"))) {
             // 标准 Markdown 分割线 (--- / *** / ___)
             if (inList) { sb.append("</ul>\n"); inList = false }
             sb.append("<hr style=\"border:none;border-top:1px solid rgba(156,163,175,0.3);margin:24px 0;\"/>\n")
         } else if (trimmed.startsWith("- ") || trimmed.startsWith("* ")) {
             if (!inList) { sb.append("<ul>\n"); inList = true }
-            val text = trimmed.drop(2).trim()
-            sb.append("<li>$text</li>\n")
+            val rawText = trimmed.drop(2).trim()
+            val cleanText = stripParagraphTimestamps(rawText)
+            sb.append("<li>$cleanText</li>\n")
         } else if (trimmed.isEmpty()) {
             if (inList) { sb.append("</ul>\n"); inList = false }
             sb.append("<br/>\n")
         } else {
             if (inList) { sb.append("</ul>\n"); inList = false }
-            sb.append("<p>$trimmed</p>\n")
+            val cleanText = stripParagraphTimestamps(trimmed)
+            sb.append("<p>$cleanText</p>\n")
         }
     }
     if (inList) sb.append("</ul>\n")
@@ -2022,14 +2040,6 @@ private fun markdownToHtml(markdown: String): String {
     html = html.replace(Regex("\\*\\*(.*?)\\*\\*"), "<strong>$1</strong>")
     html = html.replace(Regex("\\*(.*?)\\*"), "<em>$1</em>")
     html = html.replace(Regex("\\[(.*?)\\]\\((.*?)\\)"), "<a href=\"$2\">$1</a>")
-
-    // 智能提取时间戳 (如 01:01 / 00:00) 并转换为可跳播的晶莹 Badge 按钮
-    val timestampRegex = Regex("(?:▶\\s*)?\\[?(\\d{1,2}:\\d{2}(?::\\d{2})?)\\]?")
-    html = html.replace(timestampRegex) { matchResult ->
-        val timeStr = matchResult.groupValues[1]
-        val seconds = parseTimestampSeconds(timeStr)
-        "<a href=\"javascript:void(0);\" onclick=\"if(window.AndroidBridge && window.AndroidBridge.seekTo){window.AndroidBridge.seekTo($seconds);}else{location.href='seekto:$seconds';}\" style=\"display:inline-block;margin:0 2px;padding:2px 8px;background:rgba(59,130,246,0.15);color:#3B82F6;border-radius:12px;text-decoration:none;font-weight:600;font-size:12px;\">▶ $timeStr</a>"
-    }
 
     return html
 }
