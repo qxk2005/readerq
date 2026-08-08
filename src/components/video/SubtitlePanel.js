@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { formatTimestamp, formatSubtitlesForAI, parseTimestamp } from '@/lib/subtitleParser';
+import { cleanBlogMarkdownText } from '@/lib/textSanitizer';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Loader2, FileText, BookOpen, RefreshCw, Sparkles, Upload, Trash2, CheckCircle, Play, Languages, DownloadCloud } from 'lucide-react';
@@ -11,18 +12,22 @@ import { useApp } from '@/context/AppContext';
 const renderTextWithTimestamps = (textNode, onSeek) => {
   if (typeof textNode !== 'string') return textNode;
 
+  // 先安全过滤 LLM 泄漏的 Special Tokens 与杂质指令
+  const cleanedTextNode = cleanBlogMarkdownText(textNode);
+  if (!cleanedTextNode) return '';
+
   const timestampRegex = /\[?(\d{1,2}:\d{2}(?::\d{2})?)\]?/g;
   const parts = [];
   let lastIdx = 0;
   let match;
 
-  while ((match = timestampRegex.exec(textNode)) !== null) {
+  while ((match = timestampRegex.exec(cleanedTextNode)) !== null) {
     const startIdx = match.index;
     const timeStr = match[1];
     const fullMatch = match[0];
 
     if (startIdx > lastIdx) {
-      parts.push(textNode.substring(lastIdx, startIdx));
+      parts.push(cleanedTextNode.substring(lastIdx, startIdx));
     }
 
     const seconds = parseTimestamp(timeStr);
@@ -62,11 +67,11 @@ const renderTextWithTimestamps = (textNode, onSeek) => {
     lastIdx = startIdx + fullMatch.length;
   }
 
-  if (lastIdx < textNode.length) {
-    parts.push(textNode.substring(lastIdx));
+  if (lastIdx < cleanedTextNode.length) {
+    parts.push(cleanedTextNode.substring(lastIdx));
   }
 
-  return parts.length > 0 ? parts : textNode;
+  return parts.length > 0 ? parts : cleanedTextNode;
 };
 
 const processChildrenForTimestamps = (children, onSeek) => {
@@ -310,9 +315,15 @@ export default function SubtitlePanel({
         setBlogContent(accumulated);
       }
 
+      // 流式完成后，对累积文本做最终清洗（过滤残余 Special Tokens / 乱码）
+      const cleanedBlog = cleanBlogMarkdownText(accumulated);
+      if (cleanedBlog !== accumulated) {
+        setBlogContent(cleanedBlog);
+      }
+
       // 保存到本地及云端 OSS 同步
-      if (accumulated && documentId) {
-        await saveBlogToServer(documentId, accumulated);
+      if (cleanedBlog && documentId) {
+        await saveBlogToServer(documentId, cleanedBlog);
       }
     } catch (err) {
       console.error('博客转译失败:', err);
@@ -496,10 +507,13 @@ export default function SubtitlePanel({
 
 
   const [isTranslatingBilingual, setIsTranslatingBilingual] = useState(false);
+  const [translateStatusText, setTranslateStatusText] = useState('');
 
   const handleTranslateBilingual = useCallback(async () => {
     if (!subtitles || subtitles.length === 0 || !documentId) return;
     setIsTranslatingBilingual(true);
+    setTranslateStatusText(`正在进行 4倍并发双语翻译...`);
+
     try {
       const res = await fetch(`/api/documents/${documentId}/subtitles`, {
         method: 'POST',
@@ -514,6 +528,7 @@ export default function SubtitlePanel({
       console.error('翻译中英双语失败:', err);
     } finally {
       setIsTranslatingBilingual(false);
+      setTranslateStatusText('');
     }
   }, [subtitles, documentId, onSubtitleUploaded]);
 
@@ -548,7 +563,7 @@ export default function SubtitlePanel({
               style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: 'var(--text-xs)', color: 'var(--color-accent)' }}
             >
               {isTranslatingBilingual ? <Loader2 size={14} className="spin" /> : <Languages size={14} />}
-              {isTranslatingBilingual ? '翻译中...' : '生成双语'}
+              {isTranslatingBilingual ? (translateStatusText || '翻译中...') : '生成双语'}
             </button>
           )}
 

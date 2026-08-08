@@ -1953,7 +1953,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                                 println("[downloadSubtitleFromServer] Calling translateSubtitlesNative with ${nativeSegments.size} segments...")
                                 finalSegments = com.readerq.app.api.AndroidSubtitleFetcher.translateSubtitlesNative(
                                     nativeSegments, openAiKey, openAiBase, openAiModel
-                                )
+                                ) { completed, total, _ ->
+                                    val percent = if (total > 0) (completed * 100 / total) else 0
+                                    _activeSubtitleProgress.value = "⌛ [Android 原生双语翻译] 4倍并发进度: $completed / $total 句 (${percent}%)"
+                                }
                                 println("[downloadSubtitleFromServer] Translation completed, ${finalSegments?.size ?: 0} segments returned")
                                 val zhCount = finalSegments?.count { !it.zh.isNullOrBlank() } ?: 0
                                 println("[downloadSubtitleFromServer] Segments with zh translation: $zhCount / ${finalSegments?.size ?: 0}")

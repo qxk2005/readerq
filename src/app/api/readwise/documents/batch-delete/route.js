@@ -1,6 +1,16 @@
 import { NextResponse } from 'next/server';
 import { getServerReadwiseClient } from '@/lib/readwise';
 import { deleteDocuments } from '@/lib/db';
+import { deleteSubtitleFromOss, deleteBlogFromOss, validateOssConfig, getOssConfig } from '@/lib/oss';
+
+function isOssAvailable() {
+  try {
+    const config = getOssConfig();
+    return validateOssConfig(config).valid;
+  } catch {
+    return false;
+  }
+}
 
 export async function POST(request) {
   try {
@@ -26,6 +36,19 @@ export async function POST(request) {
       await Promise.allSettled(promises);
     } catch (apiErr) {
       console.warn('[Readwise API] 并发删除远端请求异常，忽略以保障本地已物理清除:', apiErr.message);
+    }
+
+    // 3. 联动删除 OSS 上的字幕与博客文件（后台执行，不阻塞响应）
+    if (isOssAvailable()) {
+      const ossPromises = idList.flatMap(id => [
+        deleteSubtitleFromOss(id).catch(err => {
+          console.warn(`[OSS] 删除字幕文件 ${id} 失败:`, err.message);
+        }),
+        deleteBlogFromOss(id).catch(err => {
+          console.warn(`[OSS] 删除博客文件 ${id} 失败:`, err.message);
+        }),
+      ]);
+      await Promise.allSettled(ossPromises);
     }
 
     return NextResponse.json({ success: true, count: idList.length });

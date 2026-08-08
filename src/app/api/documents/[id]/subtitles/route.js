@@ -214,9 +214,13 @@ export async function POST(request, { params }) {
       // 2. 调用 AI 大模型生成中英文双语对照 (上面中文，下面英文)
       bilingualSegments = mergedSegments;
       try {
-        bilingualSegments = await translateSubtitlesToBilingual(mergedSegments);
+        bilingualSegments = await translateSubtitlesToBilingual(mergedSegments, (completed, total, currentSegments) => {
+          try {
+            saveSubtitle(id, srtContent, currentSegments, ossTimestamp);
+          } catch (_) {}
+        });
       } catch (err) {
-        console.warn('[字幕双语化] AI 翻译失败，保留合并单语字幕:', err.message);
+        console.warn('[字幕双语化] AI 翻译中途部分异常，保留当前已完成双语片段:', err.message);
       }
 
       // 3. 全自动触发精选博客文章转换

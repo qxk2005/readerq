@@ -7,6 +7,8 @@ import io.ktor.client.request.*
 import io.ktor.client.statement.*
 import io.ktor.http.*
 import kotlinx.serialization.json.*
+import kotlinx.coroutines.*
+import kotlinx.coroutines.sync.Semaphore
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.io.OutputStreamWriter
@@ -405,14 +407,71 @@ object AndroidSubtitleFetcher {
         return mergeSubtitlesBySentence(rawSegments)
     }
 
+    private val COMMON_SUBTITLE_TAGS = mapOf(
+        "[laughter]" to "[笑声]",
+        "(laughter)" to "(笑声)",
+        "[music]" to "[音乐]",
+        "(music)" to "(音乐)",
+        "[applause]" to "[掌声]",
+        "(applause)" to "(掌声)",
+        "[cheering]" to "[欢呼声]",
+        "(cheering)" to "(欢呼声)",
+        "[sigh]" to "[叹气]",
+        "(sigh)" to "(叹气)",
+        "[gasp]" to "[喘息]",
+        "(gasp)" to "(喘息)"
+    )
+
+    private fun containsChineseText(text: String?): Boolean {
+        if (text.isNullOrBlank()) return false
+        return Regex("[\\u4e00-\\u9fa5]").containsMatchIn(text)
+    }
+
+    private fun isNeedsChineseTranslation(text: String, zh: String?): Boolean {
+        val rawText = text.trim()
+        if (!Regex("[a-zA-Z]").containsMatchIn(rawText)) return false
+
+        val lowerRaw = rawText.lowercase()
+        if (COMMON_SUBTITLE_TAGS.containsKey(lowerRaw)) return false
+
+        val zhTrimmed = zh?.trim() ?: ""
+        if (zhTrimmed.isBlank()) return true
+        if (zhTrimmed == rawText) return true
+        return false
+    }
+
+    private fun parseJsonArrayFromAIResponse(cleanJsonStr: String): JsonArray? {
+        try {
+            val parsedElem = jsonParser.parseToJsonElement(cleanJsonStr)
+            if (parsedElem is JsonArray) return parsedElem
+            if (parsedElem is JsonObject) {
+                val arr = parsedElem["subtitles"]?.jsonArray
+                    ?: parsedElem["items"]?.jsonArray
+                    ?: parsedElem["results"]?.jsonArray
+                    ?: parsedElem["data"]?.jsonArray
+                if (arr != null) return arr
+            }
+        } catch (_: Exception) {}
+
+        val arrayMatch = Regex("\\[[\\s\\S]*\\]").find(cleanJsonStr)
+        if (arrayMatch != null) {
+            try {
+                val parsedElem = jsonParser.parseToJsonElement(arrayMatch.value)
+                if (parsedElem is JsonArray) return parsedElem
+            } catch (_: Exception) {}
+        }
+        return null
+    }
+
     /**
-     * 100% Android 原生调用 OpenAI 兼容接口进行中英双语字幕翻译
+     * 100% Android 原生调用 OpenAI 兼容接口进行中英双语字幕翻译（支持并发与增量进度）
      */
     suspend fun translateSubtitlesNative(
         segments: List<NativeSubtitleSegment>,
         apiKey: String,
         baseUrl: String = "https://api.openai.com/v1",
-        model: String = "gpt-3.5-turbo"
+        model: String = "gpt-3.5-turbo",
+        onProgress: ((completed: Int, total: Int, currentSegments: List<NativeSubtitleSegment>) -> Unit)? = null
     ): List<NativeSubtitleSegment> {
         if (segments.isEmpty() || apiKey.isBlank()) return segments
 
@@ -420,129 +479,256 @@ object AndroidSubtitleFetcher {
         val endpoint = "$cleanBaseUrl/chat/completions"
 
         val batchSize = 25
-        val result = segments.toMutableList()
+        val result = java.util.Collections.synchronizedList(segments.toMutableList())
+        val totalCount = result.size
 
-        for (i in segments.indices step batchSize) {
-            val end = Math.min(i + batchSize, segments.size)
-            val batch = segments.subList(i, end)
-
-            val inputJsonArray = buildJsonArray {
-                batch.forEachIndexed { idx, seg ->
-                    add(buildJsonObject {
-                        put("id", idx)
-                        put("text", seg.text)
-                    })
-                }
-            }.toString()
-
-            val systemPrompt = "你是一个精通中英双语字幕翻译的专家。请将输入的英文字幕数组翻译为简明连贯的中文。请严格返回标准的 JSON 数组，格式为: [{\"id\": 0, \"zh\": \"对应的中文翻译\"}]，不要包含任何 markdown code block 以外的多余解释。"
-            val userPrompt = inputJsonArray
-
+        fun notifyProgress() {
+            if (onProgress == null) return
+            val completedCount = result.count { !it.zh.isNullOrBlank() && it.zh != it.text && containsChineseText(it.zh) }
             try {
-                val payload = buildJsonObject {
-                    put("model", model)
-                    put("messages", buildJsonArray {
-                        add(buildJsonObject {
-                            put("role", "system")
-                            put("content", systemPrompt)
-                        })
-                        add(buildJsonObject {
-                            put("role", "user")
-                            put("content", userPrompt)
-                        })
-                    })
-                    put("temperature", 0.3)
-                }.toString()
+                onProgress(completedCount, totalCount, result.toList())
+            } catch (_: Exception) {}
+        }
 
-                val response = client.post(endpoint) {
-                    header(HttpHeaders.Authorization, "Bearer $apiKey")
-                    header(HttpHeaders.ContentType, ContentType.Application.Json)
-                    setBody(payload)
-                }
+        notifyProgress()
 
-                println("[AndroidSubtitleFetcher] Batch ${i / batchSize + 1}: HTTP status=${response.status}")
-                if (response.status.isSuccess()) {
-                    val respText = response.bodyAsText()
-                    println("[AndroidSubtitleFetcher] Batch ${i / batchSize + 1}: Response length=${respText.length}")
-                    val jsonResponse = jsonParser.parseToJsonElement(respText).jsonObject
-                    val content = jsonResponse["choices"]?.jsonArray?.firstOrNull()?.jsonObject
-                        ?.get("message")?.jsonObject?.get("content")?.jsonPrimitive?.content ?: ""
-
-                    println("[AndroidSubtitleFetcher] Batch ${i / batchSize + 1}: AI content preview='${content.take(200)}'")
-
-                    val cleanJsonStr = content.replace(Regex("^```json\\s*"), "")
-                        .replace(Regex("^```\\s*"), "")
-                        .replace(Regex("\\s*```$"), "")
-                        .trim()
-
-                    // 🎯 高强度的 JSON Array 容错解析：处理外层 Root 对象 或 Markdown 包裹的情况
-                    var translatedArray: JsonArray? = null
-                    try {
-                        val parsedElem = jsonParser.parseToJsonElement(cleanJsonStr)
-                        if (parsedElem is JsonArray) {
-                            translatedArray = parsedElem
-                        } else if (parsedElem is JsonObject) {
-                            translatedArray = parsedElem["subtitles"]?.jsonArray
-                                ?: parsedElem["items"]?.jsonArray
-                                ?: parsedElem["results"]?.jsonArray
-                                ?: parsedElem["data"]?.jsonArray
-                        }
-                    } catch (_: Exception) {
-                        // 正则后备提取 [ ... ]
-                        val arrayMatch = Regex("\\[[\\s\\S]*\\]").find(cleanJsonStr)
-                        if (arrayMatch != null) {
-                            try {
-                                translatedArray = jsonParser.parseToJsonElement(arrayMatch.value).jsonArray
-                            } catch (_: Exception) {}
-                        }
-                    }
-
-                    if (translatedArray != null) {
-                        println("[AndroidSubtitleFetcher] Batch ${i / batchSize + 1}: Parsed ${translatedArray.size} translated items")
-                        var matchCount = 0
-                        for (item in translatedArray) {
-                            if (item !is JsonObject) continue
-                            val obj = item.jsonObject
-                            // 🎯 修复 Bug 1：兼容 String 与 Int 类型的 id（如 "id": "0" 或 "id": 0）
-                            val idRaw = obj["id"]?.jsonPrimitive
-                            val idIdx = idRaw?.intOrNull ?: idRaw?.contentOrNull?.toIntOrNull()
-                            if (idIdx == null) continue
-
-                            // 🎯 修复 Bug 2：兼容多个中文翻译字段名称（zh, translation, text_zh, cn, chinese）
-                            val zhText = (obj["zh"] ?: obj["translation"] ?: obj["text_zh"] ?: obj["cn"] ?: obj["chinese"])
-                                ?.jsonPrimitive?.contentOrNull
-                            if (zhText.isNullOrBlank()) continue
-
-                            // 🎯 修复 Bug 3：自动识别是相对 Index (0~24) 还是全局 Index (i ~ end-1)
-                            val targetGlobalIdx = if (idIdx in 0 until batch.size) {
-                                i + idIdx
-                            } else if (idIdx in i until end) {
-                                idIdx
-                            } else {
-                                -1
-                            }
-
-                            if (targetGlobalIdx in result.indices) {
-                                val orig = result[targetGlobalIdx]
-                                result[targetGlobalIdx] = orig.copy(zh = zhText)
-                                matchCount++
-                            }
-                        }
-                        println("[AndroidSubtitleFetcher] Batch ${i / batchSize + 1}: Applied $matchCount zh translations")
-                    } else {
-                        println("[AndroidSubtitleFetcher] Batch ${i / batchSize + 1}: Failed to parse JSON array from AI response")
-                    }
-                } else {
-                    val errBody = response.bodyAsText().take(300)
-                    println("[AndroidSubtitleFetcher] Batch ${i / batchSize + 1}: HTTP error ${response.status}, body=$errBody")
-                }
-            } catch (e: Exception) {
-                // 🎯 修复 Bug 4：隔离 Batch 级异常，记录日志并继续翻译下一个 Batch，不抛出导致整体流程截断
-                println("[AndroidSubtitleFetcher] Batch ${i / batchSize + 1} translation exception: ${e.message}")
+        // 预处理拟声词/标签映射
+        for (i in result.indices) {
+            val seg = result[i]
+            val lowerRaw = seg.text.lowercase().trim()
+            if (seg.zh.isNullOrBlank() && COMMON_SUBTITLE_TAGS.containsKey(lowerRaw)) {
+                result[i] = seg.copy(zh = COMMON_SUBTITLE_TAGS[lowerRaw])
             }
         }
 
-        return result
+        val batches = mutableListOf<Pair<Int, List<NativeSubtitleSegment>>>()
+        for (i in segments.indices step batchSize) {
+            val end = Math.min(i + batchSize, segments.size)
+            batches.add(Pair(i, segments.subList(i, end)))
+        }
+
+        // 🎯 步骤 1：Pass 1 协程并发池 (Concurrency = 4)
+        val semaphore = Semaphore(4)
+        coroutineScope {
+            batches.map { (i, batch) ->
+                async {
+                    semaphore.acquire()
+                    try {
+                        val inputJsonArray = buildJsonArray {
+                            batch.forEachIndexed { idx, seg ->
+                                add(buildJsonObject {
+                                    put("id", idx)
+                                    put("text", seg.text)
+                                })
+                            }
+                        }.toString()
+
+                        val systemPrompt = "你是一个精通中英双语字幕翻译的专家。请将输入的英文字幕数组翻译为简明连贯的中文。请严格返回标准的 JSON 数组，格式为: [{\"id\": 0, \"zh\": \"对应的中文翻译\"}]，不要包含任何 markdown code block 以外的多余解释。"
+
+                        val payload = buildJsonObject {
+                            put("model", model)
+                            put("messages", buildJsonArray {
+                                add(buildJsonObject {
+                                    put("role", "system")
+                                    put("content", systemPrompt)
+                                })
+                                add(buildJsonObject {
+                                    put("role", "user")
+                                    put("content", inputJsonArray)
+                                })
+                            })
+                            put("temperature", 0.3)
+                        }.toString()
+
+                        val response = client.post(endpoint) {
+                            header(HttpHeaders.Authorization, "Bearer $apiKey")
+                            header(HttpHeaders.ContentType, ContentType.Application.Json)
+                            setBody(payload)
+                        }
+
+                        if (response.status.isSuccess()) {
+                            val respText = response.bodyAsText()
+                            val jsonResponse = jsonParser.parseToJsonElement(respText).jsonObject
+                            val content = jsonResponse["choices"]?.jsonArray?.firstOrNull()?.jsonObject
+                                ?.get("message")?.jsonObject?.get("content")?.jsonPrimitive?.content ?: ""
+
+                            val cleanJsonStr = content.replace(Regex("<think>[\\s\\S]*?</think>", RegexOption.IGNORE_CASE), "")
+                                .replace(Regex("^```json\\s*"), "")
+                                .replace(Regex("^```\\s*"), "")
+                                .replace(Regex("\\s*```$"), "")
+                                .trim()
+
+                            val translatedArray = parseJsonArrayFromAIResponse(cleanJsonStr)
+
+                            if (translatedArray != null) {
+                                for (item in translatedArray) {
+                                    if (item !is JsonObject) continue
+                                    val obj = item.jsonObject
+                                    val idRaw = obj["id"]?.jsonPrimitive
+                                    val idIdx = idRaw?.intOrNull ?: idRaw?.contentOrNull?.toIntOrNull() ?: continue
+                                    val zhText = (obj["zh"] ?: obj["translation"] ?: obj["text_zh"] ?: obj["cn"] ?: obj["chinese"])
+                                        ?.jsonPrimitive?.contentOrNull
+                                    if (zhText.isNullOrBlank()) continue
+
+                                    val targetGlobalIdx = if (idIdx in 0 until batch.size) {
+                                        i + idIdx
+                                    } else if (idIdx in i until Math.min(i + batchSize, segments.size)) {
+                                        idIdx
+                                    } else {
+                                        -1
+                                    }
+
+                                    if (targetGlobalIdx in result.indices) {
+                                        val orig = result[targetGlobalIdx]
+                                        result[targetGlobalIdx] = orig.copy(zh = zhText)
+                                    }
+                                }
+                            }
+                        }
+                    } catch (e: Exception) {
+                        println("[AndroidSubtitleFetcher] Batch exception: ${e.message}")
+                    } finally {
+                        semaphore.release()
+                        notifyProgress()
+                    }
+                }
+            }.awaitAll()
+        }
+
+        // 🎯 步骤 2：Pass 2 & 3 多轮精准补漏重试 (Multi-Pass Retry Loop)
+        val maxRetries = 3
+        for (retry in 1..maxRetries) {
+            val missingIndices = mutableListOf<Int>()
+            for (idx in result.indices) {
+                val seg = result[idx]
+                if (isNeedsChineseTranslation(seg.text, seg.zh)) {
+                    missingIndices.add(idx)
+                }
+            }
+
+            if (missingIndices.isEmpty()) {
+                println("[AndroidSubtitleFetcher] NativeSubtitle complete: All ${result.size} segments translated to Chinese successfully (Pass $retry)")
+                break
+            }
+
+            println("[AndroidSubtitleFetcher] Retry Pass $retry/$maxRetries: Found ${missingIndices.size}/${result.size} untranslated segments. Retrying...")
+
+            val retryBatchSize = 20
+            val retryBatches = mutableListOf<List<Int>>()
+            for (rIdx in missingIndices.indices step retryBatchSize) {
+                retryBatches.add(missingIndices.subList(rIdx, Math.min(rIdx + retryBatchSize, missingIndices.size)))
+            }
+
+            val retrySemaphore = Semaphore(4)
+            coroutineScope {
+                retryBatches.map { batchIndices ->
+                    async {
+                        retrySemaphore.acquire()
+                        try {
+                            val retryInputJson = buildJsonArray {
+                                batchIndices.forEachIndexed { localId, globalIdx ->
+                                    add(buildJsonObject {
+                                        put("id", localId)
+                                        put("text", result[globalIdx].text)
+                                    })
+                                }
+                            }.toString()
+
+                            val retrySystemPrompt = "你是一个专业字幕补译专家。以下字幕在上一轮缺少中文翻译，请必须为每一个 id 提供准确流畅的简体中文翻译。请严格返回 JSON 格式: [{\"id\": 0, \"zh\": \"对应的中文翻译\"}]"
+
+                            val payload = buildJsonObject {
+                                put("model", model)
+                                put("messages", buildJsonArray {
+                                    add(buildJsonObject {
+                                        put("role", "system")
+                                        put("content", retrySystemPrompt)
+                                    })
+                                    add(buildJsonObject {
+                                        put("role", "user")
+                                        put("content", retryInputJson)
+                                    })
+                                })
+                                put("temperature", 0.1)
+                            }.toString()
+
+                            val response = client.post(endpoint) {
+                                header(HttpHeaders.Authorization, "Bearer $apiKey")
+                                header(HttpHeaders.ContentType, ContentType.Application.Json)
+                                setBody(payload)
+                            }
+
+                            if (response.status.isSuccess()) {
+                                val respText = response.bodyAsText()
+                                val jsonResponse = jsonParser.parseToJsonElement(respText).jsonObject
+                                val content = jsonResponse["choices"]?.jsonArray?.firstOrNull()?.jsonObject
+                                    ?.get("message")?.jsonObject?.get("content")?.jsonPrimitive?.content ?: ""
+
+                                val cleanJsonStr = content.replace(Regex("<think>[\\s\\S]*?</think>", RegexOption.IGNORE_CASE), "")
+                                    .replace(Regex("^```json\\s*"), "")
+                                    .replace(Regex("^```\\s*"), "")
+                                    .replace(Regex("\\s*```$"), "")
+                                    .trim()
+
+                                var translatedArray: JsonArray? = null
+                                try {
+                                    val parsedElem = jsonParser.parseToJsonElement(cleanJsonStr)
+                                    if (parsedElem is JsonArray) {
+                                        translatedArray = parsedElem
+                                    } else if (parsedElem is JsonObject) {
+                                        translatedArray = parsedElem["subtitles"]?.jsonArray
+                                            ?: parsedElem["items"]?.jsonArray
+                                            ?: parsedElem["results"]?.jsonArray
+                                            ?: parsedElem["data"]?.jsonArray
+                                    }
+                                } catch (_: Exception) {
+                                    val arrayMatch = Regex("\\[[\\s\\S]*\\]").find(cleanJsonStr)
+                                    if (arrayMatch != null) {
+                                        try {
+                                            translatedArray = jsonParser.parseToJsonElement(arrayMatch.value).jsonArray
+                                        } catch (_: Exception) {}
+                                    }
+                                }
+
+                                if (translatedArray != null) {
+                                    for (item in translatedArray) {
+                                        if (item !is JsonObject) continue
+                                        val obj = item.jsonObject
+                                        val idRaw = obj["id"]?.jsonPrimitive
+                                        val localId = idRaw?.intOrNull ?: idRaw?.contentOrNull?.toIntOrNull() ?: continue
+                                        val zhText = (obj["zh"] ?: obj["translation"] ?: obj["text_zh"] ?: obj["cn"] ?: obj["chinese"])
+                                            ?.jsonPrimitive?.contentOrNull
+                                        if (zhText.isNullOrBlank()) continue
+
+                                        if (localId in batchIndices.indices) {
+                                            val targetGlobalIdx = batchIndices[localId]
+                                            val orig = result[targetGlobalIdx]
+                                            result[targetGlobalIdx] = orig.copy(zh = zhText)
+                                        }
+                                    }
+                                }
+                            }
+                        } catch (e: Exception) {
+                            println("[AndroidSubtitleFetcher] Retry Pass $retry Batch exception: ${e.message}")
+                        } finally {
+                            retrySemaphore.release()
+                            notifyProgress()
+                        }
+                    }
+                }.awaitAll()
+            }
+        }
+
+        // 🎯 步骤 3：终极保底与标签对照
+        for (i in result.indices) {
+            val seg = result[i]
+            val lowerRaw = seg.text.lowercase().trim()
+            if (COMMON_SUBTITLE_TAGS.containsKey(lowerRaw)) {
+                result[i] = seg.copy(zh = COMMON_SUBTITLE_TAGS[lowerRaw])
+            }
+        }
+
+        notifyProgress()
+        return result.toList()
     }
 
     /**
@@ -573,7 +759,8 @@ object AndroidSubtitleFetcher {
 3. **时间戳嵌入（非常重要）**：
    - 在每一个 Markdown 章节标题（如 ## 或 ###）的结尾，必须标注对应视频的时间戳标记 `[MM:SS]`，例如 `## 一、背景介绍 [01:25]`；
    - 在正文核心段落开头也可附带对应的时间戳标记如 `[08:15]`，方便读者点击跳转观看。
-4. 请直接输出标准的 Markdown 正文，不要包含多余外层说明。
+4. **输出纯净性**：严禁在文章中包含任何 `<|begin_of_sentence|>`、`<|begin_of_text|>` 等 AI 内部 Tag 标记，严禁包含 `#include` 等伪代码指令！
+5. 请直接输出标准的 Markdown 正文，不要包含多余外层说明。
 
 视频标题: $title
 字幕文本:
@@ -604,10 +791,11 @@ $subtitleTranscript
                 val content = jsonResponse["choices"]?.jsonArray?.firstOrNull()?.jsonObject
                     ?.get("message")?.jsonObject?.get("content")?.jsonPrimitive?.content ?: ""
 
-                return content.replace(Regex("^```markdown\\s*"), "")
+                val rawContent = content.replace(Regex("^```markdown\\s*"), "")
                     .replace(Regex("^```\\s*"), "")
                     .replace(Regex("\\s*```$"), "")
                     .trim()
+                return cleanBlogMarkdownText(rawContent)
             } else {
                 val errBody = response.bodyAsText().take(300)
                 println("[AndroidSubtitleFetcher] generateBlogNative HTTP error ${response.status}, body=$errBody")
@@ -617,5 +805,20 @@ $subtitleTranscript
             println("[AndroidSubtitleFetcher] generateBlogNative exception: ${e.message}")
             throw e
         }
+    }
+
+    fun cleanBlogMarkdownText(text: String?): String {
+        if (text.isNullOrBlank()) return ""
+
+        return text
+            .replace(Regex("<\\|\\s*(?:begin_of_sentence|end_of_sentence|begin_of_text|end_of_text|im_start|im_end|endoftext|fim_prefix|fim_suffix|fim_middle)\\s*\\|>", RegexOption.IGNORE_CASE), "")
+            .replace(Regex("<\\s*\\|\\s*[a-z0-9_ -]+\\s*\\|\\s*>", RegexOption.IGNORE_CASE), "")
+            .replace(Regex("<\\|\\s*[a-z0-9_ -]+\\s*\\|>", RegexOption.IGNORE_CASE), "")
+            .replace(Regex("<\\|\\s*#include", RegexOption.IGNORE_CASE), "")
+            .replace(Regex("(^|\\n)#[a-z0-9_-]+\\s+([\\u4e00-\\u9fa5a-zA-Z0-9])", RegexOption.IGNORE_CASE), "$1$2")
+            .replace(Regex("^(#+)\\s*[a-zA-Z0-9_-]+:\\s*", RegexOption.MULTILINE), "$1 ")
+            .replace(Regex("[\\u0600-\\u06FF\\u0750-\\u077F\\u08A0-\\u08FF]{3,}"), "")
+            .replace(Regex("\\n{3,}"), "\n\n")
+            .trim()
     }
 }

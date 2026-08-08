@@ -76,14 +76,19 @@ export async function POST(request) {
 
           if (isAIConfigured()) {
             // 2.1 双语翻译
-            sendProgress('progress', `⌛ [2/4 双语翻译] 正在调用 AI 进行中英对照翻译 (共 ${segments.length} 句)...`);
+            sendProgress('progress', `⌛ [2/4 双语翻译] 正在调用 AI 进行 4倍并发中英对照翻译 (共 ${segments.length} 句)...`);
             try {
-              const translated = await translateSubtitlesToBilingual(segments);
+              const translated = await translateSubtitlesToBilingual(segments, (completed, total, currentSegments) => {
+                const percent = Math.floor((completed / Math.max(total, 1)) * 100);
+                sendProgress('progress', `⌛ [2/4 双语翻译] 实时进度: ${completed}/${total} 句 (${percent}%)`);
+                try {
+                  saveSubtitle(docId, srtContent, currentSegments);
+                } catch (_) {}
+              });
               if (translated && translated.length > 0) {
                 finalSegments = translated;
                 const translatedCount = translated.filter(s => s.zh).length;
-                sendProgress('progress', `✅ [2/4 双语翻译] 已成功生成 ${translatedCount} 句中英双语对照`);
-                // 更新为双语字幕
+                sendProgress('progress', `✅ [2/4 双语翻译] 已成功生成 ${translatedCount}/${segments.length} 句中英双语对照`);
                 saveSubtitle(docId, srtContent, finalSegments);
               }
             } catch (aiErr) {

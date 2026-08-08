@@ -5,8 +5,8 @@
  * 用法: readerq --restart | --start | --stop | --status
  */
 
-const { execSync } = require('child_process');
-const { existsSync, readFileSync, writeFileSync, unlinkSync, mkdirSync } = require('fs');
+const { execSync, spawn } = require('child_process');
+const { existsSync, readFileSync, writeFileSync, unlinkSync, mkdirSync, openSync } = require('fs');
 const { join } = require('path');
 const os = require('os');
 
@@ -120,14 +120,20 @@ function startServer() {
   try { if (existsSync(logFile)) unlinkSync(logFile); } catch {}
   try { if (existsSync(PID_FILE)) unlinkSync(PID_FILE); } catch {}
 
-  if (IS_WIN) {
-    // Windows: 后台运行 npm run dev 并重定向日志
-    const psCmd = `Start-Process cmd.exe -ArgumentList '/c npm run dev > "${logFile}" 2>&1' -WindowStyle Minimized -WorkingDirectory "${ROOT_DIR}"`;
-    execSync(`powershell -Command "${psCmd}"`, { cwd: ROOT_DIR });
-  } else {
-    // macOS / Linux
-    execSync(`nohup npm run dev > "${logFile}" 2>&1 &`, { cwd: ROOT_DIR });
-  }
+  // 2. 跨平台 Daemon 脱离后台启动 npm run dev
+  const outFd = openSync(logFile, 'a');
+  const errFd = openSync(logFile, 'a');
+
+  const spawnCmd = IS_WIN ? 'cmd.exe' : 'npm';
+  const spawnArgs = IS_WIN ? ['/c', 'npm', 'run', 'dev'] : ['run', 'dev'];
+
+  const child = spawn(spawnCmd, spawnArgs, {
+    cwd: ROOT_DIR,
+    detached: true,
+    stdio: ['ignore', outFd, errFd],
+    env: process.env
+  });
+  child.unref();
 
   // 轮询端口与日志
   let attempts = 0;

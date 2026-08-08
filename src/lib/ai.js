@@ -5,6 +5,8 @@
 
 import OpenAI from 'openai';
 import { getSetting } from './db.js';
+import { cleanBlogMarkdownText } from './textSanitizer.js';
+export { cleanBlogMarkdownText };
 
 /**
  * 从数据库读取设置（回退）
@@ -242,6 +244,7 @@ export async function* convertToBlogStream(transcript, title, customPrompt) {
 5. **语言风格**：专业但易读，类似 InfoQ、少数派、36Kr 等技术媒体的行文风格
 6. **去除口语化**：将口语化的表达转换为书面语，去除语气词、重复内容和离题闲聊
 7. **保留关键信息**：确保原视频中的数据、案例、技术细节等关键信息不丢失
+8. **输出纯净性（极度重要）**：严禁在文章中包含任何 <|begin_of_sentence|>、<|begin_of_text|> 等 AI 内部 Tag 标记，严禁包含 #include 等伪代码指令！
 
 ## 输出格式：
 直接输出简体中文 Markdown 格式的博客文章，不需要额外的说明或注释。`;
@@ -256,25 +259,32 @@ export async function* convertToBlogStream(transcript, title, customPrompt) {
       { role: 'system', content: systemPrompt },
       {
         role: 'user',
-        content: `请将以下视频字幕转译为一篇简体中文博客文章。无论原始字幕是什么语言，输出必须全部使用简体中文，并在每个章节标题结尾必须带上对应的时间戳 [MM:SS]。\n\n视频标题：${title}\n\n字幕内容：\n${transcript}`,
+        content: `请将以下视频字幕转译为一篇简体中文博客文章。无论原始字幕是什么语言，输出必须全部使用简体中文，并在每个章节标题结尾必须带上对应的时间戳 [MM:SS]。严禁输出任何 <|begin_of_sentence|> 等模型标记或 #include 等伪指令。\n\n视频标题：${title}\n\n字幕内容：\n${transcript}`,
       }
     ],
     temperature: 0.4,
-    max_tokens: getMaxTokens(),
+    max_tokens: Math.max(getMaxTokens(), 8192),
     stream: true,
   });
 
+  // 实时过滤 Special Tokens 的正则
+  const specialTokenPattern = /<\|?\s*(?:begin_of_sentence|end_of_sentence|begin_of_text|end_of_text|im_start|im_end|endoftext|fim_prefix|fim_suffix|fim_middle)\s*\|?>/gi;
+
   for await (const chunk of stream) {
-    const content = chunk.choices[0]?.delta?.content;
+    let content = chunk.choices[0]?.delta?.content;
     if (content) {
-      yield content;
+      // 实时过滤流式输出中的 Special Tokens
+      content = content.replace(specialTokenPattern, '');
+      if (content) {
+        yield content;
+      }
     }
   }
 }
 
 /**
  * 安全提取 AI 响应正文
- * 兼容带有推理思考链（Reasoning）的兼容模型在被截断时的回退处理
+ * 仅提取 message.content，绝不回退到 reasoning_content（推理链含 Special Tokens 和乱码）
  */
 function extractAIResponse(choice) {
   if (!choice || !choice.message) return '';
@@ -284,31 +294,154 @@ function extractAIResponse(choice) {
     return content.trim();
   }
   
-  // 回退提取推理过程，防止在被截断时返回空内容
-  const reasoning = choice.message.reasoning_content || choice.message.reasoning;
-  if (reasoning && reasoning.trim()) {
-    return `[模型推理被截断，输出思考过程]:\n${reasoning.trim()}`;
-  }
-  
+  // 如果 content 为空（模型被截断），返回空字符串
+  // 绝不将推理思考链（reasoning_content）作为正文内容输出
+  console.warn('[extractAIResponse] AI 返回的 content 为空（可能被截断），不回退 reasoning 内容');
   return '';
 }
 
+// 常见字幕标记/拟声词本地映射
+const COMMON_SUBTITLE_TAGS = {
+  '[laughter]': '[笑声]',
+  '(laughter)': '(笑声)',
+  '[music]': '[音乐]',
+  '(music)': '(音乐)',
+  '[applause]': '[掌声]',
+  '(applause)': '(掌声)',
+  '[cheering]': '[欢呼声]',
+  '(cheering)': '(欢呼声)',
+  '[sigh]': '[叹气]',
+  '(sigh)': '(叹气)',
+  '[gasp]': '[喘息]',
+  '(gasp)': '(喘息)',
+};
+
+function containsChineseText(str) {
+  if (!str) return false;
+  return /[\u4e00-\u9fa5]/.test(str);
+}
+
+function isNeedsChineseTranslation(enText, zhText) {
+  if (!enText) return false;
+  const rawText = enText.trim();
+  // 如果不含英文字母（如纯数字或纯标点），不需要中文汉字翻译
+  if (!/[a-zA-Z]/.test(rawText)) return false;
+
+  const rawLower = rawText.toLowerCase();
+  if (COMMON_SUBTITLE_TAGS[rawLower]) return false;
+
+  const zh = (zhText || '').trim();
+  if (!zh) return true;
+  if (zh === rawText) return true;
+  if (!containsChineseText(zh)) return true;
+
+  return false;
+}
+
+function safeParseSubtitleJSON(content) {
+  if (!content || typeof content !== 'string') return [];
+
+  let clean = content
+    .replace(/<think>[\s\S]*?<\/think>/gi, '')
+    .replace(/\[模型推理被截断[^\]]*\]:?/g, '')
+    .trim();
+
+  const codeMatch = clean.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+  if (codeMatch && codeMatch[1]) {
+    clean = codeMatch[1].trim();
+  }
+
+  try {
+    const data = JSON.parse(clean);
+    if (Array.isArray(data)) return data;
+    if (data && typeof data === 'object') {
+      const arr = data.subtitles || data.items || data.results || data.data;
+      if (Array.isArray(arr)) return arr;
+    }
+  } catch {}
+
+  const objMatch = clean.match(/\{[\s\S]*"subtitles"[\s\S]*\}/) || clean.match(/\{[\s\S]*\}/);
+  if (objMatch) {
+    try {
+      const data = JSON.parse(objMatch[0]);
+      const arr = Array.isArray(data) ? data : (data.subtitles || data.items || data.results || data.data);
+      if (Array.isArray(arr)) return arr;
+    } catch {}
+  }
+
+  const arrMatch = clean.match(/\[\s*\{[\s\S]*\}\s*\]/);
+  if (arrMatch) {
+    try {
+      const data = JSON.parse(arrMatch[0]);
+      if (Array.isArray(data)) return data;
+    } catch {}
+  }
+
+  return [];
+}
+
 /**
- * 将字幕段落 AI 翻译为中英文双语对照结构
+ * 将字幕段落 AI 翻译为中英文双语对照结构（支持 4倍并发加速与 onProgress 增量回调）
  * @param {Array<{time: number, timeStr: string, text: string}>} segments
+ * @param {Function} [onProgress] - 进度回调 (completedCount, totalCount, currentSegments) => void
  * @returns {Promise<Array<{time: number, timeStr: string, text: string, zh: string, en: string}>>}
  */
-export async function translateSubtitlesToBilingual(segments) {
+export async function translateSubtitlesToBilingual(segments, onProgress = null) {
   if (!segments || segments.length === 0) return [];
   const client = createAIClient();
   const model = getModelName();
 
-  const formattedInput = segments.map((s, idx) => ({
-    id: idx,
-    text: s.text,
-  }));
+  // 初始化结果结构
+  const resultSegments = segments.map((seg) => {
+    const rawEnglishText = (seg.text || '').trim();
+    const rawLower = rawEnglishText.toLowerCase();
+    let initialZh = seg.zh ? seg.zh.trim() : '';
+    if (!initialZh && COMMON_SUBTITLE_TAGS[rawLower]) {
+      initialZh = COMMON_SUBTITLE_TAGS[rawLower];
+    }
+    return {
+      ...seg,
+      zh: initialZh,
+      en: rawEnglishText,
+    };
+  });
 
-  const prompt = `你是一位资深的高精中英双语字幕翻译大师。
+  const totalCount = resultSegments.length;
+  const batchSize = 25;
+  const batches = [];
+  for (let i = 0; i < totalCount; i += batchSize) {
+    batches.push({
+      startIdx: i,
+      chunk: resultSegments.slice(i, i + batchSize)
+    });
+  }
+
+  const notifyProgress = () => {
+    if (!onProgress) return;
+    const completedCount = resultSegments.filter(s => s.zh && s.zh.trim() && s.zh !== s.en && containsChineseText(s.zh)).length;
+    try {
+      onProgress(completedCount, totalCount, resultSegments);
+    } catch {}
+  };
+
+  notifyProgress();
+
+  // 🎯 步骤 1：Pass 1 并发线程池 (Concurrency = 4)
+  const concurrencyLimit = 4;
+  let batchIndex = 0;
+
+  async function worker() {
+    while (batchIndex < batches.length) {
+      const currentBatch = batches[batchIndex++];
+      if (!currentBatch) break;
+      const { startIdx, chunk } = currentBatch;
+
+      const formattedInput = chunk.map((s, idx) => ({
+        id: idx,
+        text: s.en,
+      }));
+
+      const prompt = `你是一位资深的高精中英双语字幕翻译大师。
 你的核心任务是将传入的视频字幕段落列表翻译为流畅、准确、通顺的简体中文。
 
 输出格式要求：
@@ -319,44 +452,139 @@ export async function translateSubtitlesToBilingual(segments) {
   ]
 }`;
 
-  try {
-    const response = await client.chat.completions.create({
-      model,
-      messages: [
-        { role: 'system', content: prompt },
-        { role: 'user', content: JSON.stringify(formattedInput) }
-      ],
-      temperature: 0.2,
+      try {
+        const response = await client.chat.completions.create({
+          model,
+          messages: [
+            { role: 'system', content: prompt },
+            { role: 'user', content: JSON.stringify(formattedInput) }
+          ],
+          temperature: 0.2,
+        });
+
+        const choice = response.choices[0];
+        const content = extractAIResponse(choice);
+        const parsed = safeParseSubtitleJSON(content);
+
+        for (const item of (parsed || [])) {
+          if (!item || item.id === undefined) continue;
+          const localId = parseInt(item.id, 10);
+          if (!isNaN(localId) && localId >= 0 && localId < chunk.length) {
+            const globalIdx = startIdx + localId;
+            const zhText = (item.zh || item.translation || item.text_zh || item.cn || item.chinese || '').trim();
+            if (zhText) {
+              resultSegments[globalIdx].zh = zhText;
+            }
+          }
+        }
+      } catch (err) {
+        console.error(`[translateSubtitlesToBilingual] Batch 异常:`, err.message);
+      }
+
+      notifyProgress();
+    }
+  }
+
+  const workers = [];
+  for (let w = 0; w < Math.min(concurrencyLimit, batches.length); w++) {
+    workers.push(worker());
+  }
+  await Promise.all(workers);
+
+  // 🎯 步骤 2：Pass 2 & 3 多轮精准补漏重试 (并发限制)
+  const maxRetries = 3;
+  for (let retry = 1; retry <= maxRetries; retry++) {
+    const missingIndices = [];
+    resultSegments.forEach((seg, idx) => {
+      if (isNeedsChineseTranslation(seg.en, seg.zh)) {
+        missingIndices.push(idx);
+      }
     });
 
-    const choice = response.choices[0];
-    const content = extractAIResponse(choice);
-    let parsed = [];
-    try {
-      const data = JSON.parse(content);
-      parsed = Array.isArray(data) ? data : (data.subtitles || data.items || data.results || []);
-    } catch {
-      const jsonMatch = content.match(/\[[\s\S]*\]/);
-      if (jsonMatch) parsed = JSON.parse(jsonMatch[0]);
+    if (missingIndices.length === 0) {
+      console.log(`[translateSubtitlesToBilingual] 所有 ${totalCount} 段字幕均已 100% 成功完成中文双语翻译 (Pass ${retry})`);
+      break;
     }
 
-    const resultMap = new Map((parsed || []).map(item => [item.id, item]));
+    console.warn(`[translateSubtitlesToBilingual] 发现 ${missingIndices.length}/${totalCount} 段字幕未正确翻译成中文，发起第 ${retry}/${maxRetries} 轮定向补译重试...`);
 
-    return segments.map((seg, idx) => {
-      const item = resultMap.get(idx);
-      const rawEnglishText = (seg.text || '').trim();
-      const zhTranslation = item?.zh ? item.zh.trim() : rawEnglishText;
+    const retryBatchSize = 20;
+    const retryBatches = [];
+    for (let rIdx = 0; rIdx < missingIndices.length; rIdx += retryBatchSize) {
+      retryBatches.push(missingIndices.slice(rIdx, rIdx + retryBatchSize));
+    }
 
-      return {
-        ...seg,
-        zh: zhTranslation,
-        en: rawEnglishText, // 🎯 关键：死死锁定原视频英文原文顺序，严禁篡改或倒装单词！
-      };
-    });
-  } catch (err) {
-    console.error('AI 字幕双语翻译出错:', err);
-    throw new Error(`AI 翻译服务异常 (${err.status || err.message || '未知错误'}): ${err.message}`);
+    let rBatchIdx = 0;
+    async function retryWorker() {
+      while (rBatchIdx < retryBatches.length) {
+        const currentBatchIndices = retryBatches[rBatchIdx++];
+        if (!currentBatchIndices) break;
+        const retryInput = currentBatchIndices.map((globalIdx, localId) => ({
+          id: localId,
+          text: resultSegments[globalIdx].en,
+        }));
+
+        const retryPrompt = `你是一位高精字幕补译专家。注意：以下段落是上一轮漏掉或未成功翻译为中文的英文字幕。
+请必须为每一个 id 都提供准确流畅的简体中文翻译 "zh"！
+
+输出格式要求：
+请必须返回 JSON 格式：
+{
+  "subtitles": [
+    { "id": 0, "zh": "准确的简体中文翻译" }
+  ]
+}`;
+
+        try {
+          const response = await client.chat.completions.create({
+            model,
+            messages: [
+              { role: 'system', content: retryPrompt },
+              { role: 'user', content: JSON.stringify(retryInput) }
+            ],
+            temperature: 0.1,
+          });
+
+          const choice = response.choices[0];
+          const content = extractAIResponse(choice);
+          const parsed = safeParseSubtitleJSON(content);
+
+          for (const item of (parsed || [])) {
+            if (!item || item.id === undefined) continue;
+            const localId = parseInt(item.id, 10);
+            if (!isNaN(localId) && localId >= 0 && localId < currentBatchIndices.length) {
+              const globalIdx = currentBatchIndices[localId];
+              const zhText = (item.zh || item.translation || item.text_zh || item.cn || item.chinese || '').trim();
+              if (zhText) {
+                resultSegments[globalIdx].zh = zhText;
+              }
+            }
+          }
+        } catch (retryErr) {
+          console.error(`[translateSubtitlesToBilingual] 重试轮次 ${retry} Batch 异常:`, retryErr.message);
+        }
+
+        notifyProgress();
+      }
+    }
+
+    const rWorkers = [];
+    for (let w = 0; w < Math.min(concurrencyLimit, retryBatches.length); w++) {
+      rWorkers.push(retryWorker());
+    }
+    await Promise.all(rWorkers);
   }
+
+  // 🎯 步骤 3：终极保底与极简兜底
+  resultSegments.forEach((seg) => {
+    const rawLower = (seg.en || '').toLowerCase().trim();
+    if (COMMON_SUBTITLE_TAGS[rawLower]) {
+      seg.zh = COMMON_SUBTITLE_TAGS[rawLower];
+    }
+  });
+
+  notifyProgress();
+  return resultSegments;
 }
 
 /**
@@ -399,9 +627,12 @@ export async function convertSubtitlesToBlog(segments, title = '视频整理') {
 3. 时间戳格式必须严格为 \`[mm:ss]\` 或 \`[hh:mm:ss]\` 格式（如 \`[0:58]\`），以便读者在阅读时可以直接点击时间戳跳播到对应的视频画面帧！
 4. 包含【核心摘要与金句速览】；
 5. 将文字整理为流畅自然的博文表达，修饰口语化词汇；
-6. 输出干净漂亮的 Markdown 结构化内容。`;
+6. 输出干净漂亮的 Markdown 结构化内容；
+7. 严禁在文章中包含任何 <|begin_of_sentence|>、<|begin_of_text|> 等 AI 内部 Tag 标记，严禁包含 #include 等伪代码指令！`;
 
   try {
+    // 博客文章需要较大的输出 token 限制，避免长视频内容被截断
+    const blogMaxTokens = Math.max(getMaxTokens(), 8192);
     const response = await client.chat.completions.create({
       model,
       messages: [
@@ -409,10 +640,12 @@ export async function convertSubtitlesToBlog(segments, title = '视频整理') {
         { role: 'user', content: `视频标题: ${title}\n\n完整带时间戳字幕内容:\n${fullText.slice(0, 18000)}` }
       ],
       temperature: 0.5,
+      max_tokens: blogMaxTokens,
     });
 
     const choice = response.choices[0];
-    return extractAIResponse(choice);
+    const rawMarkdown = extractAIResponse(choice);
+    return cleanBlogMarkdownText(rawMarkdown);
   } catch (err) {
     console.error('AI 字幕生成博客文章失败:', err);
     return '';
