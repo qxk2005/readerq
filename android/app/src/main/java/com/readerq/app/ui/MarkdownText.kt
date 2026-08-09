@@ -135,6 +135,13 @@ fun MarkdownText(
                         )
                     }
                 }
+                is MarkdownBlock.Table -> {
+                    MarkdownTable(
+                        table = block,
+                        theme = theme,
+                        textColor = color
+                    )
+                }
                 is MarkdownBlock.Divider -> {
                     Divider(
                         color = color.copy(alpha = 0.15f),
@@ -147,12 +154,131 @@ fun MarkdownText(
     }
 }
 
+@Composable
+fun MarkdownTable(
+    table: MarkdownBlock.Table,
+    theme: String,
+    textColor: Color
+) {
+    val borderColor = if (theme == "dark") Color(0xFF30363D) else Color(0xFFD0D7DE)
+    val headerBg = if (theme == "dark") Color(0xFF21262D) else Color(0xFFF6F8FA)
+    val evenRowBg = if (theme == "dark") Color(0xFF161B22) else Color(0xFFFFFFFF)
+    val oddRowBg = if (theme == "dark") Color(0xFF0D1117) else Color(0xFFF8F9FA)
+
+    // 智能计算每一列的统一列宽 columnWidths
+    val columnWidths = androidx.compose.runtime.remember(table) {
+        table.headers.indices.map { colIndex ->
+            val headerText = table.headers.getOrElse(colIndex) { "" }
+            val cellTexts = table.rows.map { row -> row.getOrElse(colIndex) { "" } }
+            val allTexts = listOf(headerText) + cellTexts
+            
+            val maxLineLen = allTexts.flatMap { text ->
+                processCellHtmlBr(text).split("\n")
+            }.maxOfOrNull { line ->
+                line.fold(0.0) { acc, char ->
+                    acc + if (char.code > 127) 1.6 else 1.0
+                }
+            } ?: 4.0
+
+            val calculatedDp = (maxLineLen * 11.5).dp + 24.dp
+            calculatedDp.coerceIn(100.dp, 320.dp)
+        }
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .border(1.dp, borderColor, RoundedCornerShape(8.dp))
+            .horizontalScroll(rememberScrollState())
+    ) {
+        Column {
+            // 表头 (Header Row)
+            Row(
+                modifier = Modifier
+                    .height(IntrinsicSize.Min)
+                    .background(headerBg)
+            ) {
+                table.headers.forEachIndexed { index, headerText ->
+                    val align = table.alignments.getOrElse(index) { Alignment.Start }
+                    val colWidth = columnWidths.getOrElse(index) { 120.dp }
+
+                    Box(
+                        modifier = Modifier
+                            .width(colWidth)
+                            .fillMaxHeight()
+                            .border(width = 0.5.dp, color = borderColor.copy(alpha = 0.4f))
+                            .padding(vertical = 8.dp, horizontal = 10.dp),
+                        contentAlignment = when (align) {
+                            Alignment.CenterHorizontally -> Alignment.Center
+                            Alignment.End -> Alignment.CenterEnd
+                            else -> Alignment.CenterStart
+                        }
+                    ) {
+                        Text(
+                            text = parseInlineMarkdown(processCellHtmlBr(headerText), theme),
+                            fontSize = 12.5.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = textColor
+                        )
+                    }
+                }
+            }
+
+            // 数据行 (Data Rows)
+            table.rows.forEachIndexed { rowIndex, row ->
+                val bg = if (rowIndex % 2 == 0) evenRowBg else oddRowBg
+                Row(
+                    modifier = Modifier
+                        .height(IntrinsicSize.Min)
+                        .background(bg)
+                ) {
+                    table.headers.indices.forEach { colIndex ->
+                        val cellText = row.getOrElse(colIndex) { "" }
+                        val align = table.alignments.getOrElse(colIndex) { Alignment.Start }
+                        val colWidth = columnWidths.getOrElse(colIndex) { 120.dp }
+
+                        Box(
+                            modifier = Modifier
+                                .width(colWidth)
+                                .fillMaxHeight()
+                                .border(width = 0.5.dp, color = borderColor.copy(alpha = 0.4f))
+                                .padding(vertical = 8.dp, horizontal = 10.dp),
+                            contentAlignment = when (align) {
+                                Alignment.CenterHorizontally -> Alignment.Center
+                                Alignment.End -> Alignment.CenterEnd
+                                else -> Alignment.CenterStart
+                            }
+                        ) {
+                            Text(
+                                text = parseInlineMarkdown(processCellHtmlBr(cellText), theme),
+                                fontSize = 12.sp,
+                                color = textColor.copy(alpha = 0.9f),
+                                lineHeight = 17.sp
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+private fun processCellHtmlBr(text: String): String {
+    return text.replace(Regex("(?i)<br\\s*/?>"), "\n")
+}
+
 sealed class MarkdownBlock {
     data class Heading(val level: Int, val text: String) : MarkdownBlock()
     data class Paragraph(val text: String) : MarkdownBlock()
     data class ListItem(val prefix: String, val text: String, val indentLevel: Int = 0) : MarkdownBlock()
     data class BlockQuote(val text: String) : MarkdownBlock()
     data class CodeBlock(val language: String, val code: String) : MarkdownBlock()
+    data class Table(
+        val headers: List<String>,
+        val alignments: List<Alignment.Horizontal>,
+        val rows: List<List<String>>
+    ) : MarkdownBlock()
     object Divider : MarkdownBlock()
 }
 
@@ -232,6 +358,37 @@ private fun sanitizeLatexAndSymbols(text: String): String {
     return result
 }
 
+private fun parseTableCellList(line: String): List<String> {
+    var trimmed = line.trim()
+    if (trimmed.startsWith("|")) trimmed = trimmed.substring(1)
+    if (trimmed.endsWith("|")) trimmed = trimmed.substring(0, trimmed.length - 1)
+    return trimmed.split("|").map { it.trim() }
+}
+
+private fun isTableDelimiterLine(line: String): Boolean {
+    val trimmed = line.trim()
+    if (!trimmed.contains("|") || !trimmed.contains("-")) return false
+    val cells = parseTableCellList(trimmed)
+    if (cells.isEmpty()) return false
+    return cells.all { cell ->
+        cell.replace(":", "").replace("-", "").isEmpty()
+    }
+}
+
+private fun parseAlignments(delimiterLine: String): List<Alignment.Horizontal> {
+    val cells = parseTableCellList(delimiterLine)
+    return cells.map { cell ->
+        val trimmed = cell.trim()
+        val startsWithColon = trimmed.startsWith(":")
+        val endsWithColon = trimmed.endsWith(":")
+        when {
+            startsWithColon && endsWithColon -> Alignment.CenterHorizontally
+            endsWithColon -> Alignment.End
+            else -> Alignment.Start
+        }
+    }
+}
+
 private fun parseMarkdownBlocks(markdown: String): List<MarkdownBlock> {
     val result = mutableListOf<MarkdownBlock>()
     val lines = markdown.lines()
@@ -239,7 +396,9 @@ private fun parseMarkdownBlocks(markdown: String): List<MarkdownBlock> {
     var codeLanguage = ""
     val codeLines = mutableListOf<String>()
 
-    for (line in lines) {
+    var idx = 0
+    while (idx < lines.size) {
+        val line = lines[idx]
         val trimmed = line.trim()
 
         if (trimmed.startsWith("```")) {
@@ -251,20 +410,42 @@ private fun parseMarkdownBlocks(markdown: String): List<MarkdownBlock> {
                 inCodeBlock = true
                 codeLanguage = trimmed.removePrefix("```").trim()
             }
+            idx++
             continue
         }
 
         if (inCodeBlock) {
             codeLines.add(line)
+            idx++
             continue
         }
 
         if (trimmed.isEmpty()) {
+            idx++
             continue
         }
 
         if (trimmed == "---" || trimmed == "***" || trimmed == "___") {
             result.add(MarkdownBlock.Divider)
+            idx++
+            continue
+        }
+
+        // 表格判定：当前行包含 '|' 且下一行为分隔符行 '|:---|---:|'
+        if (trimmed.contains("|") && idx + 1 < lines.size && isTableDelimiterLine(lines[idx + 1])) {
+            val headers = parseTableCellList(lines[idx])
+            val alignments = parseAlignments(lines[idx + 1])
+            idx += 2
+
+            val rows = mutableListOf<List<String>>()
+            while (idx < lines.size) {
+                val rowLine = lines[idx].trim()
+                if (rowLine.isEmpty() || !rowLine.contains("|")) break
+                rows.add(parseTableCellList(rowLine))
+                idx++
+            }
+
+            result.add(MarkdownBlock.Table(headers, alignments, rows))
             continue
         }
 
@@ -276,12 +457,14 @@ private fun parseMarkdownBlocks(markdown: String): List<MarkdownBlock> {
             if (level in 1..6 && level < trimmed.length && trimmed[level] == ' ') {
                 val text = trimmed.substring(level + 1).trim()
                 result.add(MarkdownBlock.Heading(level.coerceAtMost(3), text))
+                idx++
                 continue
             }
         }
 
         if (trimmed.startsWith("> ")) {
             result.add(MarkdownBlock.BlockQuote(trimmed.substring(2).trim()))
+            idx++
             continue
         }
 
@@ -293,6 +476,7 @@ private fun parseMarkdownBlocks(markdown: String): List<MarkdownBlock> {
             val prefix = if (isChecked) "☑ " else "☐ "
             val text = taskMatch.groupValues[4]
             result.add(MarkdownBlock.ListItem(prefix, text, indent))
+            idx++
             continue
         }
 
@@ -302,6 +486,7 @@ private fun parseMarkdownBlocks(markdown: String): List<MarkdownBlock> {
             val indent = unorderedMatch.groupValues[1].length / 2
             val text = unorderedMatch.groupValues[3]
             result.add(MarkdownBlock.ListItem("• ", text, indent))
+            idx++
             continue
         }
 
@@ -312,11 +497,13 @@ private fun parseMarkdownBlocks(markdown: String): List<MarkdownBlock> {
             val prefix = orderedMatch.groupValues[2]
             val text = orderedMatch.groupValues[3]
             result.add(MarkdownBlock.ListItem(prefix, text, indent))
+            idx++
             continue
         }
 
         // Normal paragraph
         result.add(MarkdownBlock.Paragraph(line))
+        idx++
     }
 
     if (inCodeBlock && codeLines.isNotEmpty()) {
