@@ -6,6 +6,7 @@ import { parseSubtitles, extractYouTubeId, parseSRT } from '@/lib/subtitleParser
 import YouTubePlayer from './YouTubePlayer';
 import SubtitlePanel from './SubtitlePanel';
 import AppleMusicLyricsPanel from './AppleMusicLyricsPanel';
+import CinemaSubtitleOverlay from './CinemaSubtitleOverlay';
 import { Maximize2, Minimize2, Captions, LogIn, ExternalLink, Film, Sliders, Columns } from 'lucide-react';
 
 /**
@@ -597,91 +598,94 @@ export default function VideoReadingPane({ selectedDoc, articleRef, updateDocume
       <div 
         ref={upperSectionRef}
         className={`video-player-section ${isPlayerCollapsed ? 'collapsed' : ''}`}
-        style={{ height: isPlayerCollapsed ? 'auto' : `${playerHeight}px`, flexShrink: 0, display: 'flex', flexDirection: 'column' }}
+        style={{ 
+          height: isPlayerCollapsed ? 0 : `${playerHeight}px`, 
+          flexShrink: 0, 
+          display: isPlayerCollapsed ? 'none' : 'flex', 
+          flexDirection: 'column',
+          overflow: 'hidden',
+        }}
       >
-        {!isPlayerCollapsed && (
-          isDualPanel ? (
-            /* 播放器位置双面板模式：上左 (视频播放器) + 上右 (Apple Music 歌词视效) */
-            <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'row', width: '100%', overflow: 'hidden' }}>
-              {/* 上左面板：YouTube 播放器 (按 splitRatio % 宽度比例) */}
-              <div style={{ flex: `0 0 ${splitRatio}%`, minWidth: 0, height: '100%', background: '#000', display: 'flex', flexDirection: 'column' }}>
-                <YouTubePlayer
-                  videoId={videoId}
-                  onTimeUpdate={handleTimeUpdate}
-                  subtitleLang={captionLang}
-                  playerRef={playerRef}
-                  activeSubtitle={activeSubtitle}
-                  cinemaConfig={cinemaConfig}
-                />
-              </div>
+        {/* 统一的播放器容器 — 无论双面板还是单面板，都渲染同一个 YouTubePlayer 实例 */}
+        <div style={{ 
+          flex: 1, 
+          minHeight: 0, 
+          display: 'flex', 
+          flexDirection: 'row', 
+          width: '100%', 
+          overflow: 'hidden' 
+        }}>
+          {/* 左侧：YouTube 播放器 + CinemaSubtitleOverlay */}
+          <div style={{ 
+            flex: isDualPanel ? `0 0 ${splitRatio}%` : '1 1 auto',
+            minWidth: 0, 
+            height: '100%', 
+            background: '#000', 
+            display: 'flex', 
+            flexDirection: 'column', 
+            position: 'relative' 
+          }}>
+            <YouTubePlayer
+              videoId={videoId}
+              onTimeUpdate={handleTimeUpdate}
+              subtitleLang={captionLang}
+              playerRef={playerRef}
+            />
+            <CinemaSubtitleOverlay activeSubtitle={activeSubtitle} cinemaConfig={cinemaConfig} />
+          </div>
 
-              {/* 左右拖拽把手：调整播放器与右侧歌词面板宽度比例 */}
-              <div
-                onMouseDown={handleHorizontalMouseDown}
-                title="左右拖拽调整播放器与歌词面板比例"
-                style={{
-                  width: '6px',
-                  cursor: 'col-resize',
-                  backgroundColor: 'rgba(255, 255, 255, 0.1)',
-                  flexShrink: 0,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  transition: 'background-color 0.2s ease',
-                  zIndex: 10,
-                }}
-                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--color-accent, #007aff)'}
-                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.1)'}
-              >
-                <div style={{ width: '2px', height: '28px', backgroundColor: 'rgba(255, 255, 255, 0.4)', borderRadius: '1px' }}></div>
-              </div>
+          {/* 左右拖拽把手 — 始终渲染，非双面板模式时隐藏 */}
+          <div
+            onMouseDown={handleHorizontalMouseDown}
+            title="左右拖拽调整播放器与歌词面板比例"
+            style={{
+              width: '6px',
+              cursor: 'col-resize',
+              backgroundColor: 'rgba(255, 255, 255, 0.1)',
+              flexShrink: 0,
+              display: isDualPanel ? 'flex' : 'none',
+              alignItems: 'center',
+              justifyContent: 'center',
+              transition: 'background-color 0.2s ease',
+              zIndex: 10,
+            }}
+            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--color-accent, #007aff)'}
+            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.1)'}
+          >
+            <div style={{ width: '2px', height: '28px', backgroundColor: 'rgba(255, 255, 255, 0.4)', borderRadius: '1px' }}></div>
+          </div>
 
-              {/* 上右面板：Apple Music 沉浸歌词视效字幕面板 */}
-              <div style={{ flex: 1, minWidth: 0, height: '100%' }}>
-                <AppleMusicLyricsPanel
-                  subtitles={subtitles}
-                  currentTime={currentTime}
-                  onSeek={handleSeek}
-                  title={selectedDoc?.title}
-                  displayLang={cinemaConfig.displayLang}
-                />
-              </div>
-            </div>
-          ) : (
-            /* 标准单播放器模式 */
-            <div style={{ flex: 1, minHeight: 0 }}>
-              <YouTubePlayer
-                videoId={videoId}
-                onTimeUpdate={handleTimeUpdate}
-                subtitleLang={captionLang}
-                playerRef={playerRef}
-                activeSubtitle={activeSubtitle}
-                cinemaConfig={cinemaConfig}
-              />
-            </div>
-          )
-        )}
+          {/* 右侧面板：Apple Music 沉浸歌词视效字幕面板 — 始终渲染，非双面板模式时隐藏 */}
+          <div style={{ flex: 1, minWidth: 0, height: '100%', display: isDualPanel ? undefined : 'none' }}>
+            <AppleMusicLyricsPanel
+              subtitles={subtitles}
+              currentTime={currentTime}
+              onSeek={handleSeek}
+              title={selectedDoc?.title}
+              displayLang={cinemaConfig.displayLang}
+            />
+          </div>
+        </div>
       </div>
 
-      {/* 上下拖拽把手：调整上方双面板整体与下方博客面板的高度比例 */}
-      {!isPlayerCollapsed && (
-        <div 
-          className="video-resizer"
-          onMouseDown={handleVerticalMouseDown}
-          title="上下拖拽调整上方播放器与下方博客面板比例"
-          style={{
-            height: '6px',
-            cursor: 'row-resize',
-            backgroundColor: 'var(--color-border-light)',
-            flexShrink: 0,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center'
-          }}
-        >
-          <div style={{ width: '30px', height: '2px', backgroundColor: 'var(--color-text-tertiary)', borderRadius: '1px' }}></div>
-        </div>
-      )}
+      {/* 上下拖拽把手 — 始终渲染，折叠时隐藏 */}
+      <div 
+        className="video-resizer"
+        onMouseDown={handleVerticalMouseDown}
+        title="上下拖拽调整上方播放器与下方博客面板比例"
+        style={{
+          height: '6px',
+          cursor: 'row-resize',
+          backgroundColor: 'var(--color-border-light)',
+          flexShrink: 0,
+          display: isPlayerCollapsed ? 'none' : 'flex',
+          alignItems: 'center',
+          justifyContent: 'center'
+        }}
+      >
+        <div style={{ width: '30px', height: '2px', backgroundColor: 'var(--color-text-tertiary)', borderRadius: '1px' }}></div>
+      </div>
+
 
       {/* 下方：字幕 / 博客文章面板 (SubtitlePanel) */}
       <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>

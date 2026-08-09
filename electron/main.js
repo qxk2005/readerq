@@ -1,4 +1,4 @@
-const { app, BrowserWindow, shell } = require('electron');
+const { app, BrowserWindow, shell, session } = require('electron');
 const path = require('path');
 const { fork } = require('child_process');
 const net = require('net');
@@ -6,6 +6,62 @@ const fs = require('fs');
 
 let mainWindow;
 let serverProcess;
+let serverPort = null; // 保存服务端口，用于后续 API 调用
+
+/**
+ * 从 Next.js API 获取存储的 YouTube Cookie，并注入到 Electron session 中
+ * 这样 YouTube 嵌入式播放器的 iframe 就能携带用户的 Google 登录凭证，
+ * 避免被 YouTube 的防机器人检测拦截（"请登录以确认你不是机器人"）
+ */
+async function injectYouTubeCookies(port) {
+  try {
+    const response = await fetch(`http://127.0.0.1:${port}/api/settings/youtube-cookie-raw`);
+    if (!response.ok) return;
+    const data = await response.json();
+    const cookieStr = data.youtube_cookie;
+    if (!cookieStr || cookieStr.length < 10) {
+      console.log('[ReaderQ] 未检测到 YouTube Cookie，跳过注入');
+      return;
+    }
+
+    // 解析 cookie 字符串 (格式: "name1=value1; name2=value2; ...")
+    const cookies = cookieStr.split(';').map(c => c.trim()).filter(Boolean);
+    const defaultSes = session.defaultSession;
+    let injectedCount = 0;
+
+    for (const cookie of cookies) {
+      const eqIdx = cookie.indexOf('=');
+      if (eqIdx < 1) continue;
+      const name = cookie.substring(0, eqIdx).trim();
+      const value = cookie.substring(eqIdx + 1).trim();
+      if (!name) continue;
+
+      // 注入到 youtube.com 和 google.com 域
+      const domains = ['.youtube.com', '.google.com'];
+      for (const domain of domains) {
+        try {
+          await defaultSes.cookies.set({
+            url: `https://www${domain}`,
+            name,
+            value,
+            domain,
+            path: '/',
+            httpOnly: name.startsWith('__Secure-') || name === 'HSID' || name === 'SSID',
+            secure: true,
+            sameSite: 'no_restriction',
+          });
+          injectedCount++;
+        } catch (e) {
+          // 部分 cookie 注入失败是正常的（如格式不兼容）
+        }
+      }
+    }
+
+    console.log(`[ReaderQ] 已注入 ${injectedCount} 条 YouTube Cookie 到 Electron Session`);
+  } catch (err) {
+    console.warn('[ReaderQ] YouTube Cookie 注入失败:', err.message);
+  }
+}
 
 function findOpenPort(preferredPort = 36123) {
   return new Promise((resolve) => {
@@ -155,8 +211,12 @@ async function createWindow() {
       socket.on('connect', () => {
         socket.destroy();
         console.log('[ReaderQ] Server is ready, loading UI...');
-        mainWindow.loadURL(`http://127.0.0.1:${port}`);
-        mainWindow.show();
+        serverPort = port;
+        // 在加载 UI 之前注入 YouTube Cookie 到 Electron Session
+        injectYouTubeCookies(port).then(() => {
+          mainWindow.loadURL(`http://127.0.0.1:${port}`);
+          mainWindow.show();
+        });
       }).on('error', () => {
         socket.destroy();
         setTimeout(() => waitForServer(retries + 1), 200);
@@ -170,9 +230,13 @@ async function createWindow() {
     waitForServer();
   } else {
     // In development, assume next dev is running on port 3000
-    mainWindow.loadURL('http://127.0.0.1:3000');
-    mainWindow.show();
-    mainWindow.webContents.openDevTools();
+    serverPort = 3000;
+    // 开发模式也注入 YouTube Cookie
+    injectYouTubeCookies(3000).then(() => {
+      mainWindow.loadURL('http://127.0.0.1:3000');
+      mainWindow.show();
+      mainWindow.webContents.openDevTools();
+    });
   }
 
   mainWindow.on('closed', () => {
@@ -202,6 +266,14 @@ app.whenReady().then(() => {
   });
 
   createWindow();
+
+  // 当用户在设置中保存了新的 YouTube Cookie 后，
+  // 窗口获取焦点时自动重新注入最新的 cookie 到 Electron Session
+  app.on('browser-window-focus', () => {
+    if (serverPort) {
+      injectYouTubeCookies(serverPort).catch(() => {});
+    }
+  });
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {

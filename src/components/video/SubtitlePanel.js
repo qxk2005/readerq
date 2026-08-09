@@ -14,7 +14,7 @@ const renderTextWithTimestamps = (textNode, onSeek) => {
 
   // 先安全过滤 LLM 泄漏的 Special Tokens 与杂质指令
   const cleanedTextNode = cleanBlogMarkdownText(textNode);
-  if (!cleanedTextNode) return '';
+  if (!cleanedTextNode) return <span>{''}</span>;
 
   const timestampRegex = /\[?(\d{1,2}:\d{2}(?::\d{2})?)\]?/g;
   const parts = [];
@@ -27,14 +27,17 @@ const renderTextWithTimestamps = (textNode, onSeek) => {
     const fullMatch = match[0];
 
     if (startIdx > lastIdx) {
-      parts.push(cleanedTextNode.substring(lastIdx, startIdx));
+      const textPart = cleanedTextNode.substring(lastIdx, startIdx);
+      parts.push(
+        <span key={`txt_${lastIdx}_${startIdx}`}>{textPart}</span>
+      );
     }
 
     const seconds = parseTimestamp(timeStr);
 
     parts.push(
       <span
-        key={`${startIdx}_${timeStr}`}
+        key={`badge_${startIdx}_${timeStr}`}
         className="blog-timestamp-badge"
         onClick={(e) => {
           e.stopPropagation();
@@ -68,10 +71,13 @@ const renderTextWithTimestamps = (textNode, onSeek) => {
   }
 
   if (lastIdx < cleanedTextNode.length) {
-    parts.push(cleanedTextNode.substring(lastIdx));
+    const remainingText = cleanedTextNode.substring(lastIdx);
+    parts.push(
+      <span key={`txt_${lastIdx}_end`}>{remainingText}</span>
+    );
   }
 
-  return parts.length > 0 ? parts : cleanedTextNode;
+  return parts.length > 0 ? parts : <span>{cleanedTextNode}</span>;
 };
 
 const processChildrenForTimestamps = (children, onSeek) => {
@@ -92,10 +98,11 @@ const processChildrenForTimestamps = (children, onSeek) => {
 const cleanParagraphTimestamps = (textNode) => {
   if (typeof textNode !== 'string') return textNode;
   const cleanedTextNode = cleanBlogMarkdownText(textNode);
-  if (!cleanedTextNode) return '';
+  if (!cleanedTextNode) return <span>{''}</span>;
   // 正则替换 [0:22] [01:25] [1:23:45] 等段落内部时间戳
   const cleaned = cleanedTextNode.replace(/\[?\b\d{1,2}:\d{2}(?::\d{2})?\b\]?/g, '');
-  return cleaned.replace(/ {2,}/g, ' ');
+  const result = cleaned.replace(/ {2,}/g, ' ');
+  return <span>{result}</span>;
 };
 
 const processChildrenForParagraph = (children) => {
@@ -161,7 +168,9 @@ export default function SubtitlePanel({
   const scrollContainerRef = useRef(null);
   const activeSegmentRef = useRef(null);
   const userScrollingRef = useRef(false);
+  const isProgrammaticScrollRef = useRef(false);
   const scrollTimeoutRef = useRef(null);
+  const progScrollTimeoutRef = useRef(null);
 
   const { setShowSettings } = useApp();
 
@@ -193,6 +202,7 @@ export default function SubtitlePanel({
     if (!container) return;
 
     const handleScroll = () => {
+      if (isProgrammaticScrollRef.current) return;
       userScrollingRef.current = true;
       if (scrollTimeoutRef.current) clearTimeout(scrollTimeoutRef.current);
       // 用户停止滚动后 3 秒恢复自动滚动
@@ -205,6 +215,7 @@ export default function SubtitlePanel({
     return () => {
       container.removeEventListener('scroll', handleScroll);
       if (scrollTimeoutRef.current) clearTimeout(scrollTimeoutRef.current);
+      if (progScrollTimeoutRef.current) clearTimeout(progScrollTimeoutRef.current);
     };
   }, []);
 
@@ -223,7 +234,12 @@ export default function SubtitlePanel({
     if (!isVisible) {
       const relativeTop = elementRect.top - containerRect.top + container.scrollTop;
       const targetScrollTop = relativeTop - containerRect.height / 3;
+      isProgrammaticScrollRef.current = true;
+      if (progScrollTimeoutRef.current) clearTimeout(progScrollTimeoutRef.current);
       container.scrollTo({ top: targetScrollTop, behavior: 'smooth' });
+      progScrollTimeoutRef.current = setTimeout(() => {
+        isProgrammaticScrollRef.current = false;
+      }, 450);
     }
   }, [activeIndex, mode, autoScroll]);
 
@@ -841,31 +857,48 @@ export default function SubtitlePanel({
 
                 const displayZh = zh || (/[\u4e00-\u9fa5]/.test(text) ? text : '');
                 const displayEn = (text && text !== displayZh && /[a-zA-Z]/.test(text)) ? text : (seg.en || '');
+                const segKey = seg.id || `sub_${seg.time}_${index}`;
 
                 return (
                   <div
-                    key={index}
+                    key={segKey}
                     ref={index === activeIndex ? activeSegmentRef : null}
                     className={`subtitle-segment ${index === activeIndex ? 'active' : ''}`}
-                    onClick={() => onSeek && onSeek(seg.time)}
+                    onClick={() => {
+                      userScrollingRef.current = false;
+                      if (scrollTimeoutRef.current) clearTimeout(scrollTimeoutRef.current);
+                      onSeek && onSeek(seg.time);
+                    }}
                     style={{ display: 'flex', gap: '12px', alignItems: 'flex-start' }}
                   >
-                    {!seg.estimated && (
-                      <span className="subtitle-timestamp" style={{ cursor: 'pointer', flexShrink: 0, marginTop: '2px' }}>
-                        {seg.timeStr}
-                      </span>
-                    )}
+                    <span
+                      className="subtitle-timestamp"
+                      style={{
+                        cursor: 'pointer',
+                        flexShrink: 0,
+                        marginTop: '2px',
+                        display: seg.estimated ? 'none' : undefined,
+                      }}
+                    >
+                      <span>{seg.timeStr || ''}</span>
+                    </span>
                     <div className="subtitle-bilingual-content" style={{ display: 'flex', flexDirection: 'column', gap: '3px', flex: 1 }}>
                       {/* 上面：中文主行 */}
                       <div className="subtitle-text-zh" style={{ fontWeight: '500', color: 'var(--color-text-primary)', fontSize: '14px', lineHeight: '1.5' }}>
-                        {displayZh || displayEn}
+                        <span>{displayZh || displayEn}</span>
                       </div>
-                      {/* 下面：英文副行 (仅当存在不同于主行的英文文本时显示) */}
-                      {displayEn && displayEn !== displayZh && (
-                        <div className="subtitle-text-en" style={{ fontSize: '12px', color: 'var(--color-text-tertiary)', lineHeight: '1.4' }}>
-                          {displayEn}
-                        </div>
-                      )}
+                      {/* 下面：英文副行 (始终渲染以保持 DOM 结构稳定，无内容时隐藏) */}
+                      <div
+                        className="subtitle-text-en"
+                        style={{
+                          fontSize: '12px',
+                          color: 'var(--color-text-tertiary)',
+                          lineHeight: '1.4',
+                          display: (displayEn && displayEn !== displayZh) ? undefined : 'none',
+                        }}
+                      >
+                        <span>{displayEn || ''}</span>
+                      </div>
                     </div>
                   </div>
                 );
