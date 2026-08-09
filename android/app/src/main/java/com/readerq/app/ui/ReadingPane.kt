@@ -1129,6 +1129,11 @@ fun HtmlContentViewer(
                 // 将 WebView 背景色设为透明，使其无缝继承 Compose 底色，防止切换主题或加载时发生闪烁
                 setBackgroundColor(android.graphics.Color.TRANSPARENT)
                 
+                // 原生滚动阻尼参数：降低 WebView 滚动惯性，配合 JS 层减速逻辑
+                overScrollMode = android.view.View.OVER_SCROLL_NEVER
+                isVerticalScrollBarEnabled = true
+                scrollBarFadeDuration = 300
+                
                 // 显式关闭 Android 9+ 在系统深色模式下对 WebView 的强制变暗处理，完全交由我们的 CSS 控制
                 if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
                     @Suppress("DEPRECATION")
@@ -1167,6 +1172,11 @@ fun HtmlContentViewer(
                         super.onPageFinished(view, url)
                         view?.loadUrl(
                             "javascript:(function() { " +
+                                    // 阻尼减速自动滚动系统（iPhone 风格）
+                                    // 核心原理：使用平方根曲线对 scrollNeeded 进行阻尼映射
+                                    // 手指移动越快，实际滚动速度增长越缓慢
+                                    "var _selScrollThrottled = false; " +
+                                    "var _selScrollMAX = 30; " +  // 每帧最大滚动 30px（约 2 行文本）
                                     "document.addEventListener('selectionchange', () => { " +
                                     "  if (window.isPickerMode) return; " +
                                     "  var sel = window.getSelection(); " +
@@ -1179,9 +1189,17 @@ fun HtmlContentViewer(
                                     "      var rect = range.getBoundingClientRect(); " +
                                     "      var viewportHeight = window.innerHeight; " +
                                     "      var triggerThreshold = viewportHeight - 240; " +
-                                    "      if (rect.bottom > triggerThreshold) { " +
-                                    "        var scrollNeeded = rect.bottom - triggerThreshold; " +
-                                    "        window.scrollBy(0, scrollNeeded); " +
+                                    // 阻尼减速滚动：平方根曲线 + 最大速度上限 + rAF 节流
+                                    "      if (rect.bottom > triggerThreshold && !_selScrollThrottled) { " +
+                                    "        _selScrollThrottled = true; " +
+                                    "        requestAnimationFrame(function() { " +
+                                    "          _selScrollThrottled = false; " +
+                                    "          var rawDelta = rect.bottom - triggerThreshold; " +
+                                    // 平方根阻尼：rawDelta=100 → 实际滚 10, rawDelta=400 → 实际滚 20
+                                    "          var dampedDelta = Math.sqrt(rawDelta) * 3; " +
+                                    "          var finalScroll = Math.min(dampedDelta, _selScrollMAX); " +
+                                    "          window.scrollBy({ top: finalScroll, behavior: 'auto' }); " +
+                                    "        }); " +
                                     "      } " +
                                     "    } " +
                                     "  } " +
