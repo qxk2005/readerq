@@ -2,6 +2,7 @@
 
 import { useApp } from '@/context/AppContext';
 import { useTheme } from '@/context/ThemeContext';
+import { ReaderQLogoSymbol } from '@/components/ui/ReaderQLogo';
 import { LOCATION_LABELS, CATEGORY_LABELS } from '@/lib/utils';
 import { CATEGORY_ICONS_SVG, LOCATION_ICONS_SVG } from '@/components/ui/icons';
 import { 
@@ -73,14 +74,16 @@ export default function Sidebar({ width }) {
             <div className="sidebar-logo" style={{
               display: 'flex',
               alignItems: 'center',
-              gap: '6px',
-              fontWeight: '700',
-              fontSize: '1.15rem',
-              letterSpacing: '-0.03em',
-              color: 'var(--color-text-primary)'
+              gap: '10px',
+              fontWeight: '750',
+              fontSize: '1.25rem',
+              letterSpacing: '-0.035em',
+              color: 'var(--color-text-primary)',
+              fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "Inter", sans-serif',
+              userSelect: 'none'
             }}>
-              <img src="/logo.png" alt="ReaderQ Logo" className="sidebar-logo-img" style={{ width: '20px', height: '20px' }} />
-              <span>ReaderQ</span>
+              <ReaderQLogoSymbol size={28} />
+              <span style={{ color: 'var(--color-text-primary)' }}>ReaderQ</span>
             </div>
 
             {/* 同一行右侧有收拢左侧栏按钮以及加号添加按钮 */}

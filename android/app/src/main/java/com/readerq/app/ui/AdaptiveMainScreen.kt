@@ -1642,11 +1642,18 @@ fun TabAboutContent(
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Spacer(modifier = Modifier.height(10.dp))
+                androidx.compose.foundation.Image(
+                    painter = painterResource(id = R.mipmap.ic_launcher),
+                    contentDescription = "ReaderQ Logo",
+                    modifier = Modifier
+                        .size(56.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                )
                 Text(
-                    text = "🐙 ReaderQ",
+                    text = "ReaderQ",
                     fontWeight = FontWeight.ExtraBold,
-                    fontSize = 24.sp,
-                    color = MaterialTheme.colorScheme.primary
+                    fontSize = 22.sp,
+                    color = MaterialTheme.colorScheme.onSurface
                 )
                 val context = androidx.compose.ui.platform.LocalContext.current
                 val versionName = try {
