@@ -160,7 +160,9 @@ fun DocumentListPane(
             val selectedTabIndex = tabs.indexOfFirst { it.first == currentView }.coerceAtLeast(0)
             
             BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-                val isCompact = maxWidth < 250.dp
+                // 5 个分类 Tab（含“收件箱”、“稍后读”等 3 字标题），单行完整显示至少需要 340dp
+                // 只要宽度不足 340dp，即判定为无法单行完整显示，自动切换为纯图标模式
+                val showIconsOnly = maxWidth < 340.dp
                 
                 TabRow(
                     selectedTabIndex = selectedTabIndex,
@@ -185,21 +187,24 @@ fun DocumentListPane(
                         Tab(
                             selected = selectedTabIndex == index,
                             onClick = { viewModel.changeView(key) },
-                            icon = if (isCompact) {
+                            icon = if (showIconsOnly) {
                                 {
                                     Icon(
                                         painter = painterResource(id = iconRes),
                                         contentDescription = label,
-                                        modifier = Modifier.size(18.dp)
+                                        modifier = Modifier.size(19.dp)
                                     )
                                 }
                             } else null,
-                            text = if (!isCompact) {
+                            text = if (!showIconsOnly) {
                                 {
                                     Text(
-                                        label, 
+                                        text = label, 
                                         fontSize = 12.sp, 
-                                        fontWeight = if (selectedTabIndex == index) FontWeight.Bold else FontWeight.Normal
+                                        fontWeight = if (selectedTabIndex == index) FontWeight.Bold else FontWeight.Normal,
+                                        maxLines = 1,
+                                        softWrap = false,
+                                        overflow = TextOverflow.Ellipsis
                                     ) 
                                 }
                             } else null
