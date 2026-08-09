@@ -397,6 +397,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             } catch (e: Exception) { emptyList() }
 
             val mutableTags = existingTags.toMutableList()
+            if (!mutableTags.contains("readerq")) {
+                mutableTags.add("readerq")
+            }
             val isFav = mutableTags.contains("favorite") || mutableTags.contains("收藏")
             if (isFav) {
                 mutableTags.remove("favorite")
@@ -438,7 +441,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             } catch (e: Exception) { emptyList() }
 
             if (!existingTags.contains(cleanTag)) {
-                val mutableTags = existingTags + cleanTag
+                val mutableTags = (existingTags + cleanTag).toMutableList()
+                if (!mutableTags.contains("readerq")) {
+                    mutableTags.add("readerq")
+                }
                 val newTagsJson = Json.encodeToString(mutableTags)
                 val updated = highlight.copy(tags_json = newTagsJson)
                 hlDao.insertHighlight(updated)
@@ -1272,9 +1278,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 if (isVideoUrl) {
                     _videoPipelineProgress.value = "⌛ [1/5] 正在保存视频文章到 Readwise..."
                 }
+                val saveTags = if (tags.isNullOrEmpty()) listOf("readerq") else if (tags.contains("readerq")) tags else (tags + "readerq")
                 val request = com.readerq.app.api.ReadwiseSaveRequest(
                     url = url,
-                    tags = if (!tags.isNullOrEmpty()) tags else null,
+                    tags = saveTags,
                     author = author?.takeIf { it.isNotBlank() },
                     notes = notes?.takeIf { it.isNotBlank() }
                 )
@@ -1318,12 +1325,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     image_url = null,
                     reading_progress = 0f,
                     html_content = null,
-                    tags_json = if (!tags.isNullOrEmpty()) {
-                        try {
-                            val tagMap = tags.associateWith { mapOf("name" to it) }
-                            kotlinx.serialization.json.Json.encodeToString(tagMap)
-                        } catch (_: Exception) { null }
-                    } else null,
+                    tags_json = try {
+                        val tagMap = saveTags.associateWith { mapOf("name" to it) }
+                        kotlinx.serialization.json.Json.encodeToString(tagMap)
+                    } catch (_: Exception) { null },
                     synced_at = nowIso
                 )
                 try {
@@ -2849,6 +2854,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch(Dispatchers.IO) {
             val localId = "local_" + System.currentTimeMillis()
             val nowIso = java.time.Instant.now().toString()
+            val defaultTags = listOf("readerq")
             var localHl = HighlightEntity(
                 id = localId,
                 document_id = doc.id,
@@ -2857,7 +2863,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 color = color,
                 location = location,
                 readwise_highlight_id = null,
-                tags_json = "[]",
+                tags_json = Json.encodeToString(defaultTags),
                 created_at = nowIso
             )
             // Insert local first (Optimistic update)
@@ -2933,9 +2939,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 )
                 if (response.isNotEmpty() && response[0].modified_highlights.isNotEmpty()) {
                     val remoteId = response[0].modified_highlights[0].toString()
-                    // Update with remote ID
+                    // Update with remote ID & auto tag readerq
                     hlDao.deleteHighlight(localId)
                     hlDao.insertHighlight(localHl.copy(id = remoteId, readwise_highlight_id = remoteId))
+
+                    // 自动同步为该高亮添加固定来源标签 readerq 到 Readwise 云端
+                    try {
+                        client.addHighlightTag(remoteId, "readerq")
+                    } catch (tagErr: Exception) {
+                        println("[addHighlight] 同步 readerq 标签至 Readwise 接口异常: ${tagErr.message}")
+                    }
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -2948,7 +2961,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val currentToken = _token.value ?: return
         viewModelScope.launch(Dispatchers.IO) {
             val local = hlDao.getHighlightById(hlId) ?: return@launch
-            val updated = local.copy(note = note, tags_json = Json.encodeToString(tags))
+
+            // 确保必定包含 readerq 标签
+            val finalTags = if (tags.contains("readerq")) tags else (tags + "readerq")
+            val updated = local.copy(note = note, tags_json = Json.encodeToString(finalTags))
             hlDao.insertHighlight(updated)
 
             // 自动将高亮的 tags 合并到文档的 tags 中（去重）
@@ -3045,7 +3061,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val currentToken = _token.value ?: return
 
         viewModelScope.launch(Dispatchers.IO) {
-            val updated = doc.copy(notes = notes, tags_json = Json.encodeToString(tags.associateWith { 1 }))
+            val finalTags = if (tags.contains("readerq")) tags else (tags + "readerq")
+            val updated = doc.copy(notes = notes, tags_json = Json.encodeToString(finalTags.associateWith { 1 }))
             docDao.insertDocument(updated)
             _selectedDoc.value = updated
 
@@ -3053,9 +3070,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
             try {
                 val client = ReadwiseClient(currentToken)
-                client.updateDocument(doc.id, notes = notes, tags = tags)
+                client.updateDocument(doc.id, notes = notes, tags = finalTags)
                 val url = doc.source_url ?: doc.url
-                client.syncDocumentTagsV2(url, tags)
+                client.syncDocumentTagsV2(url, finalTags)
             } catch (e: Exception) {
                 e.printStackTrace()
             }

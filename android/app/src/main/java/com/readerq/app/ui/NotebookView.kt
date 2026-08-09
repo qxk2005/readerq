@@ -86,7 +86,9 @@ fun NotebookView(viewModel: MainViewModel) {
         } catch (e: Exception) {
             emptyMap()
         }
-        mutableStateOf(tagsMap.keys.toList())
+        val rawList = tagsMap.keys.toList()
+        val defaultList = if (rawList.contains("readerq")) rawList else (rawList + "readerq")
+        mutableStateOf(defaultList)
     }
     var currentDocTagInput by remember { mutableStateOf("") }
 
