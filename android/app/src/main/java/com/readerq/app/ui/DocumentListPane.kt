@@ -334,6 +334,37 @@ fun DocumentListPane(
             )
         }
 
+        var pendingConfirmAction by remember { mutableStateOf<PendingConfirmAction?>(null) }
+
+        if (pendingConfirmAction != null) {
+            val action = pendingConfirmAction!!
+            AlertDialog(
+                onDismissRequest = { pendingConfirmAction = null },
+                title = { Text(action.title) },
+                text = { Text(action.text) },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            val onConfirm = action.onConfirm
+                            pendingConfirmAction = null
+                            onConfirm()
+                        }
+                    ) {
+                        Text(
+                            action.confirmText,
+                            color = if (action.isDanger) Color(0xFFEF4444) else MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { pendingConfirmAction = null }) {
+                        Text("取消")
+                    }
+                }
+            )
+        }
+
         // List
         LazyColumn(
             modifier = Modifier
@@ -349,19 +380,43 @@ fun DocumentListPane(
                         when (dismissValue) {
                             DismissValue.DismissedToEnd -> {
                                 if (isArchiveOrTrash) {
-                                    viewModel.restoreDocument(doc.id)
+                                    pendingConfirmAction = PendingConfirmAction(
+                                        title = "恢复文章",
+                                        text = "确定要将《${doc.title.take(24)}》恢复至收件箱吗？",
+                                        confirmText = "恢复",
+                                        isDanger = false,
+                                        onConfirm = { viewModel.restoreDocument(doc.id) }
+                                    )
                                 } else {
-                                    viewModel.archiveDocument(doc.id)
+                                    pendingConfirmAction = PendingConfirmAction(
+                                        title = "归档文章",
+                                        text = "确定要归档《${doc.title.take(24)}》吗？归档后文章将移至归档区。",
+                                        confirmText = "归档",
+                                        isDanger = false,
+                                        onConfirm = { viewModel.archiveDocument(doc.id) }
+                                    )
                                 }
-                                true
+                                false
                             }
                             DismissValue.DismissedToStart -> {
                                 if (currentView == "trash") {
-                                    viewModel.permanentlyDeleteDocument(doc.id)
+                                    pendingConfirmAction = PendingConfirmAction(
+                                        title = "彻底删除文章",
+                                        text = "确定要彻底删除《${doc.title.take(24)}》吗？此操作不可撤销！",
+                                        confirmText = "彻底删除",
+                                        isDanger = true,
+                                        onConfirm = { viewModel.permanentlyDeleteDocument(doc.id) }
+                                    )
                                 } else {
-                                    viewModel.deleteDocument(doc.id)
+                                    pendingConfirmAction = PendingConfirmAction(
+                                        title = "移至废纸篓",
+                                        text = "确定要将《${doc.title.take(24)}》移至废纸篓吗？",
+                                        confirmText = "移至废纸篓",
+                                        isDanger = true,
+                                        onConfirm = { viewModel.deleteDocument(doc.id) }
+                                    )
                                 }
-                                true
+                                false
                             }
                             else -> false
                         }
@@ -886,3 +941,11 @@ fun AddDocumentDialog(
         }
     }
 }
+
+data class PendingConfirmAction(
+    val title: String,
+    val text: String,
+    val confirmText: String = "确认",
+    val isDanger: Boolean = false,
+    val onConfirm: () -> Unit
+)
