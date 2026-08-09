@@ -924,13 +924,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val localCount = docDao.getDocumentCount()
             _syncCounts.value = SyncCounts(local = localCount, remote = remoteCount, lastSync = lastSync)
 
-            // 首次使用自动向导检测
-            val onboardingCompleted = settingDao.getSetting("onboarding_completed")?.replace("\"", "")
-            val tokenVal = _token.value
-            val aiKeyVal = _openaiApiKey.value
-            if (onboardingCompleted != "true") {
+            // 必须项检测：检查用户是否已配置有效的 Readwise Token
+            val rawToken = settingDao.getSetting("readwise_token")?.replace("\"", "")?.trim()
+            val hasValidReadwiseToken = !rawToken.isNullOrBlank() && rawToken != "mock_readwise_token" && rawToken != "offline"
+
+            if (!hasValidReadwiseToken) {
+                // 仅在未配置 Readwise Token（必须项）时，自动弹出初始化配置向导
                 _isOnboardingReopening.value = false
                 _showOnboardingWizard.value = true
+            } else {
+                // 已配置有效 Token，永不自动弹窗，并记入 completed 标志
+                _showOnboardingWizard.value = false
+                settingDao.setSetting(SettingEntity("onboarding_completed", "true"))
             }
         }
     }
