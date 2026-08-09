@@ -31,6 +31,7 @@ import coil.compose.AsyncImage
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -387,7 +388,7 @@ fun NotebookHighlightCard(
                 shape = RoundedCornerShape(12.dp)
             )
     ) {
-        Column(modifier = Modifier.padding(12.dp)) {
+        Column(modifier = Modifier.padding(14.dp)) {
 
             Column(
                 modifier = Modifier
@@ -396,14 +397,17 @@ fun NotebookHighlightCard(
                         onEditingChange(true)
                         viewModel.triggerScrollToHighlight(hl.id)
                     }
-                    .padding(start = 12.dp)
                     .drawBehind {
-                        drawRect(
+                        val barWidth = 4.dp.toPx()
+                        val cornerRadius = 2.dp.toPx()
+                        drawRoundRect(
                             color = hlColor,
                             topLeft = Offset.Zero,
-                            size = Size(width = 4.dp.toPx(), height = size.height)
+                            size = Size(width = barWidth, height = size.height),
+                            cornerRadius = CornerRadius(cornerRadius, cornerRadius)
                         )
                     }
+                    .padding(start = 16.dp)
             ) {
                 HighlightContentWithImages(
                     text = hl.text,
@@ -413,22 +417,29 @@ fun NotebookHighlightCard(
                     tagBg = tagBg
                 )
             }
-            }
 
             if (isEditing) {
                 Spacer(modifier = Modifier.height(12.dp))
                 Divider(color = if (isDark) Color(0xFF333333) else Color(0xFFE5E7EB))
                 Spacer(modifier = Modifier.height(12.dp))
 
-                OutlinedTextField(
+                val inputContainerColor = if (isDark) Color(0xFF28282A) else Color(0xFFEAECEF)
+
+                TextField(
                     value = editNoteText,
                     onValueChange = { editNoteText = it },
-                    placeholder = { Text("添加高亮笔记...", fontSize = 13.sp) },
-                    label = { Text("批注", fontSize = 11.sp) },
+                    placeholder = { Text("添加高亮批注...", fontSize = 13.sp, color = subTextColor.copy(alpha = 0.6f)) },
                     modifier = Modifier.fillMaxWidth(),
-                    colors = OutlinedTextFieldDefaults.colors(
+                    shape = RoundedCornerShape(10.dp),
+                    colors = TextFieldDefaults.colors(
+                        focusedContainerColor = inputContainerColor,
+                        unfocusedContainerColor = inputContainerColor,
+                        disabledContainerColor = inputContainerColor,
                         focusedTextColor = textColor,
-                        unfocusedTextColor = textColor
+                        unfocusedTextColor = textColor,
+                        focusedIndicatorColor = Color.Transparent,
+                        unfocusedIndicatorColor = Color.Transparent,
+                        disabledIndicatorColor = Color.Transparent
                     )
                 )
 
@@ -464,7 +475,7 @@ fun NotebookHighlightCard(
                     }
                 }
 
-                OutlinedTextField(
+                TextField(
                     value = currentTagInput,
                     onValueChange = { input ->
                         // Auto split and commit when pressing commas/spaces
@@ -481,11 +492,18 @@ fun NotebookHighlightCard(
                             currentTagInput = input
                         }
                     },
-                    placeholder = { Text("输入新标签并以逗号或空格分割...", fontSize = 13.sp) },
+                    placeholder = { Text("输入新标签并以逗号或空格分割...", fontSize = 13.sp, color = subTextColor.copy(alpha = 0.6f)) },
                     modifier = Modifier.fillMaxWidth(),
-                    colors = OutlinedTextFieldDefaults.colors(
+                    shape = RoundedCornerShape(10.dp),
+                    colors = TextFieldDefaults.colors(
+                        focusedContainerColor = inputContainerColor,
+                        unfocusedContainerColor = inputContainerColor,
+                        disabledContainerColor = inputContainerColor,
                         focusedTextColor = textColor,
-                        unfocusedTextColor = textColor
+                        unfocusedTextColor = textColor,
+                        focusedIndicatorColor = Color.Transparent,
+                        unfocusedIndicatorColor = Color.Transparent,
+                        disabledIndicatorColor = Color.Transparent
                     )
                 )
 
@@ -708,6 +726,7 @@ fun NotebookHighlightCard(
                             fontSize = 10.sp
                         )
                     }
+                }
             }
         }
     }
