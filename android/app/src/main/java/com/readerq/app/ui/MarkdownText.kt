@@ -20,6 +20,7 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
@@ -34,7 +35,7 @@ fun MarkdownText(
 
     Column(
         modifier = modifier,
-        verticalArrangement = Arrangement.spacedBy(6.dp)
+        verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         blocks.forEach { block ->
             when (block) {
@@ -45,67 +46,70 @@ fun MarkdownText(
                         else -> 14.sp
                     }
                     Text(
-                        text = parseInlineMarkdown(block.text),
+                        text = parseInlineMarkdown(block.text, theme),
                         fontSize = fontSize,
                         fontWeight = FontWeight.Bold,
                         color = color,
-                        modifier = Modifier.padding(top = 4.dp, bottom = 2.dp)
+                        modifier = Modifier.padding(top = 6.dp, bottom = 2.dp)
                     )
                 }
                 is MarkdownBlock.Paragraph -> {
                     Text(
-                        text = parseInlineMarkdown(block.text),
+                        text = parseInlineMarkdown(block.text, theme),
                         fontSize = 13.sp,
                         color = color,
-                        lineHeight = 18.sp
+                        lineHeight = 19.sp
                     )
                 }
                 is MarkdownBlock.ListItem -> {
                     Row(
-                        modifier = Modifier.fillMaxWidth().padding(start = (block.indentLevel * 12).dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(start = (block.indentLevel * 12).dp),
                         verticalAlignment = Alignment.Top
                     ) {
                         Text(
                             text = if (block.prefix.isNotBlank()) block.prefix else "• ",
                             fontSize = 13.sp,
                             fontWeight = FontWeight.Bold,
-                            color = color.copy(alpha = 0.8f)
+                            color = color.copy(alpha = 0.85f)
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
-                            text = parseInlineMarkdown(block.text),
+                            text = parseInlineMarkdown(block.text, theme),
                             fontSize = 13.sp,
                             color = color,
-                            lineHeight = 18.sp,
+                            lineHeight = 19.sp,
                             modifier = Modifier.weight(1f)
                         )
                     }
                 }
                 is MarkdownBlock.BlockQuote -> {
-                    val quoteBg = if (theme == "dark") Color(0xFF1E1E1E) else Color(0xFFF0F0EE)
-                    val barColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.6f)
+                    val quoteBg = if (theme == "dark") Color(0xFF1E1E20) else Color(0xFFF2F3F5)
+                    val barColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f)
                     
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(4.dp))
+                            .clip(RoundedCornerShape(6.dp))
                             .background(quoteBg)
-                            .padding(vertical = 4.dp)
+                            .padding(vertical = 4.dp, horizontal = 6.dp)
                     ) {
                         Box(
                             modifier = Modifier
-                                .width(4.dp)
+                                .width(3.5.dp)
+                                .height(IntrinsicSize.Min)
                                 .fillMaxHeight()
-                                .background(barColor)
+                                .background(barColor, RoundedCornerShape(2.dp))
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = parseInlineMarkdown(block.text),
+                            text = parseInlineMarkdown(block.text, theme),
                             fontSize = 12.5.sp,
                             fontStyle = FontStyle.Italic,
                             color = color.copy(alpha = 0.9f),
-                            lineHeight = 17.sp,
-                            modifier = Modifier.padding(vertical = 4.dp, horizontal = 4.dp)
+                            lineHeight = 18.sp,
+                            modifier = Modifier.padding(vertical = 4.dp)
                         )
                     }
                 }
@@ -119,7 +123,7 @@ fun MarkdownText(
                             .clip(RoundedCornerShape(6.dp))
                             .background(codeBg)
                             .border(1.dp, codeBorder, RoundedCornerShape(6.dp))
-                            .padding(8.dp)
+                            .padding(10.dp)
                             .horizontalScroll(rememberScrollState())
                     ) {
                         Text(
@@ -150,6 +154,82 @@ sealed class MarkdownBlock {
     data class BlockQuote(val text: String) : MarkdownBlock()
     data class CodeBlock(val language: String, val code: String) : MarkdownBlock()
     object Divider : MarkdownBlock()
+}
+
+/**
+ * 预处理 LaTeX 符号与常见 MathJax 表达式转义
+ */
+private fun sanitizeLatexAndSymbols(text: String): String {
+    var result = text
+
+    // 1. 解包 \text{...}, \mathrm{...}, \mathbf{...}, \mathit{...}
+    result = Regex("""\\(text|mathrm|mathbf|mathit|mathsf|mathtt)\{([^}]+)\}""").replace(result, "$2")
+
+    // 2. 解包 \( formula \) 与 \[ formula \]
+    result = Regex("""\\\(|\\\)""").replace(result, "")
+    result = Regex("""\\\[|\\\]""").replace(result, "")
+
+    // 3. TeX 算子与常用数学/逻辑符号字典映射
+    val symbolMap = listOf(
+        Regex("""\$?\\rightarrow\$?|\$?\\to\$?""") to "→",
+        Regex("""\$?\\leftarrow\$?""") to "←",
+        Regex("""\$?\\Rightarrow\$?|\$?\\implies\$?""") to "⇒",
+        Regex("""\$?\\Leftarrow\$?|\$?\\impliedby\$?""") to "⇐",
+        Regex("""\$?\\Leftrightarrow\$?|\$?\\iff\$?""") to "⇔",
+        Regex("""\$?\\leftrightarrow\$?""") to "↔",
+        Regex("""\$?\\mapsto\$?""") to "↦",
+        Regex("""\$?\\uparrow\$?""") to "↑",
+        Regex("""\$?\\downarrow\$?""") to "↓",
+        Regex("""\$?\\cdot\$?""") to "·",
+        Regex("""\$?\\bullet\$?""") to "•",
+        Regex("""\$?\\ge\$?|\$?\\geq\$?""") to "≥",
+        Regex("""\$?\\le\$?|\$?\\leq\$?""") to "≤",
+        Regex("""\$?\\neq\$?|\$?\\ne\$?""") to "≠",
+        Regex("""\$?\\approx\$?|\$?\\simeq\$?""") to "≈",
+        Regex("""\$?\\times\$?""") to "×",
+        Regex("""\$?\\div\$?""") to "÷",
+        Regex("""\$?\\pm\$?""") to "±",
+        Regex("""\$?\\infty\$?""") to "∞",
+        Regex("""\$?\\in\$?""") to "∈",
+        Regex("""\$?\\notin\$?""") to "∉",
+        Regex("""\$?\\subset\$?""") to "⊂",
+        Regex("""\$?\\supset\$?""") to "⊃",
+        Regex("""\$?\\cap\$?""") to "∩",
+        Regex("""\$?\\cup\$?""") to "∪",
+        Regex("""\$?\\forall\$?""") to "∀",
+        Regex("""\$?\\exists\$?""") to "∃",
+        Regex("""\$?\\partial\$?""") to "∂",
+        Regex("""\$?\\nabla\$?""") to "∇",
+        Regex("""\$?\\dots\$?|\$?\\ldots\$?|\$?\\cdots\$?""") to "…",
+        Regex("""\$?\\quad\$?""") to "  ",
+        Regex("""\$?\\qquad\$?""") to "    ",
+        Regex("""\$?\\alpha\$?""") to "α",
+        Regex("""\$?\\beta\$?""") to "β",
+        Regex("""\$?\\gamma\$?""") to "γ",
+        Regex("""\$?\\delta\$?""") to "δ",
+        Regex("""\$?\\epsilon\$?""") to "ε",
+        Regex("""\$?\\theta\$?""") to "θ",
+        Regex("""\$?\\lambda\$?""") to "λ",
+        Regex("""\$?\\mu\$?""") to "μ",
+        Regex("""\$?\\pi\$?""") to "π",
+        Regex("""\$?\\sigma\$?""") to "σ",
+        Regex("""\$?\\omega\$?""") to "ω",
+        Regex("""\$?\\sum\$?""") to "∑",
+        Regex("""\$?\\prod\$?""") to "∏",
+        Regex("""\$?\\sqrt\$?""") to "√"
+    )
+
+    for ((pattern, replacement) in symbolMap) {
+        result = pattern.replace(result, replacement)
+    }
+
+    // 处理形如 $ formula $ 的剩余 LaTeX 符号包，解包包裹字符
+    val inlineMathRegex = Regex("""\$([^\$]+)\$""")
+    result = inlineMathRegex.replace(result) { match ->
+        match.groupValues[1].trim()
+    }
+
+    return result
 }
 
 private fun parseMarkdownBlocks(markdown: String): List<MarkdownBlock> {
@@ -205,6 +285,17 @@ private fun parseMarkdownBlocks(markdown: String): List<MarkdownBlock> {
             continue
         }
 
+        // Check task list item (- [ ] / - [x])
+        val taskMatch = Regex("""^(\s*)([*+-])\s+\[([ xX])\]\s+(.*)$""").find(line)
+        if (taskMatch != null) {
+            val indent = taskMatch.groupValues[1].length / 2
+            val isChecked = taskMatch.groupValues[3].equals("x", ignoreCase = true)
+            val prefix = if (isChecked) "☑ " else "☐ "
+            val text = taskMatch.groupValues[4]
+            result.add(MarkdownBlock.ListItem(prefix, text, indent))
+            continue
+        }
+
         // Check unordered list (*, -, +)
         val unorderedMatch = Regex("""^(\s*)([*+-])\s+(.*)$""").find(line)
         if (unorderedMatch != null) {
@@ -235,17 +326,72 @@ private fun parseMarkdownBlocks(markdown: String): List<MarkdownBlock> {
     return result
 }
 
-private fun parseInlineMarkdown(text: String): AnnotatedString {
+private fun parseInlineMarkdown(text: String, theme: String = "light"): AnnotatedString {
+    val sanitizedText = sanitizeLatexAndSymbols(text)
+
     return buildAnnotatedString {
         var cursor = 0
-        val length = text.length
+        val length = sanitizedText.length
 
         while (cursor < length) {
-            // Bold & Italic ***text***
-            if (cursor + 2 < length && text.substring(cursor).startsWith("***")) {
-                val end = text.indexOf("***", cursor + 3)
+            // Hyperlink [label](url)
+            if (sanitizedText[cursor] == '[') {
+                val closeBracket = sanitizedText.indexOf(']', cursor + 1)
+                if (closeBracket != -1 && closeBracket + 1 < length && sanitizedText[closeBracket + 1] == '(') {
+                    val closeParen = sanitizedText.indexOf(')', closeBracket + 2)
+                    if (closeParen != -1) {
+                        val label = sanitizedText.substring(cursor + 1, closeBracket)
+                        pushStyle(
+                            SpanStyle(
+                                color = Color(0xFF007AFF),
+                                textDecoration = TextDecoration.Underline,
+                                fontWeight = FontWeight.Medium
+                            )
+                        )
+                        append(label)
+                        pop()
+                        cursor = closeParen + 1
+                        continue
+                    }
+                }
+            }
+
+            // Highlight ==text==
+            if (cursor + 1 < length && sanitizedText.substring(cursor).startsWith("==")) {
+                val end = sanitizedText.indexOf("==", cursor + 2)
                 if (end != -1) {
-                    val content = text.substring(cursor + 3, end)
+                    val content = sanitizedText.substring(cursor + 2, end)
+                    pushStyle(
+                        SpanStyle(
+                            background = Color(0xFFFFE066),
+                            color = Color.Black
+                        )
+                    )
+                    append(content)
+                    pop()
+                    cursor = end + 2
+                    continue
+                }
+            }
+
+            // Strikethrough ~~text~~
+            if (cursor + 1 < length && sanitizedText.substring(cursor).startsWith("~~")) {
+                val end = sanitizedText.indexOf("~~", cursor + 2)
+                if (end != -1) {
+                    val content = sanitizedText.substring(cursor + 2, end)
+                    pushStyle(SpanStyle(textDecoration = TextDecoration.LineThrough))
+                    append(content)
+                    pop()
+                    cursor = end + 2
+                    continue
+                }
+            }
+
+            // Bold & Italic ***text***
+            if (cursor + 2 < length && sanitizedText.substring(cursor).startsWith("***")) {
+                val end = sanitizedText.indexOf("***", cursor + 3)
+                if (end != -1) {
+                    val content = sanitizedText.substring(cursor + 3, end)
                     pushStyle(SpanStyle(fontWeight = FontWeight.Bold, fontStyle = FontStyle.Italic))
                     append(content)
                     pop()
@@ -255,11 +401,11 @@ private fun parseInlineMarkdown(text: String): AnnotatedString {
             }
 
             // Bold **text** or __text__
-            if (cursor + 1 < length && (text.substring(cursor).startsWith("**") || text.substring(cursor).startsWith("__"))) {
-                val symbol = text.substring(cursor, cursor + 2)
-                val end = text.indexOf(symbol, cursor + 2)
+            if (cursor + 1 < length && (sanitizedText.substring(cursor).startsWith("**") || sanitizedText.substring(cursor).startsWith("__"))) {
+                val symbol = sanitizedText.substring(cursor, cursor + 2)
+                val end = sanitizedText.indexOf(symbol, cursor + 2)
                 if (end != -1) {
-                    val content = text.substring(cursor + 2, end)
+                    val content = sanitizedText.substring(cursor + 2, end)
                     pushStyle(SpanStyle(fontWeight = FontWeight.Bold))
                     append(content)
                     pop()
@@ -269,14 +415,15 @@ private fun parseInlineMarkdown(text: String): AnnotatedString {
             }
 
             // Inline code `code`
-            if (text[cursor] == '`') {
-                val end = text.indexOf('`', cursor + 1)
+            if (sanitizedText[cursor] == '`') {
+                val end = sanitizedText.indexOf('`', cursor + 1)
                 if (end != -1) {
-                    val content = text.substring(cursor + 1, end)
+                    val content = sanitizedText.substring(cursor + 1, end)
                     pushStyle(
                         SpanStyle(
                             fontFamily = FontFamily.Monospace,
-                            background = Color.Gray.copy(alpha = 0.15f)
+                            background = if (theme == "dark") Color(0xFF2D2D30) else Color(0xFFEAECEF),
+                            color = if (theme == "dark") Color(0xFFF0F6FC) else Color(0xFF24292E)
                         )
                     )
                     append(" $content ")
@@ -287,11 +434,11 @@ private fun parseInlineMarkdown(text: String): AnnotatedString {
             }
 
             // Italic *text* or _text_
-            if (text[cursor] == '*' || text[cursor] == '_') {
-                val symbol = text[cursor]
-                val end = text.indexOf(symbol, cursor + 1)
-                if (end != -1 && (end == cursor + 1 || text[end - 1] != ' ')) {
-                    val content = text.substring(cursor + 1, end)
+            if (sanitizedText[cursor] == '*' || sanitizedText[cursor] == '_') {
+                val symbol = sanitizedText[cursor]
+                val end = sanitizedText.indexOf(symbol, cursor + 1)
+                if (end != -1 && (end == cursor + 1 || sanitizedText[end - 1] != ' ')) {
+                    val content = sanitizedText.substring(cursor + 1, end)
                     pushStyle(SpanStyle(fontStyle = FontStyle.Italic))
                     append(content)
                     pop()
@@ -301,7 +448,7 @@ private fun parseInlineMarkdown(text: String): AnnotatedString {
             }
 
             // Regular char
-            append(text[cursor])
+            append(sanitizedText[cursor])
             cursor++
         }
     }

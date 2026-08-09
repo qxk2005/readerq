@@ -40,6 +40,9 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.text.style.TextOverflow
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -51,9 +54,12 @@ fun NotebookView(viewModel: MainViewModel) {
 
     val listState = rememberLazyListState()
     var editingHighlightId by remember { mutableStateOf<String?>(null) }
+    var activeNotebookTab by remember { mutableStateOf("highlights") } // "highlights" or "doc_note"
+    var isEditingDocNote by remember { mutableStateOf(false) }
 
     LaunchedEffect(viewModel) {
         viewModel.scrollNotebookToHighlightEvent.collect { hlId ->
+            activeNotebookTab = "highlights"
             val index = highlights.indexOfFirst { it.id == hlId }
             if (index >= 0) {
                 listState.animateScrollToItem(index + 2)
@@ -96,196 +102,411 @@ fun NotebookView(viewModel: MainViewModel) {
         }
     }
 
-    LazyColumn(
-        state = listState,
+    Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+            .padding(16.dp)
     ) {
-        // Document Notes Editor Card
-        item {
-            Card(
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
-                shape = RoundedCornerShape(12.dp),
-                modifier = Modifier.fillMaxWidth()
+        // 顶部 Tab 分段切换控件 (Segmented Control)
+        Surface(
+            shape = RoundedCornerShape(10.dp),
+            color = when (theme) {
+                "light" -> Color(0xFFEBECEF)
+                "sepia" -> Color(0xFFE4DFD5)
+                else -> Color(0xFF252528)
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(38.dp)
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(3.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                Column(modifier = Modifier.padding(12.dp)) {
-                    Text("文档笔记", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface, fontSize = 14.sp)
-                    Spacer(modifier = Modifier.height(8.dp))
-                    OutlinedTextField(
-                        value = docNote,
-                        onValueChange = { docNote = it },
-                        placeholder = { Text("添加文档总结或备注...") },
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedTextColor = MaterialTheme.colorScheme.onSurface,
-                            unfocusedTextColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
+                val tabs = listOf(
+                    Pair("highlights", "🖍️ 高亮与批注 (${highlights.size})"),
+                    Pair("doc_note", "📝 文档笔记${if (docNote.isNotBlank()) " •" else ""}")
+                )
+                tabs.forEach { (tabKey, label) ->
+                    val isSelected = activeNotebookTab == tabKey
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(
+                                if (isSelected) {
+                                    when (theme) {
+                                        "light" -> Color.White
+                                        "sepia" -> Color(0xFFF5F2EB)
+                                        else -> Color(0xFF38383C)
+                                    }
+                                } else Color.Transparent
+                            )
+                            .clickable { activeNotebookTab = tabKey },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = label,
+                            fontSize = 12.sp,
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                            color = if (isSelected) MaterialTheme.colorScheme.primary else textColor.copy(alpha = 0.7f)
                         )
-                    )
-                    Spacer(modifier = Modifier.height(12.dp))
-                    
-                    // Tags Title & Chips Layout
-                    Text("文档标签", fontSize = 11.sp, color = subTextColor, fontWeight = FontWeight.Medium)
-                    Spacer(modifier = Modifier.height(4.dp))
-                    
-                    if (docTagsList.isNotEmpty()) {
-                        FlowRow(
-                            modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(14.dp))
+
+        if (activeNotebookTab == "highlights") {
+            // === Tab 1: 高亮与批注 ===
+            LazyColumn(
+                state = listState,
+                modifier = Modifier.fillMaxSize(),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                // Highlights list header with sort control
+                item {
+                    val sortMode by viewModel.highlightSortMode.collectAsState()
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            "高亮列表 (${highlights.size})",
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onBackground,
+                            fontSize = 14.sp
+                        )
+                        if (highlights.isNotEmpty()) {
+                            val sortLabel = when (sortMode) {
+                                "position_asc" -> "位置 ↑"
+                                "position_desc" -> "位置 ↓"
+                                "time_asc" -> "时间 ↑"
+                                "time_desc" -> "时间 ↓"
+                                else -> "位置 ↑"
+                            }
+                            OutlinedButton(
+                                onClick = {
+                                    val modes = listOf("position_asc", "position_desc", "time_asc", "time_desc")
+                                    val idx = modes.indexOf(sortMode)
+                                    viewModel.setHighlightSortMode(modes[(idx + 1) % modes.size])
+                                },
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
+                                modifier = Modifier.height(28.dp)
+                            ) {
+                                Icon(
+                                    painter = painterResource(id = R.drawable.ic_sort),
+                                    contentDescription = "排序",
+                                    modifier = Modifier.size(14.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(sortLabel, fontSize = 11.sp)
+                            }
+                        }
+                    }
+                }
+
+                if (highlights.isEmpty()) {
+                    item {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 40.dp),
+                            contentAlignment = Alignment.Center
                         ) {
-                            docTagsList.forEach { tag ->
-                                Box(
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(6.dp))
-                                        .background(tagBg)
-                                        .clickable { docTagsList = docTagsList - tag }
-                                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text("🖍️", fontSize = 32.sp)
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text("暂无高亮与划线批注", color = subTextColor, fontSize = 13.sp)
+                                Text("在正文中长按选择文本即可快速添加高亮", color = subTextColor.copy(alpha = 0.6f), fontSize = 11.sp)
+                            }
+                        }
+                    }
+                } else {
+                    // Highlights items
+                    items(highlights, key = { it.id }) { hl ->
+                        NotebookHighlightCard(
+                            hl = hl,
+                            theme = theme,
+                            viewModel = viewModel,
+                            isEditing = editingHighlightId == hl.id,
+                            onEditingChange = { editing ->
+                                editingHighlightId = if (editing) hl.id else null
+                            }
+                        )
+                    }
+                }
+            }
+        } else {
+            // === Tab 2: 文档笔记 (独立支持 Markdown 渲染) ===
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                Card(
+                    colors = CardDefaults.cardColors(
+                        containerColor = when (theme) {
+                            "light" -> Color(0xFFFFFFFF)
+                            "sepia" -> Color(0xFFEFECE6)
+                            else -> Color(0xFF1E1E1E)
+                        }
+                    ),
+                    shape = RoundedCornerShape(12.dp),
+                    border = BorderStroke(
+                        width = 1.dp,
+                        color = when (theme) {
+                            "light" -> Color(0xFFE5E7EB)
+                            "sepia" -> Color(0xFFE4DFD5)
+                            else -> Color(0xFF2D2D2D)
+                        }
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                "文档全局笔记",
+                                fontWeight = FontWeight.Bold,
+                                color = textColor,
+                                fontSize = 15.sp
+                            )
+                            
+                            if (!isEditingDocNote) {
+                                TextButton(
+                                    onClick = { isEditingDocNote = true },
+                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
                                 ) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                    ) {
-                                        Text(text = "#$tag", color = subTextColor, fontSize = 11.sp)
-                                        Text(text = "✕", color = subTextColor.copy(alpha = 0.7f), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                    Icon(
+                                        painter = painterResource(id = R.drawable.ic_edit_note),
+                                        contentDescription = "编辑笔记",
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(if (docNote.isBlank()) "添加笔记" else "编辑笔记", fontSize = 12.sp)
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        if (isEditingDocNote) {
+                            // === 编辑模式 ===
+                            val inputContainerColor = if (theme == "dark") Color(0xFF28282A) else Color(0xFFEAECEF)
+
+                            TextField(
+                                value = docNote,
+                                onValueChange = { docNote = it },
+                                placeholder = {
+                                    Text(
+                                        "支持 Markdown 格式，例如：\n# 总结标题\n- 核心观点1\n**加粗** [相关链接](url)",
+                                        fontSize = 13.sp,
+                                        color = subTextColor.copy(alpha = 0.6f)
+                                    )
+                                },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(min = 120.dp),
+                                shape = RoundedCornerShape(10.dp),
+                                colors = TextFieldDefaults.colors(
+                                    focusedContainerColor = inputContainerColor,
+                                    unfocusedContainerColor = inputContainerColor,
+                                    disabledContainerColor = inputContainerColor,
+                                    focusedTextColor = textColor,
+                                    unfocusedTextColor = textColor,
+                                    focusedIndicatorColor = Color.Transparent,
+                                    unfocusedIndicatorColor = Color.Transparent,
+                                    disabledIndicatorColor = Color.Transparent
+                                )
+                            )
+
+                            Spacer(modifier = Modifier.height(12.dp))
+
+                            // 标签编辑部分
+                            Text("文档标签", fontSize = 11.sp, color = subTextColor, fontWeight = FontWeight.Medium)
+                            Spacer(modifier = Modifier.height(4.dp))
+
+                            if (docTagsList.isNotEmpty()) {
+                                FlowRow(
+                                    modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    docTagsList.forEach { tag ->
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(6.dp))
+                                                .background(tagBg)
+                                                .clickable { docTagsList = docTagsList - tag }
+                                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                                        ) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                            ) {
+                                                Text(text = "#$tag", color = subTextColor, fontSize = 11.sp)
+                                                Text(text = "✕", color = subTextColor.copy(alpha = 0.7f), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            TextField(
+                                value = currentDocTagInput,
+                                onValueChange = { input ->
+                                    if (input.endsWith(",") || input.endsWith("，") || input.endsWith(" ") || input.endsWith("\n")) {
+                                        val newTag = input.trim()
+                                            .removeSuffix(",")
+                                            .removeSuffix("，")
+                                            .trim()
+                                        if (newTag.isNotEmpty() && !docTagsList.contains(newTag)) {
+                                            docTagsList = docTagsList + newTag
+                                        }
+                                        currentDocTagInput = ""
+                                    } else {
+                                        currentDocTagInput = input
+                                    }
+                                },
+                                placeholder = { Text("输入新标签并以逗号或空格分割...", fontSize = 13.sp, color = subTextColor.copy(alpha = 0.6f)) },
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(10.dp),
+                                colors = TextFieldDefaults.colors(
+                                    focusedContainerColor = inputContainerColor,
+                                    unfocusedContainerColor = inputContainerColor,
+                                    disabledContainerColor = inputContainerColor,
+                                    focusedTextColor = textColor,
+                                    unfocusedTextColor = textColor,
+                                    focusedIndicatorColor = Color.Transparent,
+                                    unfocusedIndicatorColor = Color.Transparent,
+                                    disabledIndicatorColor = Color.Transparent
+                                )
+                            )
+
+                            // 标签候选联想
+                            if (candidates.isNotEmpty()) {
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .horizontalScroll(rememberScrollState()),
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text("匹配：", color = subTextColor, fontSize = 11.sp)
+                                    candidates.forEach { candidate ->
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(6.dp))
+                                                .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f))
+                                                .clickable {
+                                                    docTagsList = docTagsList + candidate
+                                                    currentDocTagInput = ""
+                                                }
+                                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                                        ) {
+                                            Text(
+                                                text = candidate,
+                                                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Medium
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(14.dp))
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.End,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                TextButton(
+                                    onClick = {
+                                        docNote = doc?.notes ?: ""
+                                        isEditingDocNote = false
+                                    }
+                                ) {
+                                    Text("取消", color = subTextColor)
+                                }
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Button(
+                                    onClick = {
+                                        var finalTags = docTagsList
+                                        val residual = currentDocTagInput.trim()
+                                        if (residual.isNotEmpty() && !finalTags.contains(residual)) {
+                                            finalTags = finalTags + residual
+                                        }
+                                        viewModel.updateDocumentMetadata(docNote, finalTags)
+                                        currentDocTagInput = ""
+                                        isEditingDocNote = false
+                                    }
+                                ) {
+                                    Text("保存笔记与标签")
+                                }
+                            }
+                        } else {
+                            // === 预览模式 (支持全量 Markdown 格式化渲染) ===
+                            if (docNote.isNotBlank()) {
+                                MarkdownText(
+                                    markdown = docNote,
+                                    color = textColor,
+                                    theme = theme,
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            } else {
+                                Text(
+                                    "暂无全局文档总结或笔记。点击右上角“添加笔记”开始记录...",
+                                    color = subTextColor.copy(alpha = 0.6f),
+                                    fontSize = 13.sp,
+                                    fontStyle = FontStyle.Italic
+                                )
+                            }
+
+                            if (docTagsList.isNotEmpty()) {
+                                Spacer(modifier = Modifier.height(14.dp))
+                                Divider(color = when (theme) {
+                                    "light" -> Color(0xFFEEEEEE)
+                                    "sepia" -> Color(0xFFE4DFD5)
+                                    else -> Color(0xFF282828)
+                                })
+                                Spacer(modifier = Modifier.height(10.dp))
+                                Text("文档标签", fontSize = 11.sp, color = subTextColor, fontWeight = FontWeight.Medium)
+                                Spacer(modifier = Modifier.height(6.dp))
+                                FlowRow(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    docTagsList.forEach { tag ->
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(6.dp))
+                                                .background(tagBg)
+                                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                                        ) {
+                                            Text(text = "#$tag", color = subTextColor, fontSize = 11.sp)
+                                        }
                                     }
                                 }
                             }
                         }
                     }
-
-                    OutlinedTextField(
-                        value = currentDocTagInput,
-                        onValueChange = { input ->
-                            // Auto split and commit when pressing commas/spaces/newlines
-                            if (input.endsWith(",") || input.endsWith("，") || input.endsWith(" ") || input.endsWith("\n")) {
-                                val newTag = input.trim()
-                                    .removeSuffix(",")
-                                    .removeSuffix("，")
-                                    .trim()
-                                if (newTag.isNotEmpty() && !docTagsList.contains(newTag)) {
-                                    docTagsList = docTagsList + newTag
-                                }
-                                currentDocTagInput = ""
-                            } else {
-                                currentDocTagInput = input
-                            }
-                        },
-                        placeholder = { Text("输入新标签并以逗号或空格分割...", fontSize = 13.sp) },
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedTextColor = textColor,
-                            unfocusedTextColor = textColor
-                        )
-                    )
-
-                    // Autocomplete Suggestions Row
-                    if (candidates.isNotEmpty()) {
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text("匹配：", color = subTextColor, fontSize = 11.sp)
-                            candidates.forEach { candidate ->
-                                Box(
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(6.dp))
-                                        .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f))
-                                        .clickable {
-                                            docTagsList = docTagsList + candidate
-                                            currentDocTagInput = ""
-                                        }
-                                        .padding(horizontal = 8.dp, vertical = 4.dp)
-                                ) {
-                                    Text(
-                                        text = candidate,
-                                        color = MaterialTheme.colorScheme.onPrimaryContainer,
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Medium
-                                    )
-                                }
-                            }
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Button(
-                        onClick = {
-                            var finalTags = docTagsList
-                            val residual = currentDocTagInput.trim()
-                            if (residual.isNotEmpty() && !finalTags.contains(residual)) {
-                                finalTags = finalTags + residual
-                            }
-                            viewModel.updateDocumentMetadata(docNote, finalTags)
-                            currentDocTagInput = ""
-                        },
-                        modifier = Modifier.align(Alignment.End)
-                    ) {
-                        Text("保存文档信息")
-                    }
                 }
             }
-        }
-
-        // Highlights list header with sort control
-        item {
-            val sortMode by viewModel.highlightSortMode.collectAsState()
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    "高亮与批注 (${highlights.size})",
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onBackground,
-                    fontSize = 15.sp
-                )
-                if (highlights.isNotEmpty()) {
-                    val sortLabel = when (sortMode) {
-                        "position_asc" -> "位置 ↑"
-                        "position_desc" -> "位置 ↓"
-                        "time_asc" -> "时间 ↑"
-                        "time_desc" -> "时间 ↓"
-                        else -> "位置 ↑"
-                    }
-                    OutlinedButton(
-                        onClick = {
-                            val modes = listOf("position_asc", "position_desc", "time_asc", "time_desc")
-                            val idx = modes.indexOf(sortMode)
-                            viewModel.setHighlightSortMode(modes[(idx + 1) % modes.size])
-                        },
-                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
-                        modifier = Modifier.height(28.dp)
-                    ) {
-                        Icon(
-                            painter = painterResource(id = R.drawable.ic_sort),
-                            contentDescription = "排序",
-                            modifier = Modifier.size(14.dp)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(sortLabel, fontSize = 11.sp)
-                    }
-                }
-            }
-        }
-
-        // Highlights items using modular independent card views
-        items(highlights, key = { it.id }) { hl ->
-            NotebookHighlightCard(
-                hl = hl,
-                theme = theme,
-                viewModel = viewModel,
-                isEditing = editingHighlightId == hl.id,
-                onEditingChange = { editing ->
-                    editingHighlightId = if (editing) hl.id else null
-                }
-            )
         }
     }
 }
