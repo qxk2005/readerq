@@ -151,13 +151,12 @@ fun DailyReviewPane(
             )
             .padding(16.dp)
     ) {
-        // 1. 顶部 Header 与切换 Button 组
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+        // 1. 顶部 Header 与分段 Segmented Control
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth()
+            ) {
                 Surface(
                     shape = RoundedCornerShape(12.dp),
                     color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
@@ -168,17 +167,17 @@ fun DailyReviewPane(
                     }
                 }
                 Spacer(modifier = Modifier.width(12.dp))
-                Column {
+                Column(modifier = Modifier.weight(1f)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
-                            text = "每日回顾 (Daily Review)",
+                            text = "每日回顾",
                             fontSize = 18.sp,
                             fontWeight = FontWeight.Bold,
                             color = textColor
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Surface(
-                            shape = RoundedCornerShape(10.dp),
+                            shape = RoundedCornerShape(8.dp),
                             color = Color(0xFFFF9500).copy(alpha = 0.15f)
                         ) {
                             Text(
@@ -192,24 +191,66 @@ fun DailyReviewPane(
                     }
                     Text(
                         text = "基于 Readwise 间隔重复算法，重温灵感划线",
-                        fontSize = 12.sp,
-                        color = textColor.copy(alpha = 0.6f)
+                        fontSize = 11.sp,
+                        color = textColor.copy(alpha = 0.6f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
             }
 
-            // 右侧选项卡 Pill (每日高亮 / 回顾统计)
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                FilterChip(
-                    selected = subTab == "daily",
-                    onClick = { viewModel.setReviewSubTab("daily") },
-                    label = { Text("📖 每日高亮 (${highlights.size})", fontSize = 12.sp) }
-                )
-                FilterChip(
-                    selected = subTab == "stats",
-                    onClick = { viewModel.setReviewSubTab("stats") },
-                    label = { Text("📊 回顾统计", fontSize = 12.sp) }
-                )
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // 标题正下方的分段切换控件 (Segmented Control Tabs)
+            Surface(
+                shape = RoundedCornerShape(10.dp),
+                color = when (theme) {
+                    "light" -> Color(0xFFEBECEF)
+                    "sepia" -> Color(0xFFE4DFD5)
+                    else -> Color(0xFF252528)
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(36.dp)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(3.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    val tabs = listOf(
+                        Pair("daily", "📖 高亮卡片 (${highlights.size})"),
+                        Pair("stats", "📊 回顾统计")
+                    )
+                    tabs.forEach { (tabKey, label) ->
+                        val isSelected = subTab == tabKey
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxHeight()
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(
+                                    if (isSelected) {
+                                        when (theme) {
+                                            "light" -> Color.White
+                                            "sepia" -> Color(0xFFF5F2EB)
+                                            else -> Color(0xFF38383C)
+                                        }
+                                    } else Color.Transparent
+                                )
+                                .clickable { viewModel.setReviewSubTab(tabKey) },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = label,
+                                fontSize = 12.sp,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                color = if (isSelected) MaterialTheme.colorScheme.primary else textColor.copy(alpha = 0.7f)
+                            )
+                        }
+                    }
+                }
             }
         }
 
@@ -742,62 +783,77 @@ fun DailyReviewPane(
                             }
                         }
 
-                        // 3.4 底部三主键 (上一条 | 收藏(F)同步Readwise | 已复习/下一条(Space)同步Readwise)
+                        // 3.4 底部三主键 (上一条 | 收藏 同步Readwise | 已复习/下一条 同步Readwise)
                         val isFavorite = remember(currentHl) {
                             val tags = parseHlTags(currentHl.tags_json)
                             tags.contains("favorite") || tags.contains("收藏")
                         }
 
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(top = 16.dp),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            // 上一条
-                            Button(
-                                onClick = { viewModel.prevReviewCard() },
-                                modifier = Modifier.weight(1f),
-                                shape = RoundedCornerShape(14.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = cardBorder)
-                            ) {
-                                Text("‹ 上一条", color = textColor, fontSize = 13.sp)
-                            }
+                        BoxWithConstraints(modifier = Modifier.fillMaxWidth().padding(top = 16.dp)) {
+                            val isNarrowCard = maxWidth < 380.dp
 
-                            // 收藏 (F) - 同步 Readwise
-                            OutlinedButton(
-                                onClick = { viewModel.toggleReviewHighlightFavorite(currentHl) },
-                                modifier = Modifier.weight(1.2f),
-                                shape = RoundedCornerShape(14.dp),
-                                border = BorderStroke(1.dp, if (isFavorite) Color(0xFFFF3B30) else cardBorder)
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(if (isNarrowCard) 6.dp else 10.dp),
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text(
-                                    text = if (isFavorite) "♥ 已收藏 (F)" else "♡ 收藏 (F)",
-                                    color = if (isFavorite) Color(0xFFFF3B30) else textColor,
-                                    fontSize = 13.sp,
-                                    fontWeight = if (isFavorite) FontWeight.Bold else FontWeight.Normal
-                                )
-                            }
+                                // 1. 上一条
+                                Button(
+                                    onClick = { viewModel.prevReviewCard() },
+                                    modifier = Modifier.weight(if (isNarrowCard) 1f else 1.1f),
+                                    contentPadding = PaddingValues(horizontal = if (isNarrowCard) 4.dp else 10.dp, vertical = 10.dp),
+                                    shape = RoundedCornerShape(14.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = cardBorder)
+                                ) {
+                                    Text(
+                                        text = if (isNarrowCard) "‹ 上一条" else "‹ 上一条",
+                                        color = textColor,
+                                        fontSize = if (isNarrowCard) 12.sp else 13.sp,
+                                        maxLines = 1,
+                                        softWrap = false
+                                    )
+                                }
 
-                            // 已复习 / 下一条 - 同步 Readwise
-                            val isLastCard = currentIndex == highlights.size - 1
-                            val mainBtnColor = if (isLastCard) Color(0xFF34C759) else Color(0xFF007AFF)
-                            Button(
-                                onClick = { viewModel.nextReviewCard() },
-                                modifier = Modifier.weight(1.8f),
-                                shape = RoundedCornerShape(14.dp),
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = mainBtnColor,
-                                    contentColor = Color.White
-                                )
-                            ) {
-                                Text(
-                                    text = if (isLastCard) "🎉 完成复习 ›" else "已复习 / 下一条 ›",
-                                    color = Color.White,
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
+                                // 2. 收藏 - 同步 Readwise (去除移动端冗余的 (F) 快捷键后缀)
+                                OutlinedButton(
+                                    onClick = { viewModel.toggleReviewHighlightFavorite(currentHl) },
+                                    modifier = Modifier.weight(if (isNarrowCard) 1.2f else 1.3f),
+                                    contentPadding = PaddingValues(horizontal = if (isNarrowCard) 4.dp else 10.dp, vertical = 10.dp),
+                                    shape = RoundedCornerShape(14.dp),
+                                    border = BorderStroke(1.dp, if (isFavorite) Color(0xFFFF3B30) else cardBorder)
+                                ) {
+                                    Text(
+                                        text = if (isFavorite) "♥ 已收藏" else "♡ 收藏",
+                                        color = if (isFavorite) Color(0xFFFF3B30) else textColor,
+                                        fontSize = if (isNarrowCard) 12.sp else 13.sp,
+                                        maxLines = 1,
+                                        softWrap = false,
+                                        fontWeight = if (isFavorite) FontWeight.Bold else FontWeight.Normal
+                                    )
+                                }
+
+                                // 3. 已复习 / 下一条 - 同步 Readwise
+                                val isLastCard = currentIndex == highlights.size - 1
+                                val mainBtnColor = if (isLastCard) Color(0xFF34C759) else Color(0xFF007AFF)
+                                Button(
+                                    onClick = { viewModel.nextReviewCard() },
+                                    modifier = Modifier.weight(if (isNarrowCard) 1.8f else 2f),
+                                    contentPadding = PaddingValues(horizontal = if (isNarrowCard) 6.dp else 12.dp, vertical = 10.dp),
+                                    shape = RoundedCornerShape(14.dp),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = mainBtnColor,
+                                        contentColor = Color.White
+                                    )
+                                ) {
+                                    Text(
+                                        text = if (isLastCard) "🎉 完成 ›" else if (isNarrowCard) "已复习 ›" else "已复习 / 下一条 ›",
+                                        color = Color.White,
+                                        fontSize = if (isNarrowCard) 12.sp else 13.sp,
+                                        maxLines = 1,
+                                        softWrap = false,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
                             }
                         }
                     }

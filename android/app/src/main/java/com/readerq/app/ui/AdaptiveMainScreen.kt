@@ -201,15 +201,18 @@ fun AdaptiveMainScreen(
                     }
                 } else {
                     BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-                        val isNarrow = maxWidth < 380.dp
+                        val isNarrow = maxWidth < 400.dp
+                        val isVeryNarrow = maxWidth < 340.dp
+
                         NavigationBar(
                             containerColor = MaterialTheme.colorScheme.surface,
-                            tonalElevation = 0.dp
+                            tonalElevation = 0.dp,
+                            modifier = Modifier.height(if (isNarrow) 56.dp else 64.dp)
                         ) {
                             val tabs = listOf(
                                 Triple("home", "首页", R.drawable.ic_tab_library),
-                                Triple("review", "每日回顾", R.drawable.ic_tab_review),
-                                Triple("zen", "禅阅读", R.drawable.ic_cat_book),
+                                Triple("review", "回顾", R.drawable.ic_tab_review),
+                                Triple("zen", "禅读", R.drawable.ic_cat_book),
                                 Triple("library", "库", R.drawable.ic_inbox),
                                 Triple("notebook", "浏览", R.drawable.ic_tab_notebook),
                                 Triple("settings", "设置", R.drawable.ic_tab_settings)
@@ -222,30 +225,24 @@ fun AdaptiveMainScreen(
                                         viewModel.changeTab(tabId)
                                     },
                                     icon = {
-                                        Column(
-                                            horizontalAlignment = Alignment.CenterHorizontally,
-                                            verticalArrangement = Arrangement.Center,
-                                            modifier = Modifier.padding(horizontal = if (isNarrow) 2.dp else 6.dp, vertical = 2.dp)
-                                        ) {
-                                            Icon(
-                                                painter = painterResource(id = icon),
-                                                contentDescription = label,
-                                                modifier = Modifier.size(if (isNarrow) 18.dp else 20.dp)
+                                        Icon(
+                                            painter = painterResource(id = icon),
+                                            contentDescription = label,
+                                            modifier = Modifier.size(if (isNarrow) 18.dp else 20.dp)
+                                        )
+                                    },
+                                    label = if (isNarrow) null else {
+                                        {
+                                            Text(
+                                                text = label, 
+                                                fontSize = 10.sp, 
+                                                fontWeight = if (currentTab == tabId) FontWeight.Bold else FontWeight.Normal,
+                                                maxLines = 1,
+                                                softWrap = false
                                             )
-                                            if (!isNarrow) {
-                                                Spacer(modifier = Modifier.height(2.dp))
-                                                Text(
-                                                    text = label, 
-                                                    fontSize = 10.sp, 
-                                                    fontWeight = if (currentTab == tabId) FontWeight.Bold else FontWeight.Normal,
-                                                    maxLines = 1,
-                                                    softWrap = false,
-                                                    overflow = TextOverflow.Clip
-                                                )
-                                            }
                                         }
                                     },
-                                    label = null,
+                                    alwaysShowLabel = !isNarrow,
                                     colors = NavigationBarItemDefaults.colors(
                                         selectedIconColor = tabSelectedColor,
                                         unselectedIconColor = tabUnselectedColor,
@@ -254,39 +251,35 @@ fun AdaptiveMainScreen(
                                 )
                             }
                             
-                            NavigationBarItem(
-                                selected = false,
-                                onClick = { viewModel.setNavBarCollapsed(true) },
-                                icon = {
-                                    Column(
-                                        horizontalAlignment = Alignment.CenterHorizontally,
-                                        verticalArrangement = Arrangement.Center,
-                                        modifier = Modifier.padding(horizontal = if (isNarrow) 2.dp else 6.dp, vertical = 2.dp)
-                                    ) {
+                            if (!isVeryNarrow) {
+                                NavigationBarItem(
+                                    selected = false,
+                                    onClick = { viewModel.setNavBarCollapsed(true) },
+                                    icon = {
                                         Icon(
                                             painter = painterResource(id = R.drawable.ic_tab_collapse),
                                             contentDescription = "收窄",
                                             modifier = Modifier.size(if (isNarrow) 18.dp else 20.dp)
                                         )
-                                        if (!isNarrow) {
-                                            Spacer(modifier = Modifier.height(2.dp))
+                                    },
+                                    label = if (isNarrow) null else {
+                                        {
                                             Text(
                                                 text = "收窄", 
                                                 fontSize = 10.sp,
                                                 maxLines = 1,
-                                                softWrap = false,
-                                                overflow = TextOverflow.Clip
+                                                softWrap = false
                                             )
                                         }
-                                    }
-                                },
-                                label = null,
-                                colors = NavigationBarItemDefaults.colors(
-                                    selectedIconColor = tabSelectedColor,
-                                    unselectedIconColor = tabUnselectedColor,
-                                    indicatorColor = tabIndicatorColor
+                                    },
+                                    alwaysShowLabel = !isNarrow,
+                                    colors = NavigationBarItemDefaults.colors(
+                                        selectedIconColor = tabSelectedColor,
+                                        unselectedIconColor = tabUnselectedColor,
+                                        indicatorColor = tabIndicatorColor
+                                    )
                                 )
-                            )
+                            }
                         }
                     }
                 }
