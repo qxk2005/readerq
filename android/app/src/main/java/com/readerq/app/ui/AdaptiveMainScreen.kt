@@ -669,6 +669,7 @@ fun SettingsPane(
     val openaiBaseUrl by viewModel.openaiBaseUrl.collectAsState()
     val openaiModel by viewModel.openaiModel.collectAsState()
     val openaiMaxTokens by viewModel.openaiMaxTokens.collectAsState()
+    val openaiContextLimit by viewModel.openaiContextLimit.collectAsState()
 
     val ossRegion by viewModel.ossRegion.collectAsState()
     val ossBucket by viewModel.ossBucket.collectAsState()
@@ -715,6 +716,7 @@ fun SettingsPane(
     var openaiBaseUrlInput by remember(openaiBaseUrl) { mutableStateOf(openaiBaseUrl) }
     var openaiModelInput by remember(openaiModel) { mutableStateOf(openaiModel) }
     var openaiMaxTokensInput by remember(openaiMaxTokens) { mutableStateOf(openaiMaxTokens) }
+    var openaiContextLimitInput by remember(openaiContextLimit) { mutableStateOf(openaiContextLimit) }
 
     var ossRegionInput by remember(ossRegion) { mutableStateOf(ossRegion) }
     var ossBucketInput by remember(ossBucket) { mutableStateOf(ossBucket) }
@@ -829,6 +831,8 @@ fun SettingsPane(
                             onModelChange = { openaiModelInput = it },
                             maxTokens = openaiMaxTokensInput,
                             onMaxTokensChange = { openaiMaxTokensInput = it },
+                            contextLimit = openaiContextLimitInput,
+                            onContextLimitChange = { openaiContextLimitInput = it },
                             testLoading = testLoading,
                             testStages = testStages,
                             testResult = testResult,
@@ -956,7 +960,8 @@ fun SettingsPane(
                             openaiApiKeyInput,
                             openaiBaseUrlInput,
                             openaiModelInput,
-                            openaiMaxTokensInput
+                            openaiMaxTokensInput,
+                            openaiContextLimitInput
                         )
                         viewModel.saveOssSettings(
                             ossRegionInput,
@@ -990,6 +995,8 @@ fun TabAPIContent(
     onModelChange: (String) -> Unit,
     maxTokens: Int,
     onMaxTokensChange: (Int) -> Unit,
+    contextLimit: Int,
+    onContextLimitChange: (Int) -> Unit,
     testLoading: Boolean,
     testStages: List<TestStage>?,
     testResult: TestResult?,
@@ -1068,6 +1075,32 @@ fun TabAPIContent(
             singleLine = true,
             modifier = Modifier.fillMaxWidth()
         )
+
+        Column(modifier = Modifier.fillMaxWidth()) {
+            OutlinedTextField(
+                value = if (contextLimit == 0) "" else contextLimit.toString(),
+                onValueChange = { onContextLimitChange(it.toIntOrNull() ?: 32000) },
+                label = { Text("AI 上下文汲取上限 (字符数)") },
+                placeholder = { Text("32000") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                listOf(12000 to "12k", 32000 to "32k (默认)", 64000 to "64k", 128000 to "128k").forEach { (limit, label) ->
+                    OutlinedButton(
+                        onClick = { onContextLimitChange(limit) },
+                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp),
+                        modifier = Modifier.weight(1f).height(32.dp)
+                    ) {
+                        Text(label, fontSize = 10.5.sp)
+                    }
+                }
+            }
+        }
 
         Button(
             onClick = onTestClick,

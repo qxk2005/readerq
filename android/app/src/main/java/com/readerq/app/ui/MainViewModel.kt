@@ -12,6 +12,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -572,6 +573,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _openaiMaxTokens = MutableStateFlow(4096)
     val openaiMaxTokens: StateFlow<Int> = _openaiMaxTokens.asStateFlow()
 
+    private val _openaiContextLimit = MutableStateFlow(32000)
+    val openaiContextLimit: StateFlow<Int> = _openaiContextLimit.asStateFlow()
+
     // OSS settings
     private val _ossRegion = MutableStateFlow("")
     val ossRegion: StateFlow<String> = _ossRegion.asStateFlow()
@@ -906,6 +910,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             _openaiBaseUrl.value = settingDao.getSetting("openai_base_url")?.replace("\"", "") ?: "https://api.openai.com/v1"
             _openaiModel.value = settingDao.getSetting("openai_model")?.replace("\"", "") ?: "gpt-4o-mini"
             _openaiMaxTokens.value = settingDao.getSetting("openai_max_tokens")?.replace("\"", "")?.toIntOrNull() ?: 4096
+            _openaiContextLimit.value = settingDao.getSetting("openai_context_limit")?.replace("\"", "")?.toIntOrNull() ?: 32000
 
             _ossRegion.value = settingDao.getSetting("oss_region")?.replace("\"", "") ?: ""
             _ossBucket.value = settingDao.getSetting("oss_bucket")?.replace("\"", "") ?: ""
@@ -1161,16 +1166,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun saveOpenAiSettings(apiKey: String, baseUrl: String, model: String, maxTokens: Int) {
+    fun saveOpenAiSettings(apiKey: String, baseUrl: String, model: String, maxTokens: Int, contextLimit: Int = 32000) {
         _openaiApiKey.value = apiKey
         _openaiBaseUrl.value = baseUrl
         _openaiModel.value = model
         _openaiMaxTokens.value = maxTokens
+        _openaiContextLimit.value = contextLimit
         viewModelScope.launch(Dispatchers.IO) {
             settingDao.setSetting(SettingEntity("openai_api_key", apiKey))
             settingDao.setSetting(SettingEntity("openai_base_url", baseUrl))
             settingDao.setSetting(SettingEntity("openai_model", model))
             settingDao.setSetting(SettingEntity("openai_max_tokens", maxTokens.toString()))
+            settingDao.setSetting(SettingEntity("openai_context_limit", contextLimit.toString()))
         }
     }
 
@@ -2205,7 +2212,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
                 // Get document context
                 val doc = docDao.getDocumentById(docId)
-                val docText = doc?.html_content?.replace(Regex("<[^>]*>"), "")?.take(6000) ?: ""
+                val contextLimit = _openaiContextLimit.value
+                val docText = doc?.html_content?.replace(Regex("<[^>]*>"), "")?.take(contextLimit) ?: ""
                 val systemPrompt = """
                     你是 ReaderQ 阅读助手（代号 GhostReader）。你的任务是帮助用户理解和分析他们正在阅读的文档。请用简体中文回答。
                     当前文档标题: ${doc?.title ?: "未知"}
@@ -3045,6 +3053,51 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 client.syncDocumentTagsV2(url, tags)
             } catch (e: Exception) {
                 e.printStackTrace()
+            }
+        }
+    }
+
+    // Append AI generated text into document note
+    fun appendNoteToDocument(docId: String, contentToAppend: String, onSuccess: () -> Unit, onError: (String) -> Unit) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val doc = docDao.getDocumentById(docId) ?: return@launch
+                val existingNote = doc.notes ?: ""
+                val newNote = if (existingNote.isBlank()) {
+                    contentToAppend
+                } else {
+                    "${existingNote.trim()}\n\n---\n\n${contentToAppend}"
+                }
+                
+                val currentToken = _token.value ?: "offline"
+                val existingTags = doc.tags_json?.let {
+                    try {
+                        kotlinx.serialization.json.Json.decodeFromString<Map<String, Int>>(it).keys.toList()
+                    } catch (e: Exception) { emptyList() }
+                } ?: emptyList()
+
+                val updated = doc.copy(notes = newNote)
+                docDao.insertDocument(updated)
+                if (_selectedDoc.value?.id == docId) {
+                    _selectedDoc.value = updated
+                }
+
+                if (currentToken != "offline") {
+                    try {
+                        val client = ReadwiseClient(currentToken)
+                        client.updateDocument(doc.id, notes = newNote, tags = existingTags)
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
+                }
+                withContext(Dispatchers.Main) {
+                    onSuccess()
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                withContext(Dispatchers.Main) {
+                    onError(e.message ?: "保存笔记失败")
+                }
             }
         }
     }

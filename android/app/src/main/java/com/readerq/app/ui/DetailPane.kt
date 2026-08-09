@@ -7,6 +7,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -197,6 +198,17 @@ fun AiAssistantContent(
     var messageInput by remember { mutableStateOf("") }
     var isSending by remember { mutableStateOf(false) }
     var sendError by remember { mutableStateOf<String?>(null) }
+    var noteStatusMsg by remember { mutableStateOf<String?>(null) }
+
+    val quickCommands = remember {
+        listOf(
+            "📝 总结本文" to "请总结这篇文档的核心内容，包括主要观点和结构框架。",
+            "💡 核心要点" to "请列出这篇文档的 3 至 5 条核心要点与关键结论。",
+            "❓ 衍生思考" to "请基于这篇文档提出 3 个深层探讨与反思的问题。",
+            "🔍 解释概念" to "请提取这篇文档中的重要专业术语与概念，并进行通俗易懂的解释。",
+            "🌐 翻译正文" to "请将这篇文档翻译成自然流畅的简体中文。"
+        )
+    }
 
     Column(
         modifier = Modifier
@@ -209,7 +221,10 @@ fun AiAssistantContent(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text("GhostReader AI 助手", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = textColor)
-            TextButton(onClick = { viewModel.clearChatHistory(docId) }) {
+            TextButton(onClick = { 
+                viewModel.clearChatHistory(docId)
+                noteStatusMsg = null
+            }) {
                 Text("清空对话", color = Color.Gray, fontSize = 12.sp)
             }
         }
@@ -220,12 +235,12 @@ fun AiAssistantContent(
         Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
             if (messages.isEmpty()) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text("向 GhostReader 提问关于这篇文档的任何问题...", color = Color.Gray, fontSize = 13.sp)
+                    Text("向 GhostReader 提问或点击下方快捷指令...", color = Color.Gray, fontSize = 13.sp)
                 }
             } else {
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     items(messages) { msg ->
                         val isUser = msg.role == "user"
@@ -237,14 +252,43 @@ fun AiAssistantContent(
                                 colors = CardDefaults.cardColors(
                                     containerColor = if (isUser) MaterialTheme.colorScheme.primary else (if (theme == "dark") Color(0xFF242424) else Color(0x0A000000))
                                 ),
-                                shape = RoundedCornerShape(12.dp)
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier.widthIn(max = 340.dp)
                             ) {
                                 Column(modifier = Modifier.padding(12.dp)) {
-                                    Text(
-                                        text = msg.content,
-                                        color = if (isUser) MaterialTheme.colorScheme.onPrimary else textColor,
-                                        fontSize = 13.sp
-                                    )
+                                    if (isUser) {
+                                        Text(
+                                            text = msg.content,
+                                            color = MaterialTheme.colorScheme.onPrimary,
+                                            fontSize = 13.sp
+                                        )
+                                    } else {
+                                        MarkdownText(
+                                            markdown = msg.content,
+                                            color = textColor,
+                                            theme = theme
+                                        )
+                                        Spacer(modifier = Modifier.height(6.dp))
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.End
+                                        ) {
+                                            TextButton(
+                                                onClick = {
+                                                    viewModel.appendNoteToDocument(
+                                                        docId = docId,
+                                                        contentToAppend = msg.content,
+                                                        onSuccess = { noteStatusMsg = "✅ 已追加到文章笔记！" },
+                                                        onError = { sendError = it }
+                                                    )
+                                                },
+                                                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
+                                                modifier = Modifier.height(28.dp)
+                                            ) {
+                                                Text("📌 存至笔记", fontSize = 11.sp, color = MaterialTheme.colorScheme.primary)
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -270,11 +314,48 @@ fun AiAssistantContent(
             }
         }
 
-        Spacer(modifier = Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(6.dp))
+
+        if (noteStatusMsg != null) {
+            Text(noteStatusMsg!!, color = MaterialTheme.colorScheme.primary, fontSize = 12.sp)
+            Spacer(modifier = Modifier.height(4.dp))
+        }
 
         if (sendError != null) {
             Text(sendError!!, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
             Spacer(modifier = Modifier.height(4.dp))
+        }
+
+        // Quick Command Chips
+        LazyRow(
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
+        ) {
+            items(quickCommands) { (label, prompt) ->
+                OutlinedButton(
+                    onClick = {
+                        if (!isSending) {
+                            isSending = true
+                            sendError = null
+                            noteStatusMsg = null
+                            viewModel.sendChatMessage(
+                                docId = docId,
+                                text = prompt,
+                                onResponse = { isSending = false },
+                                onError = {
+                                    sendError = it
+                                    isSending = false
+                                }
+                            )
+                        }
+                    },
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
+                    modifier = Modifier.height(32.dp),
+                    enabled = !isSending
+                ) {
+                    Text(label, fontSize = 11.5.sp)
+                }
+            }
         }
 
         // Input bar
@@ -295,6 +376,7 @@ fun AiAssistantContent(
                     if (messageInput.isNotBlank()) {
                         isSending = true
                         sendError = null
+                        noteStatusMsg = null
                         val query = messageInput
                         messageInput = ""
                         viewModel.sendChatMessage(
