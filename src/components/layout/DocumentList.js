@@ -380,6 +380,20 @@ export default function DocumentList({ width }) {
             <span style={{ marginLeft: '12px', cursor: 'pointer', color: 'var(--color-text-secondary)', fontSize: '12px' }} onClick={() => setIsSelectionMode(true)}>
               多选
             </span>
+            {(currentView === 'feed' || currentCategory === 'rss' || currentCategory === 'feed') && (
+              <span
+                style={{
+                  marginLeft: '10px',
+                  cursor: 'pointer',
+                  color: 'var(--color-accent)',
+                  fontWeight: '600',
+                  fontSize: '12px'
+                }}
+                onClick={() => setSelectedDoc(null)}
+              >
+                🤖 AI 推荐
+              </span>
+            )}
             <span style={{ marginLeft: 'auto' }}>
               排序：
               <select
@@ -419,7 +433,7 @@ export default function DocumentList({ width }) {
                 doc={doc}
                 index={idx}
                 isActive={selectedDoc?.id === doc.id}
-                onClick={() => setSelectedDoc(doc)}
+                onClick={() => setSelectedDoc(selectedDoc?.id === doc.id ? null : doc)}
                 isSelectionMode={isSelectionMode}
                 isSelected={selectedIds.has(doc.id)}
                 onToggleSelect={(id) => {

@@ -10,7 +10,8 @@ import GhostReader from '@/components/ai/GhostReader';
 import HighlightEditor from '@/components/HighlightEditor';
 import TagInput from '@/components/TagInput';
 import VideoReadingPane from '@/components/video/VideoReadingPane';
-import { BookOpen, Link, Info, Edit3, Bot, Loader2, ClipboardList, AlertTriangle, RefreshCw, CheckCircle2, XCircle, ImageIcon, Upload, Trash2, RotateCcw, Inbox, Clock, Archive, Volume2, Share2, Play, Pause, SkipBack, SkipForward, X, Copy, Check, ArrowUpDown, Target } from 'lucide-react';
+import { BookOpen, Link, Info, Edit3, Bot, Loader2, ClipboardList, AlertTriangle, RefreshCw, CheckCircle2, XCircle, ImageIcon, Upload, Trash2, RotateCcw, Inbox, Clock, Archive, Volume2, Share2, Play, Pause, SkipBack, SkipForward, X, Copy, Check, ArrowUpDown, Target, ArrowLeft } from 'lucide-react';
+import RssAiRecommendView from '@/components/home/RssAiRecommendView';
 
 const scrollToElement = (container, element) => {
   if (!container || !element) return;
@@ -56,6 +57,7 @@ export default function ReadingPane() {
     batchMoveDocuments,
     batchDeleteDocuments,
     currentView,
+    currentCategory,
     tags: allTags 
   } = useApp();
   
@@ -1130,7 +1132,13 @@ export default function ReadingPane() {
     };
   }, [selection?.rect]);
 
+  const isRssActive = currentView === 'feed' || currentCategory === 'rss' || currentCategory === 'feed';
+
   if (!selectedDoc) {
+    if (isRssActive) {
+      return <RssAiRecommendView />;
+    }
+
     return (
       <div className="reading-panel">
         <div className="empty-state">
@@ -1350,6 +1358,25 @@ export default function ReadingPane() {
             {/* 阅读头部 */}
             <div className="reading-header">
         <div className="reading-header-left">
+          {(isRssActive || selectedDoc.category === 'rss' || selectedDoc.location === 'feed' || selectedDoc.site_name) && (
+            <button
+              className="btn btn-ghost btn-sm"
+              onClick={() => setSelectedDoc(null)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px',
+                fontSize: 'var(--text-xs)',
+                fontWeight: '600',
+                color: 'var(--color-accent)',
+                background: 'rgba(99, 102, 241, 0.1)',
+                borderRadius: '6px',
+                padding: '4px 8px'
+              }}
+            >
+              <ArrowLeft size={14} /> 返回 AI 推荐探索
+            </button>
+          )}
           {selectedDoc.source_url && (
             <a
               href={selectedDoc.source_url}
