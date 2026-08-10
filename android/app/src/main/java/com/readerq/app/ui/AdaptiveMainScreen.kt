@@ -50,6 +50,7 @@ fun AdaptiveMainScreen(
     val token by viewModel.token.collectAsState()
     val currentTab by viewModel.currentTab.collectAsState()
     val isNavBarCollapsed by viewModel.isNavBarCollapsed.collectAsState()
+    val documents by viewModel.documents.collectAsState()
 
     val theme by viewModel.theme.collectAsState()
     val detailPaneType by viewModel.detailPaneType.collectAsState()
@@ -216,7 +217,7 @@ fun AdaptiveMainScreen(
                         NavigationBar(
                             containerColor = MaterialTheme.colorScheme.surface,
                             tonalElevation = 0.dp,
-                            modifier = Modifier.height(if (isNarrow) 52.dp else 64.dp)
+                            modifier = Modifier.height(if (isNarrow) 64.dp else 80.dp)
                         ) {
                             val tabs = listOf(
                                 Triple("home", "首页", R.drawable.ic_tab_library),
@@ -244,7 +245,7 @@ fun AdaptiveMainScreen(
                                         {
                                             Text(
                                                 text = label, 
-                                                fontSize = 10.sp, 
+                                                fontSize = 11.sp, 
                                                 fontWeight = if (currentTab == tabId) FontWeight.Bold else FontWeight.Normal,
                                                 maxLines = 1,
                                                 softWrap = false
@@ -274,7 +275,7 @@ fun AdaptiveMainScreen(
                                     {
                                         Text(
                                             text = "收窄", 
-                                            fontSize = 10.sp,
+                                            fontSize = 11.sp,
                                             maxLines = 1,
                                             softWrap = false
                                         )
@@ -487,21 +488,14 @@ fun AdaptiveMainScreen(
 
                                         // Main Reading Area
                                         Box(modifier = Modifier.weight(1f)) {
-                                            if (selectedDoc != null && currentTab == "library") {
+                                            if (selectedDoc != null && (currentTab == "library" || currentTab == "feed")) {
                                                 readingPane(Modifier.fillMaxSize(), null)
                                             } else {
-                                                Box(
-                                                    modifier = Modifier
-                                                        .fillMaxSize()
-                                                        .background(MaterialTheme.colorScheme.background),
-                                                    contentAlignment = Alignment.Center
-                                                ) {
-                                                    Text(
-                                                        text = "选择一篇文章开始阅读",
-                                                        color = Color.Gray,
-                                                        style = MaterialTheme.typography.bodyLarge
-                                                    )
-                                                }
+                                                RightCoverGridPane(
+                                                    documents = documents,
+                                                    theme = theme,
+                                                    onDocumentClick = { doc -> viewModel.selectDocument(doc) }
+                                                )
                                             }
                                         }
 

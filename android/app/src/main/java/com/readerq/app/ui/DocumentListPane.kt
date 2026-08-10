@@ -5,6 +5,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Refresh
@@ -370,8 +371,21 @@ fun DocumentListPane(
             )
         }
 
+        val listState = rememberLazyListState()
+
+        LaunchedEffect(selectedDoc?.id, documents) {
+            val selectedId = selectedDoc?.id
+            if (selectedId != null) {
+                val index = documents.indexOfFirst { it.id == selectedId }
+                if (index >= 0) {
+                    listState.scrollToItem(index, 0)
+                }
+            }
+        }
+
         // List
         LazyColumn(
+            state = listState,
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f)

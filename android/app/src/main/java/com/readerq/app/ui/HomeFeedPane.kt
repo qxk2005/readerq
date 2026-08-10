@@ -66,6 +66,7 @@ fun HomeFeedPane(
     val prioritizeInbox by viewModel.homeFeedPrioritizeInbox.collectAsState()
     val filterTags by viewModel.homeFeedFilterTags.collectAsState()
     val visibleLimit by viewModel.homeFeedLimit.collectAsState()
+    val isSyncing by viewModel.isSyncing.collectAsState()
 
     val cardBg = when (theme) {
         "light" -> Color(0xFFFFFFFF)
@@ -180,6 +181,17 @@ fun HomeFeedPane(
                                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
                                 )
                             }
+                        }
+
+                        IconButton(
+                            onClick = { viewModel.startSync() },
+                            enabled = !isSyncing
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Refresh,
+                                contentDescription = "刷新瀑布流",
+                                tint = if (isSyncing) Color.Gray else MaterialTheme.colorScheme.primary
+                            )
                         }
                     }
 

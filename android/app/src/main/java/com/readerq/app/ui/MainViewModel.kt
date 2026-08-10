@@ -55,7 +55,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _currentView = MutableStateFlow("new") // inbox
     val currentView: StateFlow<String> = _currentView.asStateFlow()
 
-    private val _currentTab = MutableStateFlow("library") // library, feed, notebook, settings
+    private val _currentTab = MutableStateFlow("home") // home, library, feed, notebook, settings
     val currentTab: StateFlow<String> = _currentTab.asStateFlow()
 
     private val _selectedDoc = MutableStateFlow<DocumentEntity?>(null)
@@ -860,7 +860,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             _homeFeedShowCover.value = settingDao.getSetting("ui_home_feed_show_cover")?.replace("\"", "")?.toBooleanStrictOrNull() ?: true
             
             _selectedDoc.value = null
-            _currentTab.value = "review"
+            _currentTab.value = "home"
             _homeFeedTab.value = settingDao.getSetting("ui_home_feed_tab")?.replace("\"", "") ?: "all"
             _homeFeedPrioritizeInbox.value = settingDao.getSetting("ui_home_feed_prioritize_inbox")?.replace("\"", "")?.toBooleanStrictOrNull() ?: true
             val storedTags = settingDao.getSetting("ui_home_feed_filter_tags")?.replace("\"", "")
