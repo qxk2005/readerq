@@ -24,6 +24,7 @@ import kotlinx.serialization.json.put
 import kotlinx.serialization.json.add
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.encodeToString
 import com.readerq.app.api.HighlightImage
 import io.ktor.client.HttpClient
@@ -581,6 +582,21 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _openaiContextLimit = MutableStateFlow(32000)
     val openaiContextLimit: StateFlow<Int> = _openaiContextLimit.asStateFlow()
+
+    // AI Topic Recommendation States
+    private val _aiRecommendations = MutableStateFlow<List<AiRecommendation>>(emptyList())
+    val aiRecommendations: StateFlow<List<AiRecommendation>> = _aiRecommendations.asStateFlow()
+
+    private val _isAiRecommending = MutableStateFlow(false)
+    val isAiRecommending: StateFlow<Boolean> = _isAiRecommending.asStateFlow()
+
+    private val _aiRecommendError = MutableStateFlow<String?>(null)
+    val aiRecommendError: StateFlow<String?> = _aiRecommendError.asStateFlow()
+
+    private val _currentAiTopic = MutableStateFlow("")
+    val currentAiTopic: StateFlow<String> = _currentAiTopic.asStateFlow()
+
+    private val _recommendedHistoryDocIds = mutableSetOf<String>()
 
     // OSS settings
     private val _ossRegion = MutableStateFlow("")
@@ -1189,6 +1205,129 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             settingDao.setSetting(SettingEntity("openai_model", model))
             settingDao.setSetting(SettingEntity("openai_max_tokens", maxTokens.toString()))
             settingDao.setSetting(SettingEntity("openai_context_limit", contextLimit.toString()))
+        }
+    }
+
+    fun recommendArticlesByTopic(topic: String, excludeHistory: Boolean = true) {
+        if (topic.isBlank()) return
+        viewModelScope.launch(Dispatchers.IO) {
+            _isAiRecommending.value = true
+            _aiRecommendError.value = null
+            _currentAiTopic.value = topic
+            try {
+                val apiKey = _openaiApiKey.value.trim()
+                val baseUrl = _openaiBaseUrl.value.ifBlank { "https://api.openai.com/v1" }
+                val model = _openaiModel.value.ifBlank { "gpt-4o-mini" }
+
+                if (apiKey.isBlank()) {
+                    throw Exception("请先在【设置】中配置 OpenAI API Key 即可使用 AI 智能主题推荐功能。")
+                }
+
+                val cleanTopic = topic.replace(Regex("[\\p{So}\\p{Cn}]"), "").trim()
+                val keywords = cleanTopic.lowercase().split(Regex("[\\s,，/\\-_]+")).filter { it.isNotBlank() }
+
+                val allDocs = docDao.getAllDocumentsSync()
+                val rssCandidates = allDocs.filter { doc ->
+                    !doc.location.equals("archive", ignoreCase = true) &&
+                    !doc.location.equals("trash", ignoreCase = true) &&
+                    (doc.category?.lowercase()?.contains("rss") == true || doc.site_name != null || doc.location == "feed" || doc.location == "new")
+                }
+
+                // Stage 1: Fast Keyword & Recency Pre-filtering (from thousands down to top 40)
+                val scoredCandidates = rssCandidates.map { doc ->
+                    var score = 0
+                    val titleLower = doc.title.lowercase()
+                    val summaryLower = (doc.summary ?: "").lowercase()
+                    val sourceLower = (doc.site_name ?: doc.category ?: "").lowercase()
+
+                    for (kw in keywords) {
+                        if (titleLower.contains(kw)) score += 5
+                        if (summaryLower.contains(kw)) score += 2
+                        if (sourceLower.contains(kw)) score += 3
+                    }
+                    Pair(doc, score)
+                }
+
+                val matched = scoredCandidates.filter { it.second > 0 }.sortedByDescending { it.second }
+                val unmatched = scoredCandidates.filter { it.second == 0 }.map { it.first }
+
+                var finalStage1Candidates = if (matched.isNotEmpty()) {
+                    (matched.map { it.first } + unmatched).distinctBy { it.id }
+                } else {
+                    rssCandidates
+                }
+
+                if (excludeHistory && _recommendedHistoryDocIds.isNotEmpty()) {
+                    val fresh = finalStage1Candidates.filter { it.id !in _recommendedHistoryDocIds }
+                    if (fresh.size >= 5) {
+                        finalStage1Candidates = fresh
+                    }
+                }
+
+                if (finalStage1Candidates.isEmpty()) {
+                    throw Exception("当前 RSS 订阅库中暂无符合条件的未读文章。")
+                }
+
+                // Stage 1 Top 40 sent to Stage 2 LLM
+                val promptCandidates = finalStage1Candidates.take(40)
+
+                val systemPrompt = """
+                    你是一个高效专业的 AI 知识推荐助手。
+                    请根据用户给出的【主题关键字】，从以下候选未读文章列表中挑选 5 到 10 篇最符合该主题的高质量文章。
+                    你必须且只能输出合法的 JSON 格式，严禁包含任何 markdown 块或多余解释。
+                    JSON 格式要求如下：
+                    {
+                      "recommendations": [
+                        {
+                          "doc_id": "文章的对应ID",
+                          "reason": "推荐理由（15-40字，精准说明为什么推荐本文）"
+                        }
+                      ]
+                    }
+                """.trimIndent()
+
+                val candidateText = promptCandidates.mapIndexed { idx, doc ->
+                    val categoryName = doc.site_name ?: doc.category ?: "文章"
+                    val snippet = doc.summary?.take(120)?.replace("\n", " ") ?: "无摘要"
+                    "${idx + 1}. ID: ${doc.id}\n   标题: ${doc.title}\n   分类/来源: $categoryName\n   摘要: $snippet"
+                }.joinToString("\n")
+
+                val userMessage = "【主题关键字】：$topic\n\n候选文章列表：\n$candidateText"
+
+                val openAiClient = com.readerq.app.api.OpenAiClient(apiKey, baseUrl, model)
+                val rawResponse = openAiClient.getCompletion(
+                    messages = listOf(com.readerq.app.api.OpenAiMessage("user", userMessage)),
+                    systemPrompt = systemPrompt
+                )
+
+                val cleanJson = rawResponse.replace("```json", "").replace("```", "").trim()
+                val jsonElement = Json.parseToJsonElement(cleanJson)
+                val recArray = jsonElement.jsonObject["recommendations"]?.jsonArray ?: throw Exception("AI 未能返回推荐列表")
+
+                val results = mutableListOf<AiRecommendation>()
+                val candidatesMap = allDocs.associateBy { it.id }
+
+                for (element in recArray) {
+                    val obj = element.jsonObject
+                    val docId = obj["doc_id"]?.jsonPrimitive?.content ?: continue
+                    val reason = obj["reason"]?.jsonPrimitive?.content ?: "智能精选推荐"
+                    val doc = candidatesMap[docId]
+                    if (doc != null) {
+                        results.add(AiRecommendation(doc = doc, reason = reason))
+                        _recommendedHistoryDocIds.add(docId)
+                    }
+                }
+
+                if (results.isEmpty()) {
+                    throw Exception("AI 未能在当前未读文章中找到匹配《$topic》的内容")
+                }
+
+                _aiRecommendations.value = results
+            } catch (e: Exception) {
+                _aiRecommendError.value = e.message ?: "生成推荐失败"
+            } finally {
+                _isAiRecommending.value = false
+            }
         }
     }
 
@@ -3216,4 +3355,9 @@ data class GitHubAsset(
     val name: String,
     val size: Long,
     val browser_download_url: String
+)
+
+data class AiRecommendation(
+    val doc: DocumentEntity,
+    val reason: String
 )

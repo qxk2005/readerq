@@ -237,44 +237,68 @@ fun DocumentListPane(
             }
 
             Surface(
-                color = MaterialTheme.colorScheme.surfaceVariant,
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                    .padding(horizontal = 12.dp, vertical = 4.dp),
                 shape = RoundedCornerShape(8.dp)
             ) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                        .padding(horizontal = 10.dp, vertical = 4.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.weight(1f, fill = false)
+                    ) {
                         Box(
                             modifier = Modifier
-                                .size(6.dp)
-                                .clip(RoundedCornerShape(3.dp))
+                                .size(5.dp)
+                                .clip(RoundedCornerShape(2.5.dp))
                                 .background(MaterialTheme.colorScheme.primary)
                         )
-                        Spacer(modifier = Modifier.width(8.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
                         Text(
                             text = filterText ?: "",
-                            fontSize = 12.sp,
+                            fontSize = 11.5.sp,
                             fontWeight = FontWeight.Medium,
-                            color = MaterialTheme.colorScheme.onSurface
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
-                    Text(
-                        text = "清除 ✕",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(4.dp))
-                            .clickable { viewModel.clearFilters() }
-                            .padding(horizontal = 6.dp, vertical = 2.dp)
-                    )
+
+                    Spacer(modifier = Modifier.width(6.dp))
+
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (selectedCategory?.lowercase()?.contains("rss") == true || selectedCategory == "RSS 订阅" || selectedCategory == "rss") {
+                            Text(
+                                text = "🤖 AI 推荐",
+                                fontSize = 10.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(4.dp))
+                                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f))
+                                    .clickable { viewModel.selectDocument(null) }
+                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                        }
+                        Text(
+                            text = "清除 ✕",
+                            fontSize = 10.5.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f),
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(4.dp))
+                                .clickable { viewModel.clearFilters() }
+                                .padding(horizontal = 5.dp, vertical = 2.dp)
+                        )
+                    }
                 }
             }
         }
@@ -483,7 +507,13 @@ fun DocumentListPane(
                             doc = doc,
                             isSelected = isSelected,
                             theme = theme,
-                            onClick = { viewModel.selectDocument(doc) }
+                            onClick = {
+                                if (isSelected) {
+                                    viewModel.selectDocument(null)
+                                } else {
+                                    viewModel.selectDocument(doc)
+                                }
+                            }
                         )
                     }
                 )

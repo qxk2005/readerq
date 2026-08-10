@@ -13,6 +13,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
@@ -51,6 +52,7 @@ fun AdaptiveMainScreen(
     val currentTab by viewModel.currentTab.collectAsState()
     val isNavBarCollapsed by viewModel.isNavBarCollapsed.collectAsState()
     val documents by viewModel.documents.collectAsState()
+    val selectedCategory by viewModel.selectedCategory.collectAsState()
 
     val theme by viewModel.theme.collectAsState()
     val detailPaneType by viewModel.detailPaneType.collectAsState()
@@ -487,9 +489,56 @@ fun AdaptiveMainScreen(
                                         }
 
                                         // Main Reading Area
+                                        val isRssActive = currentTab == "feed" ||
+                                                selectedCategory?.lowercase()?.contains("rss") == true ||
+                                                selectedCategory == "RSS 订阅" ||
+                                                selectedCategory == "rss" ||
+                                                selectedDoc?.category?.lowercase()?.contains("rss") == true ||
+                                                selectedDoc?.site_name != null
+
                                         Box(modifier = Modifier.weight(1f)) {
                                             if (selectedDoc != null && (currentTab == "library" || currentTab == "feed")) {
-                                                readingPane(Modifier.fillMaxSize(), null)
+                                                Box(modifier = Modifier.fillMaxSize()) {
+                                                    readingPane(Modifier.fillMaxSize(), null)
+
+                                                    // 若属于 RSS 订阅相关文章/分类，浮置“← 返回 AI 推荐”按钮，方便随时返回查询结果界面
+                                                    if (isRssActive) {
+                                                        Surface(
+                                                            shape = RoundedCornerShape(20.dp),
+                                                            color = MaterialTheme.colorScheme.primaryContainer,
+                                                            tonalElevation = 6.dp,
+                                                            shadowElevation = 6.dp,
+                                                            modifier = Modifier
+                                                                .padding(top = 10.dp, start = 14.dp)
+                                                                .align(Alignment.TopStart)
+                                                                .clickable { viewModel.selectDocument(null) }
+                                                        ) {
+                                                            Row(
+                                                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                                                verticalAlignment = Alignment.CenterVertically
+                                                            ) {
+                                                                Icon(
+                                                                    imageVector = Icons.Default.ArrowBack,
+                                                                    contentDescription = "返回 AI 推荐",
+                                                                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                                                    modifier = Modifier.size(16.dp)
+                                                                )
+                                                                Spacer(modifier = Modifier.width(6.dp))
+                                                                Text(
+                                                                    text = "返回 AI 推荐",
+                                                                    fontSize = 12.sp,
+                                                                    fontWeight = FontWeight.Bold,
+                                                                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                                                                )
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            } else if (isRssActive) {
+                                                AiTopicRecommendPane(
+                                                    viewModel = viewModel,
+                                                    onDocumentClick = { doc -> viewModel.selectDocument(doc) }
+                                                )
                                             } else {
                                                 RightCoverGridPane(
                                                     documents = documents,
