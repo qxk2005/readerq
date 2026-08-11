@@ -319,8 +319,8 @@ export function getCachedDocuments({ location, category, tag, tags, search, prio
     query += ' AND location = @location';
     params.location = location;
   } else {
-    // 如果没有指定 location（如“全部文档”或分类视图），需排除垃圾箱中的文档
-    query += " AND (location IS NULL OR location != 'trash')";
+    // 如果没有指定 location（如“全部文档”或分类视图），需排除垃圾箱和已归档的文档
+    query += " AND (location IS NULL OR (location != 'trash' AND location != 'archive'))";
   }
   if (category) {
     query += ' AND category = @category';

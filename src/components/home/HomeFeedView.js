@@ -101,12 +101,13 @@ export default function HomeFeedView() {
       const data = await res.json();
 
       if (data.documents) {
+        const cleanDocs = data.documents.filter(d => d.location !== 'archive' && d.location !== 'trash');
         if (isReset) {
-          setDocuments(data.documents);
+          setDocuments(cleanDocs);
         } else {
           setDocuments(prev => {
             const existingIds = new Set(prev.map(d => d.id));
-            const newDocs = data.documents.filter(d => !existingIds.has(d.id));
+            const newDocs = cleanDocs.filter(d => !existingIds.has(d.id));
             return [...prev, ...newDocs];
           });
         }

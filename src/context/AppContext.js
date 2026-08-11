@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useState, useCallback, useEffect } from 'react';
+import { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
 
 const AppContext = createContext(null);
 
@@ -20,6 +20,7 @@ export function AppProvider({ children }) {
   const [syncCounts, setSyncCounts] = useState({ local: 0, remote: 0, lastSync: null });
   const [syncError, setSyncError] = useState(null);
   const [rightPanelTab, setRightPanelTab] = useState(null); // 'info', 'notebook', 'chat', null
+  const lastNavSyncTimeRef = useRef(0);
   
   // 兼容现有的 showAiPanel 逻辑
   const showAiPanel = rightPanelTab === 'chat';
@@ -349,7 +350,16 @@ export function AppProvider({ children }) {
     setCurrentCategory(null);
     setCurrentTag(null);
     setSelectedDoc(null);
-  }, []);
+
+    // 当点击“首页”(home)、“全部”(all)、“收件箱”(new) 时，带 15s 防抖在后台静默发起增量同步刷新
+    if (['home', 'all', 'new'].includes(view)) {
+      const now = Date.now();
+      if (now - lastNavSyncTimeRef.current > 15000) {
+        lastNavSyncTimeRef.current = now;
+        syncData({ full: false });
+      }
+    }
+  }, [syncData]);
 
   // 切换类别
   const switchCategory = useCallback((category) => {
