@@ -120,6 +120,39 @@ export default function ReadingPane() {
     return [];
   }, []);
 
+  // 将高亮中的段落文本与 Markdown 图片解析为在正文中穿插顺序一致的块
+  const parseHighlightContentBlocks = useCallback((text) => {
+    if (!text) return [];
+    const mdImageRegex = /!\[([^\]]*)\]\(([^)]+)\)/g;
+    const blocks = [];
+    let lastIndex = 0;
+    let match;
+
+    while ((match = mdImageRegex.exec(text)) !== null) {
+      const textBefore = text.slice(lastIndex, match.index)
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
+      if (textBefore) {
+        blocks.push({ type: 'text', content: textBefore });
+      }
+      blocks.push({
+        type: 'image',
+        alt: match[1] || '图片',
+        url: match[2]
+      });
+      lastIndex = mdImageRegex.lastIndex;
+    }
+
+    const remainingText = text.slice(lastIndex)
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+    if (remainingText) {
+      blocks.push({ type: 'text', content: remainingText });
+    }
+
+    return blocks;
+  }, []);
+
   // 阅读进度
   const [readingProgress, setReadingProgress] = useState(0);
   const maxProgressRef = useRef(0);
@@ -1972,143 +2005,129 @@ export default function ReadingPane() {
                     });
                     return sortedHighlights;
                   })().map(hl => {
-                    // 检测高亮文本中的 Markdown 图片
-                    const mdImageRegex = /!\[([^\]]*)\]\(([^)]+)\)/g;
-                    const mdImages = [];
-                    let match;
-                    while ((match = mdImageRegex.exec(hl.text)) !== null) {
-                      mdImages.push({ alt: match[1], url: match[2] });
-                    }
-                    // 去掉 Markdown 图片语法后的纯文本显示，并压缩清理多余的连续空行
-                    const textWithoutImages = hl.text
-                      .replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '')
-                      .replace(/\n{3,}/g, '\n\n')
-                      .trim();
                     const uploadStatus = imageUploadStatus[hl.id];
                     const isEditing = sidebarEditingId === hl.id;
 
                     return (
-                    <div 
-                      key={hl.id} 
-                      id={`sidebar-hl-${hl.id}`}
-                      className="highlight-card"
-                      style={{ 
-                        padding: 'var(--space-3)', 
-                        backgroundColor: 'var(--color-bg-primary)', 
-                        borderRadius: 'var(--radius-md)', 
-                        border: isEditing ? '1px solid var(--color-accent)' : '1px solid var(--color-border)',
-                        boxShadow: isEditing ? '0 0 0 1px var(--color-accent)' : 'var(--shadow-sm)',
-                        cursor: isEditing ? 'default' : 'pointer',
-                        transition: 'border-color 0.15s, box-shadow 0.15s'
-                      }}
-                      onClick={() => {
-                        // 滚动到正文中的高亮位置
-                        const performScroll = () => {
-                          const mark = articleRef.current?.querySelector(`mark[data-highlight-id="${hl.id}"]`);
-                          const scrollContainer = selectedDoc?.category === 'video'
-                            ? document.querySelector('.subtitle-content')
-                            : document.getElementById('article-scroll-container');
-                          if (mark && scrollContainer) {
-                            scrollToElement(scrollContainer, mark);
+                      <div 
+                        key={hl.id} 
+                        id={`sidebar-hl-${hl.id}`}
+                        className="highlight-card"
+                        style={{ 
+                          padding: 'var(--space-3)', 
+                          backgroundColor: 'var(--color-bg-primary)', 
+                          borderRadius: 'var(--radius-md)', 
+                          border: isEditing ? '1px solid var(--color-accent)' : '1px solid var(--color-border)',
+                          boxShadow: isEditing ? '0 0 0 1px var(--color-accent)' : 'var(--shadow-sm)',
+                          cursor: isEditing ? 'default' : 'pointer',
+                          transition: 'border-color 0.15s, box-shadow 0.15s'
+                        }}
+                        onClick={() => {
+                          // 滚动到正文中的高亮位置
+                          const performScroll = () => {
+                            const mark = articleRef.current?.querySelector(`mark[data-highlight-id="${hl.id}"]`);
+                            const scrollContainer = selectedDoc?.category === 'video'
+                              ? document.querySelector('.subtitle-content')
+                              : document.getElementById('article-scroll-container');
+                            if (mark && scrollContainer) {
+                              scrollToElement(scrollContainer, mark);
+                            }
+                          };
+
+                          if (selectedDoc?.category === 'video' && videoTabMode !== 'blog') {
+                            setVideoTabMode('blog');
+                            setTimeout(performScroll, 200);
+                          } else {
+                            performScroll();
                           }
-                        };
-
-                        if (selectedDoc?.category === 'video' && videoTabMode !== 'blog') {
-                          setVideoTabMode('blog');
-                          // 延迟 200ms 执行以确保 DOM 和高亮渲染完成
-                          setTimeout(performScroll, 200);
-                        } else {
-                          performScroll();
-                        }
-                        
-                        if (isEditing) return;
-                        
-                        // 展开侧边栏编辑
-                        setSidebarEditingId(hl.id);
-                        setSidebarEditNote(hl.note || '');
-                        setSidebarEditTags(extractTagNames(hl?.tags));
-                      }}
-                    >
-                      {/* 高亮文本 */}
-                      {textWithoutImages && (
-                        <div style={{ 
-                          borderLeft: `4px solid var(--highlight-${hl.color || 'yellow'}-accent, var(--highlight-${hl.color || 'yellow'}))`, 
-                          paddingLeft: 'var(--space-2)',
-                          fontSize: '13px',
-                          lineHeight: '1.5',
-                          color: 'var(--color-text-primary)',
-                          whiteSpace: 'pre-line'
-                        }}>
-                          {textWithoutImages}
-                        </div>
-                      )}
-
-                      {/* 图床图片预览 */}
-                      {mdImages.length > 0 && (
-                        <div style={{ 
-                          marginTop: textWithoutImages ? 'var(--space-2)' : '0',
-                          display: 'flex', 
-                          flexDirection: 'column', 
-                          gap: 'var(--space-2)' 
-                        }}>
-                          <div style={{ 
-                            fontSize: '11px', 
-                            color: 'var(--color-text-tertiary)', 
-                            display: 'flex', 
-                            alignItems: 'center', 
-                            gap: '4px',
-                            fontWeight: '600'
-                          }}>
-                            <ImageIcon size={12} /> 图床图片 ({mdImages.length})
-                          </div>
-                          {mdImages.map((img, idx) => (
-                            <div key={idx} style={{ 
-                              borderRadius: 'var(--radius-sm)', 
-                              overflow: 'hidden',
-                              border: '1px solid var(--color-border-light)',
-                              background: 'var(--color-bg-tertiary)',
-                            }}>
-                              <img 
-                                src={img.url} 
-                                alt={img.alt}
-                                style={{ 
-                                  width: '100%', 
-                                  maxHeight: '160px', 
-                                  objectFit: 'cover',
-                                  display: 'block'
-                                }}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  window.open(img.url, '_blank');
-                                }}
-                                onError={(e) => {
-                                  e.target.style.display = 'none';
-                                  e.target.nextSibling && (e.target.nextSibling.style.display = 'flex');
-                                }}
-                              />
-                              <div style={{ 
-                                display: 'none', 
-                                padding: 'var(--space-2)',
-                                color: 'var(--color-danger)',
-                                fontSize: '11px',
-                                alignItems: 'center',
-                                gap: '4px'
-                              }}>
-                                <XCircle size={12} /> 图片加载失败
-                              </div>
-                              <div style={{ 
-                                padding: '4px 8px', 
-                                fontSize: '10px', 
-                                color: 'var(--color-text-tertiary)',
-                                wordBreak: 'break-all',
-                                borderTop: '1px solid var(--color-border-light)'
-                              }}>
-                                {img.alt || '图片'}
-                              </div>
+                          
+                          if (isEditing) return;
+                          
+                          setSidebarEditingId(hl.id);
+                          setSidebarEditNote(hl.note || '');
+                          setSidebarEditTags(extractTagNames(hl?.tags));
+                        }}
+                      >
+                        {/* 按正文实际出现位置穿插渲染文字段落与图片 */}
+                        {(() => {
+                          const contentBlocks = parseHighlightContentBlocks(hl.text);
+                          return (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+                              {contentBlocks.map((block, bIdx) => {
+                                if (block.type === 'text') {
+                                  return (
+                                    <div 
+                                      key={bIdx}
+                                      style={{ 
+                                        borderLeft: `4px solid var(--highlight-${hl.color || 'yellow'}-accent, var(--highlight-${hl.color || 'yellow'}))`, 
+                                        paddingLeft: 'var(--space-2)',
+                                        fontSize: '13px',
+                                        lineHeight: '1.5',
+                                        color: 'var(--color-text-primary)',
+                                        whiteSpace: 'pre-line'
+                                      }}
+                                    >
+                                      {block.content}
+                                    </div>
+                                  );
+                                } else if (block.type === 'image') {
+                                  return (
+                                    <div 
+                                      key={bIdx}
+                                      style={{ 
+                                        borderRadius: 'var(--radius-sm)', 
+                                        overflow: 'hidden',
+                                        border: '1px solid var(--color-border-light)',
+                                        background: 'var(--color-bg-tertiary)',
+                                        margin: '2px 0'
+                                      }}
+                                    >
+                                      <img 
+                                        src={block.url} 
+                                        alt={block.alt}
+                                        style={{ 
+                                          width: '100%', 
+                                          maxHeight: '180px', 
+                                          objectFit: 'cover',
+                                          display: 'block',
+                                          cursor: 'pointer'
+                                        }}
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          window.open(block.url, '_blank');
+                                        }}
+                                        onError={(e) => {
+                                          e.target.style.display = 'none';
+                                          e.target.nextSibling && (e.target.nextSibling.style.display = 'flex');
+                                        }}
+                                      />
+                                      <div style={{ 
+                                        display: 'none', 
+                                        padding: 'var(--space-2)',
+                                        color: 'var(--color-danger)',
+                                        fontSize: '11px',
+                                        alignItems: 'center',
+                                        gap: '4px'
+                                      }}>
+                                        <XCircle size={12} /> 图片加载失败
+                                      </div>
+                                      <div style={{ 
+                                        padding: '4px 8px', 
+                                        fontSize: '10px', 
+                                        color: 'var(--color-text-tertiary)',
+                                        wordBreak: 'break-all',
+                                        borderTop: '1px solid var(--color-border-light)'
+                                      }}>
+                                        {block.alt || '图片'}
+                                      </div>
+                                    </div>
+                                  );
+                                }
+                                return null;
+                              })}
                             </div>
-                          ))}
-                        </div>
-                      )}
+                          );
+                        })()}
 
                       {/* 图片上传状态指示 */}
                       {uploadStatus && (
