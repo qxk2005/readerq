@@ -272,7 +272,7 @@ export default function HomeFeedView() {
       }}
     >
       {/* 顶部 Header & 双 Tab 控件 */}
-      <div style={{
+      <div className="home-feed-header" style={{
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',

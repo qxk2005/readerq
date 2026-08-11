@@ -222,7 +222,7 @@ export default function HomePage() {
             {selectedDoc && (
               <div style={{ flex: 1, minWidth: 0, height: '100%', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
                 {/* 首页直达正文阅读顶部返回栏 */}
-                <div style={{
+                <div className="home-reading-header" style={{
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'space-between',

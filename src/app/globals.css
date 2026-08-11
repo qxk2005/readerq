@@ -325,7 +325,9 @@ textarea:focus {
 }
 
 .daily-review-header,
-.zen-read-header {
+.zen-read-header,
+.home-feed-header,
+.home-reading-header {
   -webkit-app-region: drag;
 }
 
@@ -334,14 +336,27 @@ textarea:focus {
 .daily-review-header a,
 .zen-read-header button,
 .zen-read-header input,
-.zen-read-header a {
+.zen-read-header a,
+.home-feed-header button,
+.home-feed-header input,
+.home-feed-header a,
+.home-feed-header select,
+.home-feed-header .inbox-hover-toggle-btn,
+.home-reading-header button,
+.home-reading-header input,
+.home-reading-header a {
   -webkit-app-region: no-drag;
 }
 
 .platform-darwin .daily-review-header,
-.platform-darwin .zen-read-header {
+.platform-darwin .zen-read-header,
+.platform-darwin .home-reading-header {
   padding-top: 34px !important;
   min-height: 74px !important;
+}
+
+.platform-darwin .home-feed-view {
+  padding-top: 34px !important;
 }
 
 
