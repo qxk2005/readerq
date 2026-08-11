@@ -10,7 +10,8 @@ permissions:
   contents: write
 
 jobs:
-  build:
+  build-desktop:
+    name: Build Desktop (${{ matrix.platform }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -51,38 +52,17 @@ jobs:
         shell: bash
         run: ls -lhR dist/ || true
 
-      - name: Upload Artifacts
+      - name: Upload Desktop Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ReaderQ-${{ matrix.platform }}
+          name: desktop-artifacts-${{ matrix.platform }}
           path: |
-            dist/*.dmg
-            dist/*.exe
-            dist/*.zip
-      - name: Generate Release Notes
-        if: startsWith(github.ref, 'refs/tags/')
-        shell: bash
-        run: |
-          PREVIOUS_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
-          if [ -z "$PREVIOUS_TAG" ]; then
-            git log --pretty=format:"* %s (%h)" > CHANGELOG.md
-          else
-            git log --pretty=format:"* %s (%h)" $PREVIOUS_TAG..HEAD > CHANGELOG.md
-          fi
-          echo "" >> CHANGELOG.md
-          echo "**Full Changelog**: https://github.com/${{ github.repository }}/compare/$PREVIOUS_TAG...${{ github.ref_name }}" >> CHANGELOG.md
-
-      - name: Release
-        uses: softprops/action-gh-release@v2
-        if: startsWith(github.ref, 'refs/tags/')
-        with:
-          body_path: CHANGELOG.md
-          files: |
             dist/*.dmg
             dist/*.exe
             dist/*.zip
 
   build-android:
+    name: Build Android
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
@@ -104,22 +84,51 @@ jobs:
           chmod +x android/gradlew
           cd android && ./gradlew assembleRelease bundleRelease
 
-      - name: Upload Android APK Artifact
+      - name: Upload Android Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ReaderQ-Android-APK
-          path: android/app/build/outputs/apk/release/app-release.apk
-
-      - name: Upload Android AAB Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: ReaderQ-Android-AAB
-          path: android/app/build/outputs/bundle/release/app-release.aab
-
-      - name: Release Android
-        uses: softprops/action-gh-release@v2
-        if: startsWith(github.ref, 'refs/tags/')
-        with:
-          files: |
+          name: android-artifacts
+          path: |
             android/app/build/outputs/apk/release/app-release.apk
             android/app/build/outputs/bundle/release/app-release.aab
+
+  publish-release:
+    name: Publish GitHub Release
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: [build-desktop, build-android]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download All Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: ./release-assets
+
+      - name: Prepare Release Artifacts Directory
+        run: |
+          mkdir -p release-files
+          find ./release-assets -type f \( -name "*.dmg" -o -name "*.exe" -o -name "*.zip" -o -name "*.apk" -o -name "*.aab" \) -exec cp {} release-files/ \;
+          ls -lh release-files/
+
+      - name: Generate Release Notes
+        shell: bash
+        run: |
+          PREVIOUS_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+          if [ -z "$PREVIOUS_TAG" ]; then
+            git log --pretty=format:"* %s (%h)" > CHANGELOG.md
+          else
+            git log --pretty=format:"* %s (%h)" $PREVIOUS_TAG..HEAD > CHANGELOG.md
+          fi
+          echo "" >> CHANGELOG.md
+          echo "**Full Changelog**: https://github.com/${{ github.repository }}/compare/$PREVIOUS_TAG...${{ github.ref_name }}" >> CHANGELOG.md
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          body_path: CHANGELOG.md
+          fail_on_unmatched_files: false
+          files: release-files/*
