@@ -26,7 +26,8 @@ import {
   Plus,
   X,
   FileText,
-  Save
+  Save,
+  Trash2
 } from 'lucide-react';
 
 /**
@@ -374,6 +375,37 @@ export default function DailyReviewView({ onBackToArticles }) {
         tags: newTags,
       }),
     }).catch(err => console.warn('快捷删除标签异常:', err));
+  };
+
+  // 彻底删除高亮逻辑
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const handleDeleteHighlight = async () => {
+    if (!currentHl) return;
+    setIsDeleting(true);
+    const targetHlId = currentHl.id;
+
+    // 1. 0ms 乐观本地秒切，从回顾卡片列表中移除该高亮
+    const newHls = highlights.filter(h => h.id !== targetHlId);
+    setHighlights(newHls);
+    setShowDeleteConfirm(false);
+    setIsDeleting(false);
+
+    if (newHls.length === 0 || currentIndex >= newHls.length) {
+      if (newHls.length > 0) {
+        setCurrentIndex(newHls.length - 1);
+      } else {
+        setShowCelebration(true);
+      }
+    }
+
+    // 2. 后台发送 API 静默执行 SQLite 删除与 Readwise 远程同步
+    try {
+      await fetch(`/api/highlights/${targetHlId}`, { method: 'DELETE' });
+    } catch (err) {
+      console.error('删除高亮异常:', err);
+    }
   };
 
   // 提交回顾动作 (乐观 UI 0 毫秒秒切，后台异步静默同步，彻底卡顿)
@@ -1012,13 +1044,14 @@ export default function DailyReviewView({ onBackToArticles }) {
                       </>
                     )}
 
-                    {/* 底部操作控制条 (仅常态非编辑模式下显示，彻底防误触) */}
+                    {/* 底部操作控制条 (居中对齐，按钮精简为: 上一条 | 收藏 | 删除 | 已复习) */}
                     {!isEditing && (
                       <div style={{
                         display: 'flex',
                         alignItems: 'center',
-                        justify: 'center',
-                        gap: '16px',
+                        justifyContent: 'center',
+                        width: '100%',
+                        gap: '12px',
                         paddingTop: '24px',
                         marginTop: '8px',
                         borderTop: '1px solid var(--color-border-light)'
@@ -1029,13 +1062,13 @@ export default function DailyReviewView({ onBackToArticles }) {
                           onClick={() => setCurrentIndex(prev => Math.max(0, prev - 1))}
                           style={{ 
                             height: '42px', 
-                            padding: '0 20px', 
+                            padding: '0 18px', 
                             borderRadius: '12px', 
                             fontSize: '13px', 
                             fontWeight: '600',
                             display: 'flex', 
                             alignItems: 'center', 
-                            gap: '8px' 
+                            gap: '6px' 
                           }}
                         >
                           <ChevronLeft size={16} /> 上一条
@@ -1046,17 +1079,38 @@ export default function DailyReviewView({ onBackToArticles }) {
                           onClick={() => handleAction('favorite')}
                           style={{
                             height: '42px',
-                            padding: '0 20px',
+                            padding: '0 18px',
                             borderRadius: '12px',
                             fontSize: '13px',
                             fontWeight: '600',
                             display: 'flex',
                             alignItems: 'center',
-                            gap: '8px',
+                            gap: '6px',
                             color: actionHistory[currentHl.id] === 'favorite' ? '#ef4444' : 'inherit'
                           }}
                         >
-                          <Heart size={16} fill={actionHistory[currentHl.id] === 'favorite' ? '#ef4444' : 'none'} /> 收藏 (F)
+                          <Heart size={16} fill={actionHistory[currentHl.id] === 'favorite' ? '#ef4444' : 'none'} /> 收藏
+                        </button>
+
+                        <button
+                          className="btn btn-secondary"
+                          onClick={() => setShowDeleteConfirm(true)}
+                          title="彻底删除此条高亮，今后不再出现在每日回顾推荐中"
+                          style={{
+                            height: '42px',
+                            padding: '0 18px',
+                            borderRadius: '12px',
+                            fontSize: '13px',
+                            fontWeight: '600',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            color: '#ff3b30',
+                            borderColor: 'rgba(255, 59, 48, 0.25)',
+                            backgroundColor: 'rgba(255, 59, 48, 0.06)'
+                          }}
+                        >
+                          <Trash2 size={16} /> 删除
                         </button>
 
                         <button
@@ -1064,25 +1118,53 @@ export default function DailyReviewView({ onBackToArticles }) {
                           onClick={() => handleAction('reviewed')}
                           style={{
                             height: '42px',
-                            padding: '0 24px',
+                            padding: '0 22px',
                             borderRadius: '12px',
                             fontSize: '13px',
                             fontWeight: '600',
                             display: 'flex',
                             alignItems: 'center',
-                            gap: '8px',
+                            gap: '6px',
                             backgroundColor: currentIndex === highlights.length - 1 ? '#34c759' : '#007aff',
                             color: '#ffffff',
                             border: 'none',
                             boxShadow: '0 4px 14px rgba(0, 122, 255, 0.3)'
                           }}
                         >
-                          {currentIndex === highlights.length - 1 ? '🎉 完成每日回顾' : '已复习 / 下一条 (Space)'} <ChevronRight size={16} />
+                          {currentIndex === highlights.length - 1 ? '🎉 完成每日回顾' : '已复习'} <ChevronRight size={16} />
                         </button>
                       </div>
                     )}
                   </div>
                 )}
+              </div>
+            )}
+
+            {showDeleteConfirm && (
+              <div style={{
+                position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+                backgroundColor: 'rgba(0, 0, 0, 0.55)', zIndex: 9999,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                backdropFilter: 'blur(4px)'
+              }}>
+                <div style={{
+                  backgroundColor: 'var(--color-bg-card, #1e1e1e)',
+                  padding: '24px', borderRadius: '16px', maxWidth: '420px', width: '90%',
+                  boxShadow: '0 12px 36px rgba(0, 0, 0, 0.4)', border: '1px solid var(--color-border)'
+                }}>
+                  <h3 style={{ margin: '0 0 8px 0', fontSize: '16px', fontWeight: 'bold', color: 'var(--color-text-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Trash2 size={18} style={{ color: '#ff3b30' }} /> 确认删除此条高亮？
+                  </h3>
+                  <p style={{ margin: '0 0 16px 0', fontSize: '13px', color: 'var(--color-text-secondary)', lineHeight: '1.5' }}>
+                    删除后，该条划线高亮将从数据库中删除，不再出现在每日回顾推荐中，并自动同步至云端。
+                  </p>
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+                    <button className="btn btn-ghost btn-sm" onClick={() => setShowDeleteConfirm(false)}>取消</button>
+                    <button className="btn btn-danger btn-sm" onClick={handleDeleteHighlight} disabled={isDeleting} style={{ backgroundColor: '#ff3b30', color: '#fff', padding: '6px 16px', borderRadius: '8px', fontWeight: '600' }}>
+                      {isDeleting ? '正在删除...' : '确定删除'}
+                    </button>
+                  </div>
+                </div>
               </div>
             )}
           </>

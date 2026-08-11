@@ -3168,6 +3168,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun deleteReviewHighlight(hlId: String) {
+        val list = _reviewHighlights.value
+        val targetHl = list.find { it.id == hlId || it.readwise_highlight_id == hlId }
+        val newLists = list.filter { it.id != hlId && (it.readwise_highlight_id.isNullOrBlank() || it.readwise_highlight_id != hlId) }
+        _reviewHighlights.value = newLists
+
+        val currentIdx = _reviewCurrentIndex.value
+        if (newLists.isNotEmpty() && currentIdx >= newLists.size) {
+            _reviewCurrentIndex.value = newLists.size - 1
+        }
+
+        deleteHighlight(targetHl?.id ?: hlId)
+    }
+
     // Highlighting - Delete
     fun deleteHighlight(hlId: String) {
         val currentToken = _token.value ?: return

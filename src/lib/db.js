@@ -808,6 +808,38 @@ export function deleteHighlight(id) {
 }
 
 /**
+ * 格式化并清洗标签对象或数组，统一输出为 Key-Value Map 格式且过滤掉 '0' 杂质
+ */
+export function normalizeTagsObject(input) {
+  if (!input) return {};
+  let parsed = input;
+  if (typeof input === 'string') {
+    try {
+      parsed = JSON.parse(input);
+    } catch {
+      return {};
+    }
+  }
+  const result = {};
+  if (Array.isArray(parsed)) {
+    parsed.forEach(t => {
+      const tagStr = String(t).trim().replace(/^#/, '');
+      if (tagStr && tagStr !== '0') {
+        result[tagStr] = 1;
+      }
+    });
+  } else if (parsed && typeof parsed === 'object') {
+    Object.keys(parsed).forEach(k => {
+      const tagStr = String(k).trim().replace(/^#/, '');
+      if (tagStr && tagStr !== '0') {
+        result[tagStr] = 1;
+      }
+    });
+  }
+  return result;
+}
+
+/**
  * 获取文档的高亮
  */
 export function getDocumentHighlights(documentId) {
@@ -815,7 +847,7 @@ export function getDocumentHighlights(documentId) {
   const highlights = db.prepare('SELECT * FROM highlights WHERE document_id = ? ORDER BY location_start').all(documentId);
   return highlights.map(h => ({
     ...h,
-    tags: JSON.parse(h.tags_json || '{}')
+    tags: normalizeTagsObject(h.tags_json)
   }));
 }
 
@@ -1190,16 +1222,69 @@ export function getFallbackDailyReviewHighlights(limit = 5) {
  * 更新单条划线高亮的 Markdown 正文、笔记与标签
  */
 export function updateHighlightAndTags(highlightId, text, note, tags = []) {
+  if (!highlightId) return false;
   const db = getDatabase();
-  const tagsJson = JSON.stringify(Array.isArray(tags) ? tags : []);
+  const tagsObj = normalizeTagsObject(tags);
+  const tagsJson = JSON.stringify(tagsObj);
   const now = new Date().toISOString();
 
-  // 更新 highlights 表
-  const result = db.prepare(`
-    UPDATE highlights
-    SET text = ?, note = ?, tags_json = ?, updated_at = ?
-    WHERE id = ? OR id = ?
-  `).run(text, note, tagsJson, now, highlightId, parseInt(highlightId, 10) || 0);
+  const strId = String(highlightId);
+  const cleanId = strId.replace(/^readwise-v2-/, '');
+  const v2Id = 'readwise-v2-' + cleanId;
+
+  // 1. 查找已存在的记录以提取 document_id 和已存 text
+  const existing = db.prepare(`
+    SELECT id, document_id, text, readwise_highlight_id 
+    FROM highlights 
+    WHERE id = ? OR id = ? OR id = ? OR readwise_highlight_id = ? OR readwise_highlight_id = ?
+  `).get(strId, v2Id, cleanId, strId, cleanId);
+
+  const docId = existing?.document_id || null;
+  const sampleText = text || existing?.text || '';
+
+  // 2. 更新匹配的高亮记录（支持 id、readwise_highlight_id 以及同文档同内容的前缀比对）
+  let result;
+  if (docId && sampleText && sampleText.trim().length > 10) {
+    const textSnippet = sampleText.trim().slice(0, 30);
+    result = db.prepare(`
+      UPDATE highlights
+      SET text = CASE WHEN length(?) > 0 THEN ? ELSE text END,
+          note = ?,
+          tags_json = ?
+      WHERE id = ? OR id = ? OR id = ? OR readwise_highlight_id = ? OR readwise_highlight_id = ?
+         OR (document_id = ? AND text LIKE ? || '%')
+    `).run(
+      sampleText, sampleText,
+      note,
+      tagsJson,
+      strId, v2Id, cleanId, strId, cleanId,
+      docId, textSnippet
+    );
+  } else {
+    result = db.prepare(`
+      UPDATE highlights
+      SET text = CASE WHEN length(?) > 0 THEN ? ELSE text END,
+          note = ?,
+          tags_json = ?
+      WHERE id = ? OR id = ? OR id = ? OR readwise_highlight_id = ? OR readwise_highlight_id = ?
+    `).run(
+      sampleText, sampleText,
+      note,
+      tagsJson,
+      strId, v2Id, cleanId, strId, cleanId
+    );
+  }
+
+  // 3. 自动同步保存新标签到全局 tags 表
+  if (Array.isArray(tags) && tags.length > 0) {
+    const tagStmt = db.prepare('INSERT OR IGNORE INTO tags (key, name) VALUES (?, ?)');
+    for (const t of tags) {
+      const tagStr = String(t).trim().replace(/^#/, '');
+      if (tagStr) {
+        tagStmt.run(tagStr.toLowerCase(), tagStr);
+      }
+    }
+  }
 
   return result.changes > 0;
 }

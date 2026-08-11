@@ -108,6 +108,18 @@ export default function ReadingPane() {
     return false;
   }, [selectedDoc]);
 
+  // 安全提取划线高亮标签名称列表 (兼容数组/对象/缺失，过滤掉杂质 '0')
+  const extractTagNames = useCallback((tagsInput) => {
+    if (!tagsInput) return [];
+    if (Array.isArray(tagsInput)) {
+      return tagsInput.map(t => String(t).trim().replace(/^#/, '')).filter(t => t && t !== '0');
+    }
+    if (typeof tagsInput === 'object') {
+      return Object.keys(tagsInput).map(t => String(t).trim().replace(/^#/, '')).filter(t => t && t !== '0');
+    }
+    return [];
+  }, []);
+
   // 阅读进度
   const [readingProgress, setReadingProgress] = useState(0);
   const maxProgressRef = useRef(0);
@@ -534,7 +546,7 @@ export default function ReadingPane() {
       }
       setSidebarEditingId(editingHighlight.id);
       setSidebarEditNote(editingHighlight.note || '');
-      setSidebarEditTags(editingHighlight.tags ? Object.keys(editingHighlight.tags) : []);
+      setSidebarEditTags(extractTagNames(editingHighlight?.tags));
       
       const scrollTimer = setTimeout(() => {
         const card = document.getElementById(`sidebar-hl-${editingHighlight.id}`);
@@ -2014,7 +2026,7 @@ export default function ReadingPane() {
                         // 展开侧边栏编辑
                         setSidebarEditingId(hl.id);
                         setSidebarEditNote(hl.note || '');
-                        setSidebarEditTags(hl.tags ? Object.keys(hl.tags) : []);
+                        setSidebarEditTags(extractTagNames(hl?.tags));
                       }}
                     >
                       {/* 高亮文本 */}
@@ -2305,9 +2317,9 @@ export default function ReadingPane() {
                               <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><Edit3 size={12} /> {hl.note}</span>
                             </div>
                           )}
-                          {hl.tags && Object.keys(hl.tags).length > 0 && (
+                          {extractTagNames(hl.tags).length > 0 && (
                             <div style={{ marginTop: 'var(--space-2)', display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
-                              {Object.keys(hl.tags).map(t => (
+                              {extractTagNames(hl.tags).map(t => (
                                 <span key={t} style={{ fontSize: '11px', color: 'var(--color-text-tertiary)', background: 'var(--color-bg-tertiary)', padding: '2px 6px', borderRadius: '4px' }}>
                                   #{t}
                                 </span>

@@ -71,7 +71,7 @@ interface HighlightDao {
     @Query("SELECT * FROM highlights WHERE document_id = :documentId ORDER BY location ASC")
     fun getHighlightsForDocument(documentId: String): Flow<List<HighlightEntity>>
 
-    @Query("SELECT * FROM highlights WHERE id = :id LIMIT 1")
+    @Query("SELECT * FROM highlights WHERE id = :id OR readwise_highlight_id = :id OR id = 'readwise-v2-' || :id OR replace(id, 'readwise-v2-', '') = :id LIMIT 1")
     suspend fun getHighlightById(id: String): HighlightEntity?
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
