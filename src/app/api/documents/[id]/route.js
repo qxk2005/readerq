@@ -1,12 +1,13 @@
 import { NextResponse } from 'next/server';
 import { getServerReadwiseClient } from '@/lib/readwise';
 import { getCachedDocument, upsertDocument } from '@/lib/db';
+import { fetchYouTubeMetadata } from '@/lib/videoSubtitleFetcher';
 
 export async function PATCH(request, { params }) {
   try {
     const { id } = await params;
     const body = await request.json().catch(() => ({}));
-    const { tags, notes, reading_progress } = body;
+    const { tags, notes, reading_progress, title, author, image_url, source_url, url } = body;
 
     const updates = {};
     if (tags !== undefined) {
@@ -17,26 +18,41 @@ export async function PATCH(request, { params }) {
     }
     
     if (notes !== undefined) {
-      // Readwise Reader V3 update API uses notes
       updates.notes = notes;
     }
 
-    // reading_progress 仅本地持久化：Readwise V3 API 的 update 端点不支持此字段写入
-    // 同步拉取时 db.js 的 upsertDocument 会取本地与远端的 MAX 值，避免进度被覆盖
     const hasReadingProgress = reading_progress !== undefined && typeof reading_progress === 'number';
+    const hasMetaUpdates = title !== undefined || author !== undefined || image_url !== undefined || source_url !== undefined || url !== undefined;
 
-    if (Object.keys(updates).length === 0 && !hasReadingProgress) {
+    if (Object.keys(updates).length === 0 && !hasReadingProgress && !hasMetaUpdates) {
       return NextResponse.json({ error: '没有需要更新的字段' }, { status: 400 });
     }
 
     // 获取本地文档信息
-    const doc = getCachedDocument(id);
+    let doc = getCachedDocument(id) || { id, category: 'video', location: 'new' };
 
-    // 如果有需要同步到 Readwise 的字段（tags、notes 等），则发起远程更新
+    // 如果提供了 video URL 且标题/封面为空，自动发起 oEmbed 元数据补全
+    const targetUrl = source_url || url || doc.source_url || doc.url;
+    let fetchedMeta = null;
+    if (targetUrl && (targetUrl.includes('youtube.com') || targetUrl.includes('youtu.be'))) {
+      fetchedMeta = await fetchYouTubeMetadata(targetUrl);
+    }
+
+    // 组合新字段
+    const finalTitle = title || fetchedMeta?.title || doc.title;
+    const finalAuthor = author || fetchedMeta?.author || doc.author;
+    const finalImageUrl = image_url || fetchedMeta?.thumbnail || doc.image_url;
+    const finalSourceUrl = source_url || url || doc.source_url || doc.url;
+
+    // 如果有需要同步到 Readwise 的字段（tags、notes 等），且 Readwise 已配置，尝试发起远程更新
     if (Object.keys(updates).length > 0) {
-      const client = getServerReadwiseClient();
-      const sourceUrl = doc?.source_url || doc?.url;
-      await client.updateDocument(id, updates, sourceUrl);
+      try {
+        const client = getServerReadwiseClient();
+        const readwiseUrl = finalSourceUrl || doc?.source_url || doc?.url;
+        await client.updateDocument(id, updates, readwiseUrl);
+      } catch (e) {
+        console.warn('Readwise 远程更新提示:', e.message);
+      }
     }
 
     // 更新本地数据库
@@ -48,16 +64,24 @@ export async function PATCH(request, { params }) {
         });
         doc.tags = tagsObj;
       }
-      if (notes !== undefined) {
-        doc.notes = notes;
+      if (notes !== undefined) doc.notes = notes;
+      if (hasReadingProgress) doc.reading_progress = Math.max(doc.reading_progress || 0, reading_progress);
+      if (finalTitle) doc.title = finalTitle;
+      if (finalAuthor) doc.author = finalAuthor;
+      if (finalImageUrl) doc.image_url = finalImageUrl;
+      if (finalSourceUrl) {
+        doc.source_url = finalSourceUrl;
+        doc.url = finalSourceUrl;
       }
-      if (hasReadingProgress) {
-        doc.reading_progress = Math.max(doc.reading_progress || 0, reading_progress);
+      if (finalSourceUrl && (finalSourceUrl.includes('youtube.com') || finalSourceUrl.includes('youtu.be') || finalSourceUrl.includes('bilibili.com'))) {
+        doc.category = 'video';
       }
+
       upsertDocument(doc);
     }
 
-    return NextResponse.json({ success: true, doc });
+    const updatedDoc = getCachedDocument(id);
+    return NextResponse.json({ success: true, doc: updatedDoc });
   } catch (error) {
     console.error('更新文档元数据失败:', error);
     return NextResponse.json(

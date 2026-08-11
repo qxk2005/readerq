@@ -186,6 +186,22 @@ function initSchema(db) {
   } catch (e) {
     console.error('Migration error (subtitles columns):', e);
   }
+
+  // 自动修复：将包含字幕记录或视频 URL 但 category 缺失/错误的文档归类为 'video'
+  try {
+    db.prepare(`
+      UPDATE documents 
+      SET category = 'video' 
+      WHERE (category IS NULL OR category != 'video') 
+        AND (
+          id IN (SELECT document_id FROM subtitles)
+          OR source_url LIKE '%youtube.com/%' OR source_url LIKE '%youtu.be/%' OR source_url LIKE '%bilibili.com/%'
+          OR url LIKE '%youtube.com/%' OR url LIKE '%youtu.be/%' OR url LIKE '%bilibili.com/%'
+        )
+    `).run();
+  } catch (e) {
+    console.error('Migration error (video category auto-repair):', e);
+  }
 }
 
 /**
@@ -303,50 +319,59 @@ export function upsertDocuments(docs) {
 export function getCachedDocuments({ location, category, tag, tags, search, prioritizeInbox = false, limit = 100, offset = 0 } = {}) {
   const db = getDatabase();
   let query = `
-    SELECT *, 
+    SELECT d.*, 
     COALESCE(
-      (SELECT MAX(created_at) FROM highlights WHERE document_id = documents.id),
-      saved_at,
-      created_at,
-      updated_at
-    ) AS last_highlighted_at 
-    FROM documents 
-    WHERE parent_id IS NULL
+      (SELECT MAX(created_at) FROM highlights WHERE document_id = d.id),
+      d.saved_at,
+      d.created_at,
+      d.updated_at
+    ) AS last_highlighted_at,
+    CASE 
+      WHEN s.document_id IS NOT NULL OR d.source_url LIKE '%youtube.com/%' OR d.source_url LIKE '%youtu.be/%' OR d.source_url LIKE '%bilibili.com/%' THEN 'video'
+      ELSE d.category 
+    END AS category
+    FROM documents d
+    LEFT JOIN subtitles s ON d.id = s.document_id
+    WHERE d.parent_id IS NULL
   `;
   const params = {};
 
   if (location) {
-    query += ' AND location = @location';
+    query += ' AND d.location = @location';
     params.location = location;
   } else {
     // 如果没有指定 location（如“全部文档”或分类视图），需排除垃圾箱和已归档的文档
-    query += " AND (location IS NULL OR (location != 'trash' AND location != 'archive'))";
+    query += " AND (d.location IS NULL OR (d.location != 'trash' AND d.location != 'archive'))";
   }
   if (category) {
-    query += ' AND category = @category';
-    params.category = category;
+    if (category === 'video') {
+      query += " AND (d.category = 'video' OR s.document_id IS NOT NULL OR d.source_url LIKE '%youtube.com/%' OR d.source_url LIKE '%youtu.be/%' OR d.source_url LIKE '%bilibili.com/%')";
+    } else {
+      query += ' AND d.category = @category';
+      params.category = category;
+    }
   }
   if (tags) {
     const tagList = Array.isArray(tags) ? tags : String(tags).split(',').map(t => t.trim()).filter(Boolean);
     if (tagList.length > 0) {
       const tagConditions = tagList.map((t, idx) => {
         params[`tag_${idx}`] = `%"${t}"%`;
-        return `tags_json LIKE @tag_${idx}`;
+        return `d.tags_json LIKE @tag_${idx}`;
       });
       query += ` AND (${tagConditions.join(' OR ')})`;
     }
   } else if (tag) {
-    query += ' AND tags_json LIKE @tag';
+    query += ' AND d.tags_json LIKE @tag';
     params.tag = `%"${tag}"%`;
   }
   if (search) {
-    query += ' AND (title LIKE @search OR author LIKE @search OR summary LIKE @search)';
+    query += ' AND (d.title LIKE @search OR d.author LIKE @search OR d.summary LIKE @search)';
     params.search = `%${search}%`;
   }
 
   // 排序规则：若开启优先收件箱，优先按 location = 'new' 置顶，随后以最后标记/更新时间（last_highlighted_at）降序排列
   if (prioritizeInbox) {
-    query += " ORDER BY (CASE WHEN location = 'new' THEN 0 ELSE 1 END) ASC, last_highlighted_at DESC LIMIT @limit OFFSET @offset";
+    query += " ORDER BY (CASE WHEN d.location = 'new' THEN 0 ELSE 1 END) ASC, last_highlighted_at DESC LIMIT @limit OFFSET @offset";
   } else {
     query += ' ORDER BY last_highlighted_at DESC LIMIT @limit OFFSET @offset';
   }
@@ -368,6 +393,17 @@ export function getCachedDocument(id) {
   const doc = db.prepare('SELECT * FROM documents WHERE id = ?').get(id);
   if (doc) {
     doc.tags = JSON.parse(doc.tags_json || '{}');
+    if (!doc.category || doc.category !== 'video') {
+      const url = doc.source_url || doc.url || '';
+      const isVideoUrl = url.includes('youtube.com') || url.includes('youtu.be') || url.includes('bilibili.com');
+      const hasSub = db.prepare('SELECT document_id FROM subtitles WHERE document_id = ?').get(id);
+      if (hasSub || isVideoUrl) {
+        doc.category = 'video';
+        try {
+          db.prepare("UPDATE documents SET category = 'video' WHERE id = ?").run(id);
+        } catch { /* ignore */ }
+      }
+    }
   }
   return doc;
 }
@@ -916,17 +952,19 @@ export function saveSubtitle(documentId, srtContent, bilingualJson = null, updat
   const now = new Date().toISOString();
   const effectiveUpdatedAt = updatedAt || now;
 
-  // 💡 确保 documents 表中存在该记录以满足外键约束 (FOREIGN KEY document_id REFERENCES documents(id))
+  // 💡 确保 documents 表中存在该记录以满足外键约束 (FOREIGN KEY document_id REFERENCES documents(id))，并确保 category 设置为 'video'
   try {
-    const docExists = db.prepare('SELECT id FROM documents WHERE id = ?').get(documentId);
+    const docExists = db.prepare('SELECT id, category FROM documents WHERE id = ?').get(documentId);
     if (!docExists) {
       db.prepare(`
-        INSERT INTO documents (id, title, location, created_at, updated_at)
-        VALUES (?, '视频文章', 'new', datetime('now'), datetime('now'))
+        INSERT INTO documents (id, title, category, location, created_at, updated_at)
+        VALUES (?, '视频文章', 'video', 'new', datetime('now'), datetime('now'))
       `).run(documentId);
+    } else if (!docExists.category || docExists.category !== 'video') {
+      db.prepare("UPDATE documents SET category = 'video' WHERE id = ?").run(documentId);
     }
   } catch (e) {
-    console.warn('[saveSubtitle] 自动补齐 documents 记录失败:', e.message);
+    console.warn('[saveSubtitle] 自动补齐/修正 documents 记录失败:', e.message);
   }
 
   try {

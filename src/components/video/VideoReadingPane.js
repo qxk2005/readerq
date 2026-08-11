@@ -34,6 +34,36 @@ export default function VideoReadingPane({ selectedDoc, articleRef, updateDocume
   const [uploadedSubtitles, setUploadedSubtitles] = useState(null); // null = 未加载, [] = 无, [...] = 有
   const [isLoadingSubtitles, setIsLoadingSubtitles] = useState(false);
 
+  // 绑定/修改视频 URL 与抓取元数据 State
+  const [showUrlModal, setShowUrlModal] = useState(false);
+  const [urlInput, setUrlInput] = useState('');
+  const [isBindingUrl, setIsBindingUrl] = useState(false);
+
+  const handleBindUrlSubmit = async (e) => {
+    e.preventDefault();
+    if (!urlInput || !urlInput.trim() || !selectedDoc?.id) return;
+    setIsBindingUrl(true);
+    try {
+      const res = await fetch(`/api/documents/${selectedDoc.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ source_url: urlInput.trim() }),
+      });
+      const data = await res.json();
+      if (data.success && data.doc) {
+        if (updateDocumentLocally) updateDocumentLocally(selectedDoc.id, data.doc);
+        setShowUrlModal(false);
+        setUrlInput('');
+      } else {
+        alert(data.error || '绑定视频失败');
+      }
+    } catch (err) {
+      alert('更新视频链接失败: ' + err.message);
+    } finally {
+      setIsBindingUrl(false);
+    }
+  };
+
   // 提取 YouTube 视频 ID
   const videoId = useMemo(() => {
     return extractYouTubeId(selectedDoc?.source_url || selectedDoc?.url);
@@ -578,6 +608,23 @@ export default function VideoReadingPane({ selectedDoc, articleRef, updateDocume
             </button>
           )}
           
+          <button
+            className="btn btn-ghost btn-sm"
+            onClick={() => { setUrlInput(selectedDoc?.source_url || selectedDoc?.url || ''); setShowUrlModal(true); }}
+            title={selectedDoc?.source_url ? "修改视频链接并同步提取高清元数据" : "绑定 YouTube/Bilibili 视频链接"}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '4px',
+              marginLeft: '6px',
+              fontSize: '12px',
+              color: !videoId ? 'var(--color-accent)' : 'var(--color-text-secondary)',
+              fontWeight: !videoId ? '600' : 'normal'
+            }}
+          >
+            <span>🔗 {videoId ? '编辑链接' : '绑定视频'}</span>
+          </button>
+
           {selectedDoc?.source_url || selectedDoc?.url ? (
             <button
               className="btn btn-ghost btn-sm"
@@ -719,6 +766,43 @@ export default function VideoReadingPane({ selectedDoc, articleRef, updateDocume
           subtitleVersionInfo={subtitleVersionInfo}
         />
       </div>
+
+      {showUrlModal && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(0, 0, 0, 0.55)', zIndex: 9999,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          backdropFilter: 'blur(4px)'
+        }}>
+          <div style={{
+            background: 'var(--color-bg-card, #1e1e1e)',
+            padding: '24px', borderRadius: '16px', maxWidth: '480px', width: '90%',
+            boxShadow: '0 12px 36px rgba(0,0,0,0.3)', border: '1px solid var(--color-border)'
+          }}>
+            <h3 style={{ margin: '0 0 8px 0', fontSize: '16px', fontWeight: 'bold', color: 'var(--color-text-primary)' }}>🔗 绑定/修改视频链接</h3>
+            <p style={{ margin: '0 0 16px 0', fontSize: '13px', color: 'var(--color-text-secondary)', lineHeight: '1.5' }}>
+              粘贴 YouTube / Bilibili 视频链接后，ReaderQ 将自动抓取视频的高清封面、频道作者与真实标题：
+            </p>
+            <form onSubmit={handleBindUrlSubmit}>
+              <input
+                type="url"
+                placeholder="https://www.youtube.com/watch?v=..."
+                value={urlInput}
+                onChange={(e) => setUrlInput(e.target.value)}
+                required
+                autoFocus
+                style={{ width: '100%', padding: '10px 14px', marginBottom: '16px', borderRadius: '8px', border: '1px solid var(--color-border)' }}
+              />
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+                <button type="button" className="btn btn-ghost btn-sm" onClick={() => setShowUrlModal(false)}>取消</button>
+                <button type="submit" className="btn btn-primary btn-sm" disabled={isBindingUrl} style={{ fontWeight: '600', padding: '6px 16px' }}>
+                  {isBindingUrl ? '⚡ 正在抓取元数据并更新...' : '确定绑定并提取元信息'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

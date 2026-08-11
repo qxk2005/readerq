@@ -100,6 +100,14 @@ export default function ReadingPane() {
     setPickerStart(null);
   }, [selectedDoc?.id]);
 
+  const isDocVideo = useMemo(() => {
+    if (!selectedDoc) return false;
+    if (selectedDoc.category === 'video') return true;
+    const url = selectedDoc.source_url || selectedDoc.url || '';
+    if (url.includes('youtube.com') || url.includes('youtu.be') || url.includes('bilibili.com')) return true;
+    return false;
+  }, [selectedDoc]);
+
   // 阅读进度
   const [readingProgress, setReadingProgress] = useState(0);
   const maxProgressRef = useRef(0);
@@ -1611,10 +1619,10 @@ export default function ReadingPane() {
       </div> {/* Close article-sticky-header */}
 
       {/* 可滚动的正文区域 */}
-      <div style={{ flex: 1, overflowY: selectedDoc?.category === 'video' ? 'hidden' : 'auto', position: 'relative', minWidth: 0 }} className="article-scroll-container" id="article-scroll-container">
+      <div style={{ flex: 1, overflowY: isDocVideo ? 'hidden' : 'auto', position: 'relative', minWidth: 0 }} className="article-scroll-container" id="article-scroll-container">
 
       {/* 视频类型：直接渲染视频面板，不包裹 reading-content/article 避免滚动问题 */}
-      {selectedDoc?.category === 'video' && !(isContentLoading || isLoadingHighlights) ? (
+      {isDocVideo && !(isContentLoading || isLoadingHighlights) ? (
         <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
           <VideoReadingPane 
             selectedDoc={selectedDoc} 

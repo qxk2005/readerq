@@ -20,7 +20,32 @@ export function extractYouTubeId(url) {
 }
 
 /**
- * 检查 URL 是否为支持自动抓取字幕的视频链接
+ * 通过 YouTube oEmbed API 快速获取视频真实标题、作者和缩略图
+ * oEmbed 是公开接口，无需 API Key，响应极控（<200ms）
+ */
+export async function fetchYouTubeMetadata(videoUrl) {
+  if (!videoUrl) return null;
+  try {
+    const oembedUrl = `https://www.youtube.com/oembed?url=${encodeURIComponent(videoUrl)}&format=json`;
+    const res = await fetch(oembedUrl, {
+      headers: { 'User-Agent': 'Mozilla/5.0' },
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return {
+      title: data.title || null,
+      author: data.author_name || null,
+      thumbnail: data.thumbnail_url || null,
+    };
+  } catch (e) {
+    console.warn('[oEmbed] YouTube 元数据获取失败:', e.message);
+    return null;
+  }
+}
+
+/**
+ * 检查 URL 是否为支持自动抓算字幕的视频链接
  */
 export function isSupportedVideoUrl(url) {
   if (!url || typeof url !== 'string') return false;
