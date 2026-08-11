@@ -299,7 +299,7 @@ export default function DocumentList({ width }) {
   });
 
   return (
-    <div className="doclist-container" style={{ width: `${width}px` }}>
+    <div className="doclist-panel doclist-container" style={{ width: `${width}px` }}>
       {showEmptyConfirm && (
         <div style={{
           position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
