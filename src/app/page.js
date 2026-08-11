@@ -198,7 +198,6 @@ export default function HomePage() {
 
   return (
     <>
-      <div className="titlebar"></div>
       <div 
         className="app-layout"
         style={isResizingSidebar || isResizingDocList ? { cursor: 'col-resize', userSelect: 'none' } : {}}

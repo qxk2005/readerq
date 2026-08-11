@@ -485,7 +485,7 @@ export default function DailyReviewView({ onBackToArticles }) {
       overflowY: 'auto'
     }}>
       {/* 顶部导航与选项卡 Header */}
-      <div style={{ 
+      <div className="daily-review-header" style={{ 
         display: 'flex', 
         alignItems: 'center', 
         justify: 'space-between', 

@@ -413,7 +413,7 @@ export default function ZenReadView({ onBackToArticles }) {
       ` }} />
 
       {/* 顶部 Header 导航条 (常驻 Sticky / Fixed 固顶) */}
-      <div style={{
+      <div className="zen-read-header" style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         padding: '14px 28px',
         borderBottom: '1px solid rgba(255, 255, 255, 0.1)',

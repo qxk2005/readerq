@@ -289,26 +289,59 @@ textarea:focus {
   min-height: 52px;
 }
 
-/* ---- 顶部窗口标题栏 (仅 macOS 下启用) ---- */
+/* ---- macOS 原生沉浸式无缝顶栏适配 (全屏 100vh，无缝通顶) ---- */
 .titlebar {
   display: none;
 }
 
-.platform-darwin .titlebar {
-  display: flex;
-  height: 38px;
-  width: 100%;
-  background: var(--color-bg-sidebar);
-  -webkit-app-region: drag; /* 允许拖动整个窗口 */
-  box-sizing: border-box;
+.platform-darwin .app-layout,
+.platform-darwin .sidebar,
+.platform-darwin .doclist-panel,
+.platform-darwin .reading-pane {
+  height: 100vh !important;
 }
 
-.platform-darwin .app-layout {
-  height: calc(100vh - 38px);
+/* macOS 侧边栏 Header 增加顶部留白避开左上角红绿灯 (trafficLightPosition: { x: 16, y: 18 }) */
+.platform-darwin .sidebar-header {
+  padding-top: 34px;
+  min-height: 74px;
 }
 
-.platform-darwin .sidebar {
-  height: calc(100vh - 38px);
+.platform-darwin .sidebar.collapsed .sidebar-header {
+  padding-top: 34px;
+  padding-left: 0;
+  padding-right: 0;
+}
+
+/* macOS 中间文档列表 Header 与右侧阅读区 Header 高度与留白与侧边栏完美对齐 */
+.platform-darwin .doclist-header {
+  padding-top: 34px;
+  min-height: 74px;
+}
+
+.platform-darwin .reading-header {
+  padding-top: 34px;
+  min-height: 74px;
+}
+
+.daily-review-header,
+.zen-read-header {
+  -webkit-app-region: drag;
+}
+
+.daily-review-header button,
+.daily-review-header input,
+.daily-review-header a,
+.zen-read-header button,
+.zen-read-header input,
+.zen-read-header a {
+  -webkit-app-region: no-drag;
+}
+
+.platform-darwin .daily-review-header,
+.platform-darwin .zen-read-header {
+  padding-top: 34px !important;
+  min-height: 74px !important;
 }
 
 
