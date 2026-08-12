@@ -24,6 +24,8 @@ import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.ui.input.pointer.pointerInput
@@ -2730,115 +2732,159 @@ fun LyricSubtitlePaneComposable(
             .padding(top = 8.dp)
     ) {
         // 顶部 Header 标题与控制操作工具栏 (下载字幕、上传/替换、删除、自动跟随)
-        Row(
+        BoxWithConstraints(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
+                .padding(horizontal = 12.dp, vertical = 8.dp)
         ) {
-            // 左侧：标题与行数
+            val isNarrow = maxWidth < 340.dp
             Row(
+                modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Icon(
-                    imageVector = Icons.Default.PlayArrow,
-                    contentDescription = "歌词字幕",
-                    tint = accentColor,
-                    modifier = Modifier.size(18.dp)
-                )
-                Text(
-                    text = "沉浸歌词",
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = textColor
-                )
-                if (subtitles.isNotEmpty()) {
-                    Text(
-                        text = "${subtitles.size}句",
-                        fontSize = 11.sp,
-                        color = textColor.copy(alpha = 0.5f)
-                    )
-                }
-            }
-
-            // 右侧：字幕控制按钮组 (下载字幕、上传/替换、删除、自动跟随)
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                // 🎬 下载字幕按钮 (仅 YouTube 视频)
-                val videoUrl = doc.source_url ?: doc.url
-                val isYouTubeVideo = videoUrl.contains("youtube.com") || videoUrl.contains("youtu.be")
-                val isDownloading by viewModel.subtitleDownloading.collectAsState()
-                if (isYouTubeVideo) {
-                    Surface(
-                        onClick = {
-                            if (!isDownloading) {
-                                viewModel.downloadSubtitleFromServer(doc.id, videoUrl, doc.title)
-                                Toast.makeText(context, "正在从服务器下载字幕...", Toast.LENGTH_SHORT).show()
-                            }
-                        },
-                        shape = RoundedCornerShape(6.dp),
-                        color = if (isDownloading) Color(0xFF6366F1).copy(alpha = 0.08f) else Color(0xFF6366F1).copy(alpha = 0.15f)
-                    ) {
-                        Text(
-                            text = if (isDownloading) "提取中..." else "下载字幕",
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                            fontSize = 11.sp,
-                            color = if (isDownloading) Color(0xFF6366F1).copy(alpha = 0.5f) else Color(0xFF6366F1),
-                            fontWeight = FontWeight.Medium
-                        )
-                    }
-                }
-
-                // 📤 上传 SRT / 替换 按钮
-                Surface(
-                    onClick = { srtPickerLauncher.launch("*/*") },
-                    shape = RoundedCornerShape(6.dp),
-                    color = accentColor.copy(alpha = 0.15f)
-                ) {
-                    Text(
-                        text = if (subtitles.isEmpty()) "上传SRT" else "替换",
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                        fontSize = 11.sp,
-                        color = accentColor,
-                        fontWeight = FontWeight.Medium
-                    )
-                }
-
-                // 🗑️ 删除字幕按钮 (仅在有字幕时显示)
-                if (subtitles.isNotEmpty()) {
-                    Surface(
-                        onClick = {
-                            viewModel.deleteSubtitle(doc.id)
-                            Toast.makeText(context, "字幕已删除", Toast.LENGTH_SHORT).show()
-                        },
-                        shape = RoundedCornerShape(6.dp),
-                        color = Color(0xFFEF4444).copy(alpha = 0.15f)
-                    ) {
-                        Text(
-                            text = "删除",
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                            fontSize = 11.sp,
-                            color = Color(0xFFEF4444),
-                            fontWeight = FontWeight.Medium
-                        )
-                    }
-                }
-
-                // 🎯 自动跟随滚动开关
-                IconButton(
-                    onClick = { isAutoScrollEnabled = !isAutoScrollEnabled },
-                    modifier = Modifier.size(28.dp)
+                // 左侧：标题与行数
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     Icon(
-                        imageVector = if (isAutoScrollEnabled) Icons.Default.PlayArrow else Icons.Default.Edit,
-                        contentDescription = "自动跟随",
-                        tint = if (isAutoScrollEnabled) accentColor else textColor.copy(alpha = 0.4f),
-                        modifier = Modifier.size(16.dp)
+                        imageVector = Icons.Default.PlayArrow,
+                        contentDescription = "歌词字幕",
+                        tint = accentColor,
+                        modifier = Modifier.size(18.dp)
                     )
+                    Text(
+                        text = "沉浸歌词",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = textColor
+                    )
+                    if (!isNarrow && subtitles.isNotEmpty()) {
+                        Text(
+                            text = "${subtitles.size}句",
+                            fontSize = 11.sp,
+                            color = textColor.copy(alpha = 0.5f)
+                        )
+                    }
+                }
+
+                // 右侧：字幕控制按钮组 (下载字幕、上传/替换、删除、自动跟随) - 响应式超紧凑布局
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(3.dp)
+                ) {
+                    // 🎬 下载字幕按钮 (仅 YouTube 视频)
+                    val videoUrl = doc.source_url ?: doc.url
+                    val isYouTubeVideo = videoUrl.contains("youtube.com") || videoUrl.contains("youtu.be")
+                    val isDownloading by viewModel.subtitleDownloading.collectAsState()
+                    if (isYouTubeVideo) {
+                        Surface(
+                            onClick = {
+                                if (!isDownloading) {
+                                    viewModel.downloadSubtitleFromServer(doc.id, videoUrl, doc.title)
+                                    Toast.makeText(context, "正在从服务器下载字幕...", Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            shape = RoundedCornerShape(6.dp),
+                            color = if (isDownloading) Color(0xFF6366F1).copy(alpha = 0.08f) else Color(0xFF6366F1).copy(alpha = 0.15f)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = if (isNarrow) 6.dp else 7.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(2.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Refresh,
+                                    contentDescription = "下载字幕",
+                                    modifier = Modifier.size(13.dp),
+                                    tint = if (isDownloading) Color(0xFF6366F1).copy(alpha = 0.5f) else Color(0xFF6366F1)
+                                )
+                                if (!isNarrow) {
+                                    Text(
+                                        text = if (isDownloading) "提取中" else "下载",
+                                        fontSize = 10.5.sp,
+                                        color = if (isDownloading) Color(0xFF6366F1).copy(alpha = 0.5f) else Color(0xFF6366F1),
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // 📤 上传 SRT / 替换 按钮
+                    Surface(
+                        onClick = { srtPickerLauncher.launch("*/*") },
+                        shape = RoundedCornerShape(6.dp),
+                        color = accentColor.copy(alpha = 0.15f)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = if (isNarrow) 6.dp else 7.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(2.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Edit,
+                                contentDescription = "替换字幕",
+                                modifier = Modifier.size(13.dp),
+                                tint = accentColor
+                            )
+                            if (!isNarrow) {
+                                Text(
+                                    text = if (subtitles.isEmpty()) "上传" else "替换",
+                                    fontSize = 10.5.sp,
+                                    color = accentColor,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
+                        }
+                    }
+
+                    // 🗑️ 删除字幕按钮 (仅在有字幕时显示)
+                    if (subtitles.isNotEmpty()) {
+                        Surface(
+                            onClick = {
+                                viewModel.deleteSubtitle(doc.id)
+                                Toast.makeText(context, "字幕已删除", Toast.LENGTH_SHORT).show()
+                            },
+                            shape = RoundedCornerShape(6.dp),
+                            color = Color(0xFFEF4444).copy(alpha = 0.15f)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = if (isNarrow) 6.dp else 7.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(2.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Delete,
+                                    contentDescription = "删除字幕",
+                                    modifier = Modifier.size(13.dp),
+                                    tint = Color(0xFFEF4444)
+                                )
+                                if (!isNarrow) {
+                                    Text(
+                                        text = "删除",
+                                        fontSize = 10.5.sp,
+                                        color = Color(0xFFEF4444),
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // 🎯 自动跟随滚动开关
+                    IconButton(
+                        onClick = { isAutoScrollEnabled = !isAutoScrollEnabled },
+                        modifier = Modifier.size(26.dp)
+                    ) {
+                        Icon(
+                            imageVector = if (isAutoScrollEnabled) Icons.Default.PlayArrow else Icons.Default.Edit,
+                            contentDescription = if (isAutoScrollEnabled) "关闭自动跟随" else "开启自动跟随",
+                            tint = if (isAutoScrollEnabled) accentColor else textColor.copy(alpha = 0.4f),
+                            modifier = Modifier.size(15.dp)
+                        )
+                    }
                 }
             }
         }
@@ -3014,77 +3060,121 @@ fun SubtitlePanelComposable(
             .background(panelBg)
     ) {
         // 面板标题栏
-        Row(
+        BoxWithConstraints(
             modifier = Modifier
                 .fillMaxWidth()
                 .background(if (isDark) Color(0xFF16162A) else Color(0xFFEEEFF5))
-                .padding(horizontal = 12.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
+                .padding(horizontal = 12.dp, vertical = 8.dp)
         ) {
-            Text(
-                text = "字幕",
-                fontWeight = FontWeight.SemiBold,
-                fontSize = 14.sp,
-                color = textColor
-            )
+            val isNarrow = maxWidth < 340.dp
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    text = "字幕",
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 14.sp,
+                    color = textColor
+                )
 
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                // 🎬 下载字幕按钮（仅对 YouTube 视频文章显示）
-                val videoUrl = doc.source_url ?: doc.url
-                val isYouTubeVideo = videoUrl.contains("youtube.com") || videoUrl.contains("youtu.be")
-                val isDownloading by viewModel.subtitleDownloading.collectAsState()
-                if (isYouTubeVideo) {
-                    Surface(
-                        onClick = {
-                            if (!isDownloading) {
-                                viewModel.downloadSubtitleFromServer(doc.id, videoUrl, doc.title)
-                                Toast.makeText(context, "正在从服务器下载字幕...", Toast.LENGTH_SHORT).show()
+                Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                    // 🎬 下载字幕按钮（仅对 YouTube 视频文章显示）
+                    val videoUrl = doc.source_url ?: doc.url
+                    val isYouTubeVideo = videoUrl.contains("youtube.com") || videoUrl.contains("youtu.be")
+                    val isDownloading by viewModel.subtitleDownloading.collectAsState()
+                    if (isYouTubeVideo) {
+                        Surface(
+                            onClick = {
+                                if (!isDownloading) {
+                                    viewModel.downloadSubtitleFromServer(doc.id, videoUrl, doc.title)
+                                    Toast.makeText(context, "正在从服务器下载字幕...", Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            shape = RoundedCornerShape(6.dp),
+                            color = if (isDownloading) Color(0xFF6366F1).copy(alpha = 0.08f) else Color(0xFF6366F1).copy(alpha = 0.15f)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = if (isNarrow) 6.dp else 7.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(2.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Refresh,
+                                    contentDescription = "下载字幕",
+                                    modifier = Modifier.size(13.dp),
+                                    tint = if (isDownloading) Color(0xFF6366F1).copy(alpha = 0.5f) else Color(0xFF6366F1)
+                                )
+                                if (!isNarrow) {
+                                    Text(
+                                        text = if (isDownloading) "提取中" else "下载",
+                                        fontSize = 10.5.sp,
+                                        color = if (isDownloading) Color(0xFF6366F1).copy(alpha = 0.5f) else Color(0xFF6366F1),
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                }
                             }
-                        },
-                        shape = RoundedCornerShape(6.dp),
-                        color = if (isDownloading) Color(0xFF6366F1).copy(alpha = 0.08f) else Color(0xFF6366F1).copy(alpha = 0.15f)
-                    ) {
-                        Text(
-                            text = if (isDownloading) "提取中..." else "下载字幕",
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                            fontSize = 12.sp,
-                            color = if (isDownloading) Color(0xFF6366F1).copy(alpha = 0.5f) else Color(0xFF6366F1),
-                            fontWeight = FontWeight.Medium
-                        )
+                        }
                     }
-                }
-                // 上传按钮
-                Surface(
-                    onClick = { srtPickerLauncher.launch("*/*") },
-                    shape = RoundedCornerShape(6.dp),
-                    color = accentColor.copy(alpha = 0.15f)
-                ) {
-                    Text(
-                        text = if (subtitles.isEmpty()) "上传 SRT" else "替换",
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                        fontSize = 12.sp,
-                        color = accentColor,
-                        fontWeight = FontWeight.Medium
-                    )
-                }
-                // 删除按钮（只在有字幕时显示）
-                if (subtitles.isNotEmpty()) {
+                    // 上传按钮
                     Surface(
-                        onClick = {
-                            viewModel.deleteSubtitle(doc.id)
-                            Toast.makeText(context, "字幕已删除", Toast.LENGTH_SHORT).show()
-                        },
+                        onClick = { srtPickerLauncher.launch("*/*") },
                         shape = RoundedCornerShape(6.dp),
-                        color = Color(0xFFEF4444).copy(alpha = 0.15f)
+                        color = accentColor.copy(alpha = 0.15f)
                     ) {
-                        Text(
-                            text = "删除",
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                            fontSize = 12.sp,
-                            color = Color(0xFFEF4444),
-                            fontWeight = FontWeight.Medium
-                        )
+                        Row(
+                            modifier = Modifier.padding(horizontal = if (isNarrow) 6.dp else 7.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(2.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Edit,
+                                contentDescription = "替换字幕",
+                                modifier = Modifier.size(13.dp),
+                                tint = accentColor
+                            )
+                            if (!isNarrow) {
+                                Text(
+                                    text = if (subtitles.isEmpty()) "上传" else "替换",
+                                    fontSize = 10.5.sp,
+                                    color = accentColor,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
+                        }
+                    }
+                    // 删除按钮（只在有字幕时显示）
+                    if (subtitles.isNotEmpty()) {
+                        Surface(
+                            onClick = {
+                                viewModel.deleteSubtitle(doc.id)
+                                Toast.makeText(context, "字幕已删除", Toast.LENGTH_SHORT).show()
+                            },
+                            shape = RoundedCornerShape(6.dp),
+                            color = Color(0xFFEF4444).copy(alpha = 0.15f)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = if (isNarrow) 6.dp else 7.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(2.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Delete,
+                                    contentDescription = "删除字幕",
+                                    modifier = Modifier.size(13.dp),
+                                    tint = Color(0xFFEF4444)
+                                )
+                                if (!isNarrow) {
+                                    Text(
+                                        text = "删除",
+                                        fontSize = 10.5.sp,
+                                        color = Color(0xFFEF4444),
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
             }
