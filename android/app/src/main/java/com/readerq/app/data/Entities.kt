@@ -27,6 +27,7 @@ data class DocumentEntity(
     val image_url: String?,
     val reading_progress: Float = 0f,
     val html_content: String?,
+    val blog_content: String? = null,
     val tags_json: String?, // JSON representation of tags Map
     val synced_at: String?
 )

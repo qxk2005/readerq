@@ -495,14 +495,15 @@ fun AdaptiveMainScreen(
                                                 selectedCategory == "rss" ||
                                                 selectedDoc?.category?.lowercase()?.contains("rss") == true ||
                                                 selectedDoc?.site_name != null
+                                        val isFromAiRecommend by viewModel.isFromAiRecommend.collectAsState()
 
                                         Box(modifier = Modifier.weight(1f)) {
                                             if (selectedDoc != null && (currentTab == "library" || currentTab == "feed")) {
                                                 Box(modifier = Modifier.fillMaxSize()) {
                                                     readingPane(Modifier.fillMaxSize(), null)
 
-                                                    // 若属于 RSS 订阅相关文章/分类，浮置“← 返回 AI 推荐”按钮，方便随时返回查询结果界面
-                                                    if (isRssActive) {
+                                                    // 仅当文章明确是从“AI 推荐”探索结果中点击打开时，才浮置“← 返回 AI 推荐”按键
+                                                    if (isFromAiRecommend) {
                                                         Surface(
                                                             shape = RoundedCornerShape(20.dp),
                                                             color = MaterialTheme.colorScheme.primaryContainer,
@@ -537,7 +538,7 @@ fun AdaptiveMainScreen(
                                             } else if (isRssActive) {
                                                 AiTopicRecommendPane(
                                                     viewModel = viewModel,
-                                                    onDocumentClick = { doc -> viewModel.selectDocument(doc) }
+                                                    onDocumentClick = { doc -> viewModel.selectDocument(doc, fromAi = true) }
                                                 )
                                             } else {
                                                 RightCoverGridPane(

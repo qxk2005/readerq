@@ -17,9 +17,13 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.ui.input.pointer.pointerInput
@@ -2181,300 +2185,790 @@ fun VideoReadingContent(
     }
 
     var videoHeightRatio by remember { mutableStateOf(0.38f) }
+    var leftColumnRatio by remember { mutableStateOf(0.58f) }
 
     BoxWithConstraints(modifier = modifier.fillMaxSize()) {
+        val totalWidth = maxWidth
         val totalHeight = maxHeight
         val density = LocalDensity.current
+        val totalWidthPx = with(density) { totalWidth.toPx() }
         val totalHeightPx = with(density) { totalHeight.toPx() }
         val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
+        val isWideScreen = totalWidth >= 600.dp
 
-        Column(
-            modifier = Modifier.fillMaxSize()
-        ) {
-            // YouTube 播放器区域 (按拖拽比例动态调整高度)
-            val currentVideoHeight = totalHeight * videoHeightRatio
-            if (videoId != null) {
-                Box(
+        if (isWideScreen) {
+            // 🎯 大平板 / 展开横屏模式：左右分栏 (支持左右拖拽宽度 + 上下拖拽视频高度)
+            Row(modifier = Modifier.fillMaxSize()) {
+                // 左侧栏：视频播放器 + 博客内容
+                Column(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .height(currentVideoHeight)
-                        .background(Color.Black)
+                        .weight(leftColumnRatio)
+                        .fillMaxHeight()
                 ) {
-                    AndroidView(
-                        factory = { ctx ->
-                            WebView(ctx).apply {
-                                layoutParams = android.view.ViewGroup.LayoutParams(
-                                    android.view.ViewGroup.LayoutParams.MATCH_PARENT,
-                                    android.view.ViewGroup.LayoutParams.MATCH_PARENT
-                                )
-                                webView = this
-                                settings.javaScriptEnabled = true
-                                settings.domStorageEnabled = true
-                                settings.mediaPlaybackRequiresUserGesture = false
-                                
-                                // 借鉴桌面版思路：移除 User-Agent 中的 "wv" 标识，防止 Google 阻断 WebView
-                                val defaultUa = settings.userAgentString
-                                settings.userAgentString = defaultUa.replace("; wv", "")
-                                
-                                webViewClient = WebViewClient()
-                                webChromeClient = android.webkit.WebChromeClient()
-                                
-                                // 开启 GPU 硬件加速以支持 HTML5 / YouTube 视频 Surface 贴图渲染，防止黑屏
-                                setLayerType(android.view.View.LAYER_TYPE_HARDWARE, null)
-                                
-                                addJavascriptInterface(object : Any() {
-                                    @android.webkit.JavascriptInterface
-                                    fun updateTime(time: Float) {
-                                        currentTime = time
+                    val currentVideoHeight = totalHeight * videoHeightRatio
+                    if (videoId != null) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(currentVideoHeight)
+                                .background(Color.Black)
+                        ) {
+                            AndroidView(
+                                factory = { ctx ->
+                                    WebView(ctx).apply {
+                                        layoutParams = android.view.ViewGroup.LayoutParams(
+                                            android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                                            android.view.ViewGroup.LayoutParams.MATCH_PARENT
+                                        )
+                                        webView = this
+                                        settings.javaScriptEnabled = true
+                                        settings.domStorageEnabled = true
+                                        settings.mediaPlaybackRequiresUserGesture = false
+                                        val defaultUa = settings.userAgentString
+                                        settings.userAgentString = defaultUa.replace("; wv", "")
+                                        webViewClient = WebViewClient()
+                                        webChromeClient = android.webkit.WebChromeClient()
+                                        setLayerType(android.view.View.LAYER_TYPE_HARDWARE, null)
+                                        addJavascriptInterface(object : Any() {
+                                            @android.webkit.JavascriptInterface
+                                            fun updateTime(time: Float) {
+                                                currentTime = time
+                                            }
+                                        }, "AndroidApp")
                                     }
-                                }, "AndroidApp")
+                                },
+                                modifier = Modifier.fillMaxSize().alpha(0.99f)
+                            )
+                            
+                            LaunchedEffect(viewModel, webView) {
+                                viewModel.videoSeekEvent.collect { seconds ->
+                                    webView?.evaluateJavascript("if (typeof seekTo === 'function') { seekTo($seconds); }", null)
+                                }
                             }
-                        },
-                        modifier = Modifier.fillMaxSize().alpha(0.99f)
-                    )
-                    
-                    // 监听全局跳播事件 (来自博客章节点击或字幕点击)
-                    LaunchedEffect(viewModel, webView) {
-                        viewModel.videoSeekEvent.collect { seconds ->
-                            webView?.evaluateJavascript("if (typeof seekTo === 'function') { seekTo($seconds); }", null)
-                        }
-                    }
-                    
-                    LaunchedEffect(videoId, webView) {
-                        if (videoId != null && webView != null) {
-                            val embedHtml = """
-                                <!DOCTYPE html>
-                                <html><head>
-                                <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                                <style>
-                                    * { margin: 0; padding: 0; }
-                                    body { background: #000; }
-                                    #player { width: 100%; height: 100%; position: absolute; top: 0; left: 0; }
-                                </style>
-                                </head><body>
-                                <div id="player"></div>
-                                <script>
-                                    var player;
-                                    function onYouTubeIframeAPIReady() {
-                                        player = new YT.Player('player', {
-                                            videoId: '$videoId',
-                                            host: 'https://www.youtube.com',
-                                            playerVars: { 'playsinline': 1, 'autoplay': 0, 'modestbranding': 1, 'rel': 0, 'enablejsapi': 1, 'origin': 'https://readerq.app' }
-                                        });
-                                        setInterval(function() {
-                                            if (player && typeof player.getCurrentTime === 'function') {
-                                                var time = player.getCurrentTime();
-                                                if (window.AndroidApp && window.AndroidApp.updateTime) {
-                                                    window.AndroidApp.updateTime(time);
+                            
+                            LaunchedEffect(videoId, webView) {
+                                if (videoId != null && webView != null) {
+                                    val embedHtml = """
+                                        <!DOCTYPE html>
+                                        <html><head>
+                                        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                                        <style>
+                                            * { margin: 0; padding: 0; }
+                                            body { background: #000; }
+                                            #player { width: 100%; height: 100%; position: absolute; top: 0; left: 0; }
+                                        </style>
+                                        </head><body>
+                                        <div id="player"></div>
+                                        <script>
+                                            var player;
+                                            function onYouTubeIframeAPIReady() {
+                                                player = new YT.Player('player', {
+                                                    videoId: '$videoId',
+                                                    host: 'https://www.youtube.com',
+                                                    playerVars: { 'playsinline': 1, 'autoplay': 0, 'modestbranding': 1, 'rel': 0, 'enablejsapi': 1, 'origin': 'https://readerq.app' }
+                                                });
+                                                setInterval(function() {
+                                                    if (player && typeof player.getCurrentTime === 'function') {
+                                                        var time = player.getCurrentTime();
+                                                        if (window.AndroidApp && window.AndroidApp.updateTime) {
+                                                            window.AndroidApp.updateTime(time);
+                                                        }
+                                                    }
+                                                }, 250);
+                                            }
+                                            window.seekTo = function(time) {
+                                                var secs = parseFloat(time);
+                                                if (!isNaN(secs) && player && typeof player.seekTo === 'function') {
+                                                    player.seekTo(secs, true);
+                                                    if (typeof player.playVideo === 'function') {
+                                                        player.playVideo();
+                                                    }
                                                 }
-                                            }
-                                        }, 250);
-                                    }
-                                    window.seekTo = function(time) {
-                                        var secs = parseFloat(time);
-                                        if (!isNaN(secs) && player && typeof player.seekTo === 'function') {
-                                            player.seekTo(secs, true);
-                                            if (typeof player.playVideo === 'function') {
-                                                player.playVideo();
-                                            }
-                                        }
-                                    };
-                                    var tag = document.createElement('script');
-                                    tag.src = "https://www.youtube.com/iframe_api";
-                                    var firstScriptTag = document.getElementsByTagName('script')[0];
-                                    firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
-                                </script>
-                                </body></html>
-                            """.trimIndent()
-                            webView?.loadDataWithBaseURL(
-                                "https://readerq.app",
-                                embedHtml,
-                                "text/html",
-                                "UTF-8",
-                                null
+                                            };
+                                            var tag = document.createElement('script');
+                                            tag.src = "https://www.youtube.com/iframe_api";
+                                            var firstScriptTag = document.getElementsByTagName('script')[0];
+                                            firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
+                                        </script>
+                                        </body></html>
+                                    """.trimIndent()
+                                    webView?.loadDataWithBaseURL(
+                                        "https://readerq.app",
+                                        embedHtml,
+                                        "text/html",
+                                        "UTF-8",
+                                        null
+                                    )
+                                }
+                            }
+                        }
+                    } else {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(200.dp)
+                                .background(Color(0xFF1a1a2e)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "无法识别视频链接",
+                                color = Color.White.copy(alpha = 0.7f),
+                                fontSize = 14.sp
                             )
                         }
                     }
+
+                    // ↕️ 视频与下方博客正文之间的物理拖拽分隔条 (上下高度拖拽)
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(14.dp)
+                            .background(if (isDark) Color(0xFF16162A) else Color(0xFFE2E4ED))
+                            .pointerInput(Unit) {
+                                detectDragGestures { change, dragAmount ->
+                                    change.consume()
+                                    if (totalHeightPx > 0) {
+                                        val deltaRatio = dragAmount.y / totalHeightPx
+                                        videoHeightRatio = (videoHeightRatio + deltaRatio).coerceIn(0.15f, 0.80f)
+                                    }
+                                }
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .width(42.dp)
+                                .height(4.dp)
+                                .clip(RoundedCornerShape(2.dp))
+                                .background(MaterialTheme.colorScheme.onBackground.copy(alpha = 0.35f))
+                        )
+                    }
+
+                    // 视频下半部分：博客文章正文
+                    Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
+                        articleContent(
+                            Modifier.fillMaxSize(),
+                            { time -> webView?.evaluateJavascript("seekTo($time)", null) }
+                        )
+                    }
                 }
-            } else {
-                // 无法识别视频 ID
+
+                // ↔️ 左侧视频/博客与右侧字幕面板之间的物理拖拽分隔条 (左右宽度拖拽)
+                Box(
+                    modifier = Modifier
+                        .fillMaxHeight()
+                        .width(14.dp)
+                        .background(if (isDark) Color(0xFF16162A) else Color(0xFFE2E8F0))
+                        .pointerInput(Unit) {
+                            detectDragGestures { change, dragAmount ->
+                                change.consume()
+                                if (totalWidthPx > 0) {
+                                    val deltaRatio = dragAmount.x / totalWidthPx
+                                    leftColumnRatio = (leftColumnRatio + deltaRatio).coerceIn(0.25f, 0.75f)
+                                }
+                            }
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .width(4.dp)
+                            .height(42.dp)
+                            .clip(RoundedCornerShape(2.dp))
+                            .background(MaterialTheme.colorScheme.onBackground.copy(alpha = 0.35f))
+                    )
+                }
+
+                // 右侧沉浸歌词/字幕流面板
+                Box(
+                    modifier = Modifier
+                        .weight(1f - leftColumnRatio)
+                        .fillMaxHeight()
+                ) {
+                    LyricSubtitlePaneComposable(
+                        doc = doc,
+                        viewModel = viewModel,
+                        subtitles = subtitles,
+                        isLoading = subtitleLoading,
+                        currentTime = currentTime,
+                        onSeekTo = { time ->
+                            webView?.evaluateJavascript("seekTo($time)", null)
+                        },
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
+            }
+        } else {
+            // 🎯 窄屏 / 折叠屏折叠态：标准上下分栏 (顶部视频 + 底部字幕/博客选项卡)
+            Column(
+                modifier = Modifier.fillMaxSize()
+            ) {
+                // YouTube 播放器区域 (按拖拽比例动态调整高度)
+                val currentVideoHeight = totalHeight * videoHeightRatio
+                if (videoId != null) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(currentVideoHeight)
+                            .background(Color.Black)
+                    ) {
+                        AndroidView(
+                            factory = { ctx ->
+                                WebView(ctx).apply {
+                                    layoutParams = android.view.ViewGroup.LayoutParams(
+                                        android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                                        android.view.ViewGroup.LayoutParams.MATCH_PARENT
+                                    )
+                                    webView = this
+                                    settings.javaScriptEnabled = true
+                                    settings.domStorageEnabled = true
+                                    settings.mediaPlaybackRequiresUserGesture = false
+                                    
+                                    val defaultUa = settings.userAgentString
+                                    settings.userAgentString = defaultUa.replace("; wv", "")
+                                    
+                                    webViewClient = WebViewClient()
+                                    webChromeClient = android.webkit.WebChromeClient()
+                                    
+                                    setLayerType(android.view.View.LAYER_TYPE_HARDWARE, null)
+                                    
+                                    addJavascriptInterface(object : Any() {
+                                        @android.webkit.JavascriptInterface
+                                        fun updateTime(time: Float) {
+                                            currentTime = time
+                                        }
+                                    }, "AndroidApp")
+                                }
+                            },
+                            modifier = Modifier.fillMaxSize().alpha(0.99f)
+                        )
+                        
+                        LaunchedEffect(viewModel, webView) {
+                            viewModel.videoSeekEvent.collect { seconds ->
+                                webView?.evaluateJavascript("if (typeof seekTo === 'function') { seekTo($seconds); }", null)
+                            }
+                        }
+                        
+                        LaunchedEffect(videoId, webView) {
+                            if (videoId != null && webView != null) {
+                                val embedHtml = """
+                                    <!DOCTYPE html>
+                                    <html><head>
+                                    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                                    <style>
+                                        * { margin: 0; padding: 0; }
+                                        body { background: #000; }
+                                        #player { width: 100%; height: 100%; position: absolute; top: 0; left: 0; }
+                                    </style>
+                                    </head><body>
+                                    <div id="player"></div>
+                                    <script>
+                                        var player;
+                                        function onYouTubeIframeAPIReady() {
+                                            player = new YT.Player('player', {
+                                                videoId: '$videoId',
+                                                host: 'https://www.youtube.com',
+                                                playerVars: { 'playsinline': 1, 'autoplay': 0, 'modestbranding': 1, 'rel': 0, 'enablejsapi': 1, 'origin': 'https://readerq.app' }
+                                            });
+                                            setInterval(function() {
+                                                if (player && typeof player.getCurrentTime === 'function') {
+                                                    var time = player.getCurrentTime();
+                                                    if (window.AndroidApp && window.AndroidApp.updateTime) {
+                                                        window.AndroidApp.updateTime(time);
+                                                    }
+                                                }
+                                            }, 250);
+                                        }
+                                        window.seekTo = function(time) {
+                                            var secs = parseFloat(time);
+                                            if (!isNaN(secs) && player && typeof player.seekTo === 'function') {
+                                                player.seekTo(secs, true);
+                                                if (typeof player.playVideo === 'function') {
+                                                    player.playVideo();
+                                                }
+                                            }
+                                        };
+                                        var tag = document.createElement('script');
+                                        tag.src = "https://www.youtube.com/iframe_api";
+                                        var firstScriptTag = document.getElementsByTagName('script')[0];
+                                        firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
+                                    </script>
+                                    </body></html>
+                                """.trimIndent()
+                                webView?.loadDataWithBaseURL(
+                                    "https://readerq.app",
+                                    embedHtml,
+                                    "text/html",
+                                    "UTF-8",
+                                    null
+                                )
+                            }
+                        }
+                    }
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(200.dp)
+                            .background(Color(0xFF1a1a2e)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "无法识别视频链接",
+                            color = Color.White.copy(alpha = 0.7f),
+                            fontSize = 14.sp
+                        )
+                    }
+                }
+
+                // ↕️ 上下高度物理拖拽分隔条 (Draggable Handle)
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(200.dp)
-                        .background(Color(0xFF1a1a2e)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = "无法识别视频链接",
-                        color = Color.White.copy(alpha = 0.7f),
-                        fontSize = 14.sp
-                    )
-                }
-            }
-
-            // ↕️ 上下高度物理拖拽分隔条 (Draggable Handle)
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(14.dp)
-                    .background(if (isDark) Color(0xFF16162A) else Color(0xFFE2E4ED))
-                    .pointerInput(Unit) {
-                        detectDragGestures { change, dragAmount ->
-                            change.consume()
-                            if (totalHeightPx > 0) {
-                                val deltaRatio = dragAmount.y / totalHeightPx
-                                videoHeightRatio = (videoHeightRatio + deltaRatio).coerceIn(0.18f, 0.75f)
-                            }
-                        }
-                    },
-                contentAlignment = Alignment.Center
-            ) {
-                Box(
-                    modifier = Modifier
-                        .width(42.dp)
-                        .height(4.dp)
-                        .clip(RoundedCornerShape(2.dp))
-                        .background(MaterialTheme.colorScheme.onBackground.copy(alpha = 0.35f))
-                )
-            }
-
-            // TabRow
-            androidx.compose.material3.TabRow(
-                selectedTabIndex = if (selectedTab == "字幕") 0 else 1,
-            containerColor = if (isDark) Color(0xFF16162A) else Color(0xFFEEEFF5),
-            contentColor = MaterialTheme.colorScheme.primary,
-            indicator = { tabPositions ->
-                androidx.compose.material3.TabRowDefaults.Indicator(
-                    modifier = Modifier.tabIndicatorOffset(tabPositions[if (selectedTab == "字幕") 0 else 1]),
-                    color = MaterialTheme.colorScheme.primary
-                )
-            }
-        ) {
-            androidx.compose.material3.Tab(
-                selected = selectedTab == "字幕",
-                onClick = { selectedTab = "字幕" },
-                text = { Text("字幕", fontWeight = if (selectedTab == "字幕") FontWeight.Bold else FontWeight.Normal) }
-            )
-            androidx.compose.material3.Tab(
-                selected = selectedTab == "博客",
-                onClick = { selectedTab = "博客" },
-                text = { Text("博客", fontWeight = if (selectedTab == "博客") FontWeight.Bold else FontWeight.Normal) }
-            )
-        }
-
-        // 面板区域
-        Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
-            // 博客
-            val hasNewerBlog by viewModel.hasNewerBlogVersion.collectAsState()
-            if (selectedTab == "博客") {
-                Column(modifier = Modifier.fillMaxSize()) {
-                    val aiErrMsg by viewModel.aiErrorMessage.collectAsState()
-                    val activeProgressState by viewModel.activeSubtitleProgress.collectAsState()
-                    val rawProgress = activeProgressState
-                    val errText = aiErrMsg ?: if (!rawProgress.isNullOrBlank() && rawProgress.contains("⚠️")) rawProgress else null
-
-                    if (!errText.isNullOrBlank()) {
-                        Surface(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 12.dp, vertical = 6.dp),
-                            shape = RoundedCornerShape(10.dp),
-                            color = Color(0xFFEF4444).copy(alpha = 0.12f),
-                            border = BorderStroke(1.dp, Color(0xFFEF4444).copy(alpha = 0.4f))
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Text(
-                                    text = errText,
-                                    fontSize = 12.sp,
-                                    color = Color(0xFFEF4444),
-                                    fontWeight = FontWeight.SemiBold,
-                                    modifier = Modifier.weight(1f)
-                                )
-                                TextButton(
-                                    onClick = { viewModel.dismissAiErrorMessage() },
-                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
-                                ) {
-                                    Text("忽略 ✕", fontSize = 11.sp, color = Color(0xFFEF4444))
+                        .height(14.dp)
+                        .background(if (isDark) Color(0xFF16162A) else Color(0xFFE2E4ED))
+                        .pointerInput(Unit) {
+                            detectDragGestures { change, dragAmount ->
+                                change.consume()
+                                if (totalHeightPx > 0) {
+                                    val deltaRatio = dragAmount.y / totalHeightPx
+                                    videoHeightRatio = (videoHeightRatio + deltaRatio).coerceIn(0.18f, 0.75f)
                                 }
                             }
-                        }
-                    }
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .width(42.dp)
+                            .height(4.dp)
+                            .clip(RoundedCornerShape(2.dp))
+                            .background(MaterialTheme.colorScheme.onBackground.copy(alpha = 0.35f))
+                    )
+                }
 
-                    if (hasNewerBlog) {
-                        val accentColor = Color(0xFF3B82F6)
-                        val blogLocalVer by viewModel.blogLocalVersion.collectAsState()
-                        val blogCloudVer by viewModel.blogCloudVersion.collectAsState()
-                        Surface(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 12.dp, vertical = 6.dp),
-                            shape = RoundedCornerShape(10.dp),
-                            color = accentColor.copy(alpha = 0.12f),
-                            border = BorderStroke(1.dp, accentColor.copy(alpha = 0.3f))
-                        ) {
-                            Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.SpaceBetween
+                // TabRow
+                androidx.compose.material3.TabRow(
+                    selectedTabIndex = if (selectedTab == "字幕") 0 else 1,
+                    containerColor = if (isDark) Color(0xFF16162A) else Color(0xFFEEEFF5),
+                    contentColor = MaterialTheme.colorScheme.primary,
+                    indicator = { tabPositions ->
+                        androidx.compose.material3.TabRowDefaults.Indicator(
+                            modifier = Modifier.tabIndicatorOffset(tabPositions[if (selectedTab == "字幕") 0 else 1]),
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                ) {
+                    androidx.compose.material3.Tab(
+                        selected = selectedTab == "字幕",
+                        onClick = { selectedTab = "字幕" },
+                        text = { Text("字幕", fontWeight = if (selectedTab == "字幕") FontWeight.Bold else FontWeight.Normal) }
+                    )
+                    androidx.compose.material3.Tab(
+                        selected = selectedTab == "博客",
+                        onClick = { selectedTab = "博客" },
+                        text = { Text("博客", fontWeight = if (selectedTab == "博客") FontWeight.Bold else FontWeight.Normal) }
+                    )
+                }
+
+                // 面板区域
+                Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
+                    val hasNewerBlog by viewModel.hasNewerBlogVersion.collectAsState()
+                    if (selectedTab == "博客") {
+                        Column(modifier = Modifier.fillMaxSize()) {
+                            val aiErrMsg by viewModel.aiErrorMessage.collectAsState()
+                            val activeProgressState by viewModel.activeSubtitleProgress.collectAsState()
+                            val rawProgress = activeProgressState
+                            val errText = aiErrMsg ?: if (!rawProgress.isNullOrBlank() && rawProgress.contains("⚠️")) rawProgress else null
+
+                            if (!errText.isNullOrBlank()) {
+                                Surface(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = Color(0xFFEF4444).copy(alpha = 0.12f),
+                                    border = BorderStroke(1.dp, Color(0xFFEF4444).copy(alpha = 0.4f))
                                 ) {
-                                    Text("✨ 检测到云端已生成最新视频博客，是否下载？", fontSize = 12.sp, color = MaterialTheme.colorScheme.onBackground, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-                                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                        Button(
-                                            onClick = { viewModel.applyNewerBlog(doc.id) },
-                                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                                            shape = RoundedCornerShape(6.dp),
-                                            colors = ButtonDefaults.buttonColors(containerColor = accentColor)
-                                        ) {
-                                            Text("📥 立即下载", fontSize = 11.sp, color = Color.White, fontWeight = FontWeight.Bold)
-                                        }
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Text(
+                                            text = errText,
+                                            fontSize = 12.sp,
+                                            color = Color(0xFFEF4444),
+                                            fontWeight = FontWeight.SemiBold,
+                                            modifier = Modifier.weight(1f)
+                                        )
                                         TextButton(
-                                            onClick = { viewModel.ignoreNewerBlog() },
-                                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp)
+                                            onClick = { viewModel.dismissAiErrorMessage() },
+                                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
                                         ) {
-                                            Text("忽略", fontSize = 11.sp, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f))
+                                            Text("忽略 ✕", fontSize = 11.sp, color = Color(0xFFEF4444))
                                         }
                                     }
                                 }
-                                Row(
-                                    modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
-                                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                            }
+
+                            if (hasNewerBlog) {
+                                val accentColor = Color(0xFF3B82F6)
+                                val blogLocalVer by viewModel.blogLocalVersion.collectAsState()
+                                val blogCloudVer by viewModel.blogCloudVersion.collectAsState()
+                                Surface(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = accentColor.copy(alpha = 0.12f),
+                                    border = BorderStroke(1.dp, accentColor.copy(alpha = 0.3f))
                                 ) {
-                                    Text("📍 本地版本: ${blogLocalVer ?: "未生成 / 暂无"}", fontSize = 10.sp, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f))
-                                    Text("☁️ 云端版本: ${blogCloudVer ?: "最新视频博客"}", fontSize = 10.sp, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f))
+                                    Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Text("✨ 检测到云端已生成最新视频博客，是否下载？", fontSize = 12.sp, color = MaterialTheme.colorScheme.onBackground, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                                Button(
+                                                    onClick = { viewModel.applyNewerBlog(doc.id) },
+                                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                                    shape = RoundedCornerShape(6.dp),
+                                                    colors = ButtonDefaults.buttonColors(containerColor = accentColor)
+                                                ) {
+                                                    Text("📥 立即下载", fontSize = 11.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                                                }
+                                                TextButton(
+                                                    onClick = { viewModel.ignoreNewerBlog() },
+                                                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp)
+                                                ) {
+                                                    Text("忽略", fontSize = 11.sp, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f))
+                                                }
+                                            }
+                                        }
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                                            horizontalArrangement = Arrangement.spacedBy(16.dp)
+                                        ) {
+                                            Text("📍 本地版本: ${blogLocalVer ?: "未生成 / 暂无"}", fontSize = 10.sp, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f))
+                                            Text("☁️ 云端版本: ${blogCloudVer ?: "最新视频博客"}", fontSize = 10.sp, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f))
+                                        }
+                                    }
                                 }
                             }
+                            articleContent(
+                                Modifier.fillMaxSize().weight(1f),
+                                { time -> webView?.evaluateJavascript("seekTo($time)", null) }
+                            )
                         }
                     }
-                    articleContent(
-                        Modifier.fillMaxSize().weight(1f),
-                        { time -> webView?.evaluateJavascript("seekTo($time)", null) }
-                    )
+                    
+                    // 字幕
+                    if (selectedTab == "字幕") {
+                        SubtitlePanelComposable(
+                            doc = doc,
+                            viewModel = viewModel,
+                            subtitles = subtitles,
+                            isLoading = subtitleLoading,
+                            currentTime = currentTime,
+                            onSeekTo = { time ->
+                                webView?.evaluateJavascript("seekTo($time)", null)
+                            },
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    }
                 }
-            }
-            
-            // 字幕
-            if (selectedTab == "字幕") {
-                SubtitlePanelComposable(
-                    doc = doc,
-                    viewModel = viewModel,
-                    subtitles = subtitles,
-                    isLoading = subtitleLoading,
-                    currentTime = currentTime,
-                    onSeekTo = { time ->
-                        webView?.evaluateJavascript("seekTo($time)", null)
-                    },
-                    modifier = Modifier.fillMaxSize()
-                )
             }
         }
     }
 }
+
+/**
+ * Apple Music 风格沉浸式歌词/字幕面板
+ */
+@Composable
+fun LyricSubtitlePaneComposable(
+    doc: DocumentEntity,
+    viewModel: MainViewModel,
+    subtitles: List<com.readerq.app.api.SubtitleSegment>,
+    isLoading: Boolean,
+    currentTime: Float = 0f,
+    onSeekTo: ((Float) -> Unit)? = null,
+    modifier: Modifier = Modifier
+) {
+    val context = LocalContext.current
+    val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
+    val panelBg = if (isDark) Color(0xFF0F172A) else Color(0xFFF8FAFC)
+    val textColor = MaterialTheme.colorScheme.onBackground
+    val accentColor = Color(0xFF3B82F6)
+
+    var isAutoScrollEnabled by remember { mutableStateOf(true) }
+
+    // SRT 文件选择器
+    val srtPickerLauncher = rememberLauncherForActivityResult(
+        contract = androidx.activity.result.contract.ActivityResultContracts.GetContent()
+    ) { uri ->
+        uri?.let {
+            try {
+                val inputStream = context.contentResolver.openInputStream(it)
+                val srtContent = inputStream?.bufferedReader()?.use { reader -> reader.readText() }
+                if (!srtContent.isNullOrBlank()) {
+                    viewModel.uploadSubtitle(doc.id, srtContent)
+                    Toast.makeText(context, "字幕已上传", Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                Toast.makeText(context, "读取文件失败: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    Column(
+        modifier = modifier
+            .background(panelBg)
+            .padding(top = 8.dp)
+    ) {
+        // 顶部 Header 标题与控制操作工具栏 (下载字幕、上传/替换、删除、自动跟随)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            // 左侧：标题与行数
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.PlayArrow,
+                    contentDescription = "歌词字幕",
+                    tint = accentColor,
+                    modifier = Modifier.size(18.dp)
+                )
+                Text(
+                    text = "沉浸歌词",
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = textColor
+                )
+                if (subtitles.isNotEmpty()) {
+                    Text(
+                        text = "${subtitles.size}句",
+                        fontSize = 11.sp,
+                        color = textColor.copy(alpha = 0.5f)
+                    )
+                }
+            }
+
+            // 右侧：字幕控制按钮组 (下载字幕、上传/替换、删除、自动跟随)
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                // 🎬 下载字幕按钮 (仅 YouTube 视频)
+                val videoUrl = doc.source_url ?: doc.url
+                val isYouTubeVideo = videoUrl.contains("youtube.com") || videoUrl.contains("youtu.be")
+                val isDownloading by viewModel.subtitleDownloading.collectAsState()
+                if (isYouTubeVideo) {
+                    Surface(
+                        onClick = {
+                            if (!isDownloading) {
+                                viewModel.downloadSubtitleFromServer(doc.id, videoUrl, doc.title)
+                                Toast.makeText(context, "正在从服务器下载字幕...", Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                        shape = RoundedCornerShape(6.dp),
+                        color = if (isDownloading) Color(0xFF6366F1).copy(alpha = 0.08f) else Color(0xFF6366F1).copy(alpha = 0.15f)
+                    ) {
+                        Text(
+                            text = if (isDownloading) "提取中..." else "下载字幕",
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                            fontSize = 11.sp,
+                            color = if (isDownloading) Color(0xFF6366F1).copy(alpha = 0.5f) else Color(0xFF6366F1),
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                }
+
+                // 📤 上传 SRT / 替换 按钮
+                Surface(
+                    onClick = { srtPickerLauncher.launch("*/*") },
+                    shape = RoundedCornerShape(6.dp),
+                    color = accentColor.copy(alpha = 0.15f)
+                ) {
+                    Text(
+                        text = if (subtitles.isEmpty()) "上传SRT" else "替换",
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                        fontSize = 11.sp,
+                        color = accentColor,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+
+                // 🗑️ 删除字幕按钮 (仅在有字幕时显示)
+                if (subtitles.isNotEmpty()) {
+                    Surface(
+                        onClick = {
+                            viewModel.deleteSubtitle(doc.id)
+                            Toast.makeText(context, "字幕已删除", Toast.LENGTH_SHORT).show()
+                        },
+                        shape = RoundedCornerShape(6.dp),
+                        color = Color(0xFFEF4444).copy(alpha = 0.15f)
+                    ) {
+                        Text(
+                            text = "删除",
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                            fontSize = 11.sp,
+                            color = Color(0xFFEF4444),
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                }
+
+                // 🎯 自动跟随滚动开关
+                IconButton(
+                    onClick = { isAutoScrollEnabled = !isAutoScrollEnabled },
+                    modifier = Modifier.size(28.dp)
+                ) {
+                    Icon(
+                        imageVector = if (isAutoScrollEnabled) Icons.Default.PlayArrow else Icons.Default.Edit,
+                        contentDescription = "自动跟随",
+                        tint = if (isAutoScrollEnabled) accentColor else textColor.copy(alpha = 0.4f),
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+            }
+        }
+
+        Divider(color = if (isDark) Color(0xFF1E293B) else Color(0xFFE2E8F0))
+
+        if (isLoading) {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator(modifier = Modifier.size(24.dp), color = accentColor, strokeWidth = 2.dp)
+            }
+        } else if (subtitles.isEmpty()) {
+            Box(modifier = Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("暂无双语字幕", fontSize = 14.sp, color = textColor.copy(alpha = 0.5f))
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text("可在「字幕」面板上传 SRT 文件获取字幕", fontSize = 12.sp, color = textColor.copy(alpha = 0.35f))
+                }
+            }
+        } else {
+            val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+            val activeIndex = subtitles.indexOfLast { currentTime >= it.startTime }
+
+            // 自动平滑居中滚动至当前播放的字幕行 (Apple Music 歌词效果)
+            LaunchedEffect(activeIndex, isAutoScrollEnabled) {
+                if (isAutoScrollEnabled && activeIndex >= 0 && activeIndex < subtitles.size) {
+                    listState.animateScrollToItem(
+                        index = activeIndex,
+                        scrollOffset = -180
+                    )
+                }
+            }
+
+            androidx.compose.foundation.lazy.LazyColumn(
+                state = listState,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                items(subtitles.size) { index ->
+                    val segment = subtitles[index]
+                    val isActive = index == activeIndex
+
+                    val rowAlpha by animateFloatAsState(
+                        targetValue = if (isActive) 1.0f else 0.45f,
+                        animationSpec = tween(durationMillis = 300)
+                    )
+                    val titleSize by animateFloatAsState(
+                        targetValue = if (isActive) 16.5f else 13.5f,
+                        animationSpec = tween(durationMillis = 300)
+                    )
+
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .alpha(rowAlpha)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(
+                                if (isActive) {
+                                    if (isDark) Color(0xFF1E293B) else Color(0xFFEFF6FF)
+                                } else Color.Transparent
+                            )
+                            .border(
+                                width = if (isActive) 1.dp else 0.dp,
+                                color = if (isActive) accentColor.copy(alpha = 0.5f) else Color.Transparent,
+                                shape = RoundedCornerShape(12.dp)
+                            )
+                            .clickable {
+                                viewModel.seekVideoTo(segment.startTime.toFloat())
+                                onSeekTo?.invoke(segment.startTime.toFloat())
+                            }
+                            .padding(horizontal = 14.dp, vertical = 10.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp)
+                        ) {
+                            Text(
+                                text = com.readerq.app.api.SrtParser.formatTime(segment.startTime),
+                                fontSize = 11.sp,
+                                color = if (isActive) accentColor else textColor.copy(alpha = 0.4f),
+                                fontWeight = if (isActive) FontWeight.Bold else FontWeight.Normal
+                            )
+                            if (isActive) {
+                                Text(
+                                    text = "Playing",
+                                    fontSize = 10.sp,
+                                    color = accentColor,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier
+                                        .background(accentColor.copy(alpha = 0.15f), RoundedCornerShape(4.dp))
+                                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
+                        }
+
+                        if (!segment.zh.isNullOrBlank()) {
+                            Text(
+                                text = segment.zh,
+                                fontSize = titleSize.sp,
+                                color = if (isActive) textColor else textColor.copy(alpha = 0.85f),
+                                lineHeight = (titleSize * 1.35f).sp,
+                                fontWeight = if (isActive) FontWeight.Bold else FontWeight.Medium
+                            )
+                            val enText = segment.en ?: segment.text
+                            if (enText.isNotBlank() && enText != segment.zh) {
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = enText,
+                                    fontSize = (titleSize - 2.5f).sp,
+                                    color = if (isActive) accentColor.copy(alpha = 0.9f) else textColor.copy(alpha = 0.55f),
+                                    lineHeight = ((titleSize - 2.5f) * 1.3f).sp,
+                                    fontWeight = FontWeight.Normal
+                                )
+                            }
+                        } else {
+                            Text(
+                                text = segment.text,
+                                fontSize = titleSize.sp,
+                                color = if (isActive) textColor else textColor.copy(alpha = 0.85f),
+                                lineHeight = (titleSize * 1.35f).sp,
+                                fontWeight = if (isActive) FontWeight.Bold else FontWeight.Medium
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 /**

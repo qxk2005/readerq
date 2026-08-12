@@ -726,6 +726,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             if (filter.category != null) {
                 val targetCat = filter.category.lowercase().trim()
                 filtered = filtered.filter { doc ->
+                    // 对齐桌面端逻辑：在分类筛选视图中排除已归档 (archive) 与 已删除 (trash) 的文章
+                    if (doc.location == "archive" || doc.location == "trash") return@filter false
                     val docCat = doc.category?.lowercase()?.trim() ?: ""
                     when (targetCat) {
                         "rss" -> docCat in listOf("rss", "feed", "rss_feed", "rss订阅", "rss 订阅")
@@ -759,6 +761,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         .map { list ->
             val counts = mutableMapOf<String, Int>()
             list.forEach { doc ->
+                // 对齐桌面端逻辑：分类统计数字中排除已归档与已删除文章
+                if (doc.location == "archive" || doc.location == "trash") return@forEach
                 val rawCat = doc.category?.lowercase()?.trim() ?: ""
                 val cat = when (rawCat) {
                     "rss", "feed", "rss_feed", "rss订阅", "rss 订阅" -> "rss"
@@ -962,12 +966,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun selectDocument(doc: DocumentEntity?) {
+    private val _isFromAiRecommend = MutableStateFlow(false)
+    val isFromAiRecommend: StateFlow<Boolean> = _isFromAiRecommend.asStateFlow()
+
+    fun selectDocument(doc: DocumentEntity?, fromAi: Boolean = false) {
         // 切换文档时停止 TTS 播放
         if (_selectedDoc.value?.id != doc?.id) {
             stopTts()
         }
         _selectedDoc.value = doc
+        _isFromAiRecommend.value = (doc != null && fromAi)
         if (doc != null) {
             _currentTab.value = "library"
             if (doc.html_content == null) {
@@ -1844,8 +1852,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         blogJob = viewModelScope.launch(Dispatchers.IO) {
             _blogLoading.value = true
             try {
-                // 1. 尝试从本地加载
-                val localBlog = settingDao.getSetting("blog_$documentId")
+                // 1. 尝试从本地加载（优先从 DocumentEntity.blog_content 读取已存博客）
+                val currentDoc = docDao.getDocumentById(documentId)
+                val docBlog = currentDoc?.blog_content
+                val settingBlog = settingDao.getSetting("blog_$documentId")
+                val localBlog = if (!docBlog.isNullOrBlank()) docBlog else settingBlog
+
                 if (!localBlog.isNullOrBlank()) {
                     _blogContent.value = localBlog
                     _blogLocalVersion.value = "已存本地博客"
@@ -1873,11 +1885,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                             ossHandled = true
                             _blogCloudVersion.value = "最新视频博客 (云端)"
                             if (localBlog.isNullOrBlank()) {
-                                // 本地无博客，但云端有博客 → 弹提醒供用户下载
-                                _blogContent.value = null
-                                _newerBlogContent.value = remoteBlog
-                                _hasNewerBlogVersion.value = true
-                                println("[loadBlog] TRIGGER BANNER: local empty, OSS has blog")
+                                // 本地无博客，但云端有博客 → 自动更新并加载
+                                _blogContent.value = remoteBlog
+                                _newerBlogContent.value = null
+                                _hasNewerBlogVersion.value = false
+                                currentDoc?.let { docDao.insertDocument(it.copy(blog_content = remoteBlog)) }
+                                settingDao.setSetting(SettingEntity("blog_$documentId", remoteBlog))
+                                println("[loadBlog] AUTO LOADED: local empty, downloaded blog from OSS")
                             } else if (localBlog.trim() != remoteBlog.trim()) {
                                 // 本地有博客，但云端博客内容不同 → 弹提醒
                                 _newerBlogContent.value = remoteBlog
@@ -1910,9 +1924,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         val bestBlog = serverResp.newerBlogContent ?: serverResp.blogContent
                         if (!bestBlog.isNullOrBlank()) {
                             if (localBlog.isNullOrBlank()) {
-                                _blogContent.value = null
-                                _newerBlogContent.value = bestBlog
-                                _hasNewerBlogVersion.value = true
+                                _blogContent.value = bestBlog
+                                _newerBlogContent.value = null
+                                _hasNewerBlogVersion.value = false
+                                currentDoc?.let { docDao.insertDocument(it.copy(blog_content = bestBlog)) }
+                                settingDao.setSetting(SettingEntity("blog_$documentId", bestBlog))
                             } else {
                                 val serverHasUpdate = serverResp.hasNewerVersion && !serverResp.newerBlogContent.isNullOrBlank()
                                 val contentDiffers = localBlog.trim() != bestBlog.trim()
@@ -1937,6 +1953,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val newBlog = _newerBlogContent.value ?: return
         viewModelScope.launch(Dispatchers.IO) {
             settingDao.setSetting(SettingEntity("blog_$documentId", newBlog))
+            val currentDoc = docDao.getDocumentById(documentId)
+            currentDoc?.let { docDao.insertDocument(it.copy(blog_content = newBlog)) }
             _blogContent.value = newBlog
             _hasNewerBlogVersion.value = false
             _newerBlogContent.value = null
@@ -1952,6 +1970,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             _blogLoading.value = true
             try {
                 settingDao.setSetting(SettingEntity("blog_$documentId", content))
+                val currentDoc = docDao.getDocumentById(documentId)
+                currentDoc?.let { docDao.insertDocument(it.copy(blog_content = content)) }
                 _blogContent.value = content
 
                 // 同步到 OSS
