@@ -26,6 +26,7 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.ui.input.pointer.pointerInput
@@ -2906,6 +2907,7 @@ fun LyricSubtitlePaneComposable(
         } else {
             val listState = androidx.compose.foundation.lazy.rememberLazyListState()
             val activeIndex = subtitles.indexOfLast { currentTime >= it.startTime }
+            val coroutineScope = rememberCoroutineScope()
 
             // 自动平滑居中滚动至当前播放的字幕行 (Apple Music 歌词效果)
             LaunchedEffect(activeIndex, isAutoScrollEnabled) {
@@ -2917,97 +2919,148 @@ fun LyricSubtitlePaneComposable(
                 }
             }
 
-            androidx.compose.foundation.lazy.LazyColumn(
-                state = listState,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
-                verticalArrangement = Arrangement.spacedBy(14.dp)
-            ) {
-                items(subtitles.size) { index ->
-                    val segment = subtitles[index]
-                    val isActive = index == activeIndex
+            // 判断当前播放字幕是否在屏幕可视范围内
+            val isCurrentVisible by remember(activeIndex, listState.layoutInfo.visibleItemsInfo) {
+                derivedStateOf {
+                    if (activeIndex < 0) true
+                    else listState.layoutInfo.visibleItemsInfo.any { it.index == activeIndex }
+                }
+            }
 
-                    val rowAlpha by animateFloatAsState(
-                        targetValue = if (isActive) 1.0f else 0.45f,
-                        animationSpec = tween(durationMillis = 300)
-                    )
-                    val titleSize by animateFloatAsState(
-                        targetValue = if (isActive) 16.5f else 13.5f,
-                        animationSpec = tween(durationMillis = 300)
-                    )
+            Box(modifier = Modifier.fillMaxSize()) {
+                androidx.compose.foundation.lazy.LazyColumn(
+                    state = listState,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    items(
+                        count = subtitles.size,
+                        key = { index -> subtitles[index].startTime }
+                    ) { index ->
+                        val segment = subtitles[index]
+                        val isActive = index == activeIndex
 
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .alpha(rowAlpha)
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(
-                                if (isActive) {
-                                    if (isDark) Color(0xFF1E293B) else Color(0xFFEFF6FF)
-                                } else Color.Transparent
-                            )
-                            .border(
-                                width = if (isActive) 1.dp else 0.dp,
-                                color = if (isActive) accentColor.copy(alpha = 0.5f) else Color.Transparent,
-                                shape = RoundedCornerShape(12.dp)
-                            )
-                            .clickable {
-                                viewModel.seekVideoTo(segment.startTime.toFloat())
-                                onSeekTo?.invoke(segment.startTime.toFloat())
-                            }
-                            .padding(horizontal = 14.dp, vertical = 10.dp)
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp)
+                        val rowAlpha by animateFloatAsState(
+                            targetValue = if (isActive) 1.0f else 0.45f,
+                            animationSpec = tween(durationMillis = 300)
+                        )
+                        // 不使用 animateFloatAsState 缩放字号，避免动态换行排版抖动与闪烁
+                        val titleSize = if (isActive) 16.5f else 13.5f
+
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .alpha(rowAlpha)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(
+                                    if (isActive) {
+                                        if (isDark) Color(0xFF1E293B) else Color(0xFFEFF6FF)
+                                    } else Color.Transparent
+                                )
+                                .border(
+                                    width = if (isActive) 1.dp else 0.dp,
+                                    color = if (isActive) accentColor.copy(alpha = 0.5f) else Color.Transparent,
+                                    shape = RoundedCornerShape(12.dp)
+                                )
+                                .clickable {
+                                    viewModel.seekVideoTo(segment.startTime.toFloat())
+                                    onSeekTo?.invoke(segment.startTime.toFloat())
+                                }
+                                .padding(horizontal = 14.dp, vertical = 10.dp)
                         ) {
-                            Text(
-                                text = com.readerq.app.api.SrtParser.formatTime(segment.startTime),
-                                fontSize = 11.sp,
-                                color = if (isActive) accentColor else textColor.copy(alpha = 0.4f),
-                                fontWeight = if (isActive) FontWeight.Bold else FontWeight.Normal
-                            )
-                            if (isActive) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp)
+                            ) {
                                 Text(
-                                    text = "Playing",
-                                    fontSize = 10.sp,
-                                    color = accentColor,
-                                    fontWeight = FontWeight.Bold,
-                                    modifier = Modifier
-                                        .background(accentColor.copy(alpha = 0.15f), RoundedCornerShape(4.dp))
-                                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                                    text = com.readerq.app.api.SrtParser.formatTime(segment.startTime),
+                                    fontSize = 11.sp,
+                                    color = if (isActive) accentColor else textColor.copy(alpha = 0.4f),
+                                    fontWeight = if (isActive) FontWeight.Bold else FontWeight.Normal
+                                )
+                                if (isActive) {
+                                    Text(
+                                        text = "Playing",
+                                        fontSize = 10.sp,
+                                        color = accentColor,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier
+                                            .background(accentColor.copy(alpha = 0.15f), RoundedCornerShape(4.dp))
+                                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                                    )
+                                }
+                            }
+
+                            if (!segment.zh.isNullOrBlank()) {
+                                Text(
+                                    text = segment.zh,
+                                    fontSize = titleSize.sp,
+                                    color = if (isActive) textColor else textColor.copy(alpha = 0.85f),
+                                    lineHeight = (titleSize * 1.35f).sp,
+                                    fontWeight = if (isActive) FontWeight.Bold else FontWeight.Medium
+                                )
+                                val enText = segment.en ?: segment.text
+                                if (enText.isNotBlank() && enText != segment.zh) {
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        text = enText,
+                                        fontSize = (titleSize - 2.5f).sp,
+                                        color = if (isActive) accentColor.copy(alpha = 0.9f) else textColor.copy(alpha = 0.55f),
+                                        lineHeight = ((titleSize - 2.5f) * 1.3f).sp,
+                                        fontWeight = FontWeight.Normal
+                                    )
+                                }
+                            } else {
+                                Text(
+                                    text = segment.text,
+                                    fontSize = titleSize.sp,
+                                    color = if (isActive) textColor else textColor.copy(alpha = 0.85f),
+                                    lineHeight = (titleSize * 1.35f).sp,
+                                    fontWeight = if (isActive) FontWeight.Bold else FontWeight.Medium
                                 )
                             }
                         }
+                    }
+                }
 
-                        if (!segment.zh.isNullOrBlank()) {
-                            Text(
-                                text = segment.zh,
-                                fontSize = titleSize.sp,
-                                color = if (isActive) textColor else textColor.copy(alpha = 0.85f),
-                                lineHeight = (titleSize * 1.35f).sp,
-                                fontWeight = if (isActive) FontWeight.Bold else FontWeight.Medium
-                            )
-                            val enText = segment.en ?: segment.text
-                            if (enText.isNotBlank() && enText != segment.zh) {
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Text(
-                                    text = enText,
-                                    fontSize = (titleSize - 2.5f).sp,
-                                    color = if (isActive) accentColor.copy(alpha = 0.9f) else textColor.copy(alpha = 0.55f),
-                                    lineHeight = ((titleSize - 2.5f) * 1.3f).sp,
-                                    fontWeight = FontWeight.Normal
+                // 当当前播放字幕不在屏幕视野中时，显示“📍 对焦当前字幕”悬浮对焦按钮
+                if (!isCurrentVisible && activeIndex >= 0 && activeIndex < subtitles.size) {
+                    Surface(
+                        onClick = {
+                            isAutoScrollEnabled = true
+                            coroutineScope.launch {
+                                listState.animateScrollToItem(
+                                    index = activeIndex,
+                                    scrollOffset = 0
                                 )
                             }
-                        } else {
+                        },
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .padding(bottom = 16.dp),
+                        shape = RoundedCornerShape(20.dp),
+                        color = accentColor,
+                        shadowElevation = 6.dp
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.LocationOn,
+                                contentDescription = "对焦当前字幕",
+                                tint = Color.White,
+                                modifier = Modifier.size(16.dp)
+                            )
                             Text(
-                                text = segment.text,
-                                fontSize = titleSize.sp,
-                                color = if (isActive) textColor else textColor.copy(alpha = 0.85f),
-                                lineHeight = (titleSize * 1.35f).sp,
-                                fontWeight = if (isActive) FontWeight.Bold else FontWeight.Medium
+                                text = "📍 对焦当前字幕",
+                                fontSize = 12.5.sp,
+                                color = Color.White,
+                                fontWeight = FontWeight.Bold
                             )
                         }
                     }
