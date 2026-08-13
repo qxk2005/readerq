@@ -3,21 +3,24 @@ package com.readerq.app.data
 import androidx.room.*
 import kotlinx.coroutines.flow.Flow
 
+// Lightweight column projection (excludes html_content & blog_content to avoid CursorWindow overflow)
+private const val DOC_LIST_COLUMNS = "id, url, source_url, title, author, source, category, location, site_name, word_count, reading_time, created_at, updated_at, published_date, summary, notes, image_url, reading_progress, NULL AS html_content, NULL AS blog_content, tags_json, synced_at"
+
 @Dao
 interface DocumentDao {
-    @Query("SELECT * FROM documents WHERE location != 'trash' ORDER BY created_at DESC")
+    @Query("SELECT $DOC_LIST_COLUMNS FROM documents WHERE location != 'trash' ORDER BY created_at DESC")
     fun getAllDocuments(): Flow<List<DocumentEntity>>
 
-    @Query("SELECT * FROM documents")
+    @Query("SELECT $DOC_LIST_COLUMNS FROM documents")
     suspend fun getAllDocumentsSync(): List<DocumentEntity>
 
-    @Query("SELECT * FROM documents WHERE location = :location ORDER BY CASE WHEN :location = 'archive' OR :location = 'trash' THEN coalesce(updated_at, created_at) ELSE created_at END DESC")
+    @Query("SELECT $DOC_LIST_COLUMNS FROM documents WHERE location = :location ORDER BY CASE WHEN :location = 'archive' OR :location = 'trash' THEN coalesce(updated_at, created_at) ELSE created_at END DESC")
     fun getDocumentsByLocation(location: String): Flow<List<DocumentEntity>>
 
-    @Query("SELECT * FROM documents WHERE location != 'trash' AND (title LIKE :query OR author LIKE :query OR summary LIKE :query) ORDER BY created_at DESC")
+    @Query("SELECT $DOC_LIST_COLUMNS FROM documents WHERE location != 'trash' AND (title LIKE :query OR author LIKE :query OR summary LIKE :query) ORDER BY created_at DESC")
     fun searchAllDocuments(query: String): Flow<List<DocumentEntity>>
 
-    @Query("SELECT * FROM documents WHERE location = :location AND (title LIKE :query OR author LIKE :query OR summary LIKE :query) ORDER BY CASE WHEN :location = 'archive' OR :location = 'trash' THEN coalesce(updated_at, created_at) ELSE created_at END DESC")
+    @Query("SELECT $DOC_LIST_COLUMNS FROM documents WHERE location = :location AND (title LIKE :query OR author LIKE :query OR summary LIKE :query) ORDER BY CASE WHEN :location = 'archive' OR :location = 'trash' THEN coalesce(updated_at, created_at) ELSE created_at END DESC")
     fun searchDocumentsByLocation(location: String, query: String): Flow<List<DocumentEntity>>
 
     @Query("SELECT id FROM documents WHERE location = 'trash'")
@@ -53,7 +56,7 @@ interface DocumentDao {
     @Query("SELECT id FROM documents WHERE title = :title LIMIT 1")
     suspend fun findDocumentIdByTitle(title: String): String?
 
-    @Query("SELECT * FROM documents WHERE id IN (SELECT DISTINCT document_id FROM highlights) ORDER BY updated_at DESC")
+    @Query("SELECT $DOC_LIST_COLUMNS FROM documents WHERE id IN (SELECT DISTINCT document_id FROM highlights) ORDER BY updated_at DESC")
     fun getDocumentsWithHighlights(): Flow<List<DocumentEntity>>
 
     @Query("UPDATE documents SET reading_progress = :progress WHERE id = :docId")
