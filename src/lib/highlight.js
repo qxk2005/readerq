@@ -169,14 +169,23 @@ export function restoreHighlights(root, highlights, onHighlightClick) {
   if (!root) return highlights; // 返回原始数据
   const fullText = root.textContent;
   
-  // 预处理高亮：如果缺少 location_start，通过文本匹配推算
+  // 预处理高亮：校验当前容器 fullText 与 location_start 的匹配度
+  // 如果位置不匹配（如正文与博客视图切换，或者从 Readwise 同步），通过模糊文本匹配重新定位
   const processedHighlights = highlights.map(hl => {
-    if (hl.location_start == null || hl.location_end == null) {
-      if (hl.text) {
-        const offset = findFuzzyOffset(fullText, hl.text);
-        if (offset) {
-          return { ...hl, location_start: offset.start, location_end: offset.end };
-        }
+    let isValidOffset = false;
+    if (hl.location_start != null && hl.location_end != null && hl.location_start < fullText.length) {
+      const seg = fullText.substring(hl.location_start, Math.min(hl.location_end, fullText.length));
+      if (hl.text && (seg === hl.text || seg.trim() === hl.text.trim())) {
+        isValidOffset = true;
+      }
+    }
+    
+    if (!isValidOffset && hl.text) {
+      const offset = findFuzzyOffset(fullText, hl.text);
+      if (offset) {
+        return { ...hl, location_start: offset.start, location_end: offset.end };
+      } else {
+        return { ...hl, location_start: null, location_end: null };
       }
     }
     return hl;

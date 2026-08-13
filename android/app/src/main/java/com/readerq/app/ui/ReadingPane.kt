@@ -27,6 +27,7 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.ui.input.pointer.pointerInput
@@ -67,6 +68,7 @@ fun ReadingPane(
     val doc by viewModel.selectedDoc.collectAsState()
     val highlights by viewModel.highlights.collectAsState()
     val ttsState by viewModel.ttsState.collectAsState()
+    val blogContent by viewModel.blogContent.collectAsState()
     val context = LocalContext.current
 
     val theme by viewModel.theme.collectAsState()
@@ -79,6 +81,7 @@ fun ReadingPane(
     var selectedImagesForHighlight by remember { mutableStateOf<List<HighlightImage>>(emptyList()) }
     var showHighlightCreator by remember { mutableStateOf(false) }
     var isPickerMode by remember { mutableStateOf(false) }
+    var readingModeTab by remember { mutableStateOf("text") }
     var webViewRefState by remember { mutableStateOf<WebView?>(null) }
 
     var showAaSheet by remember { mutableStateOf(false) }
@@ -170,6 +173,55 @@ fun ReadingPane(
                     }
                 },
                 actions = {
+                    // 非视频文章「正文 ↔ 博客」双态一键切换 Segmented 按钮
+                    if (currentDoc.category != "video") {
+                        Surface(
+                            shape = RoundedCornerShape(16.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)),
+                            modifier = Modifier.padding(end = 6.dp)
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.padding(2.dp)
+                            ) {
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = if (readingModeTab == "text") MaterialTheme.colorScheme.surface else Color.Transparent,
+                                    modifier = Modifier
+                                        .clickable { readingModeTab = "text" }
+                                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                                ) {
+                                    Text(
+                                        "正文",
+                                        fontSize = 12.sp,
+                                        fontWeight = if (readingModeTab == "text") FontWeight.Bold else FontWeight.Normal,
+                                        color = if (readingModeTab == "text") MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                                    )
+                                }
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = if (readingModeTab == "blog") MaterialTheme.colorScheme.primary else Color.Transparent,
+                                    modifier = Modifier
+                                        .clickable {
+                                            readingModeTab = "blog"
+                                            if (blogContent.isNullOrBlank()) {
+                                                viewModel.generateBlogForDocument(currentDoc.id, currentDoc.title)
+                                            }
+                                        }
+                                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                                ) {
+                                    Text(
+                                        "✨ 博客",
+                                        fontSize = 12.sp,
+                                        fontWeight = if (readingModeTab == "blog") FontWeight.Bold else FontWeight.Normal,
+                                        color = if (readingModeTab == "blog") Color.White else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                                    )
+                                }
+                            }
+                        }
+                    }
+
                     // 🎯 点选高亮 Target 开关按钮 (单色 Vector Icon，风格与 Aa/Notebook 100% 保持一致)
                     IconButton(onClick = {
                         isPickerMode = !isPickerMode
@@ -428,10 +480,10 @@ fun ReadingPane(
             LaunchedEffect(currentDoc.id) {
                 readingProgress = currentDoc.reading_progress
                 maxProgressRef.value = currentDoc.reading_progress
-                // 如果是视频文档，加载字幕与博客
+                // 加载博客（支持所有文章类型的 AI 博客同步与校验）
+                viewModel.loadBlog(currentDoc.id)
                 if (currentDoc.category == "video") {
                     viewModel.loadSubtitles(currentDoc.id)
-                    viewModel.loadBlog(currentDoc.id)
                 }
             }
 
@@ -442,12 +494,12 @@ fun ReadingPane(
                 Box(
                     modifier = articleModifier
                 ) {
-                val contentHtml = if (currentDoc.category == "video") {
+                val contentHtml = if (currentDoc.category == "video" || readingModeTab == "blog") {
                     val markdown = blogContent
                     if (!markdown.isNullOrBlank()) {
                         markdownToHtml(markdown)
                     } else {
-                        "<div style='display:flex;flex-direction:column;align-items:center;justify-content:center;height:80vh;color:#888;font-style:italic;'><p>暂未生成博客文章。</p></div>"
+                        "<div style='display:flex;flex-direction:column;align-items:center;justify-content:center;height:80vh;color:#888;font-style:italic;'><p>AI 博客正在生成中，请稍候...</p></div>"
                     }
                 } else {
                     currentDoc.html_content ?: "加载中..."
@@ -480,8 +532,8 @@ fun ReadingPane(
                     isVideo = currentDoc.category == "video"
                 )
 
-                // 🎯 安卓端原生 AI 视频博客交互状态覆盖层 (未生成 / 生成中)
-                if (currentDoc.category == "video" && blogContent.isNullOrBlank()) {
+                // 🎯 安卓端原生 AI 博客交互状态覆盖层 (未生成 / 生成中)
+                if ((currentDoc.category == "video" || readingModeTab == "blog") && blogContent.isNullOrBlank()) {
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
@@ -727,7 +779,8 @@ fun ReadingPane(
                                                     viewModel.addHighlight(
                                                         text = selectedTextForHighlight!!,
                                                         color = colorName,
-                                                        images = selectedImagesForHighlight
+                                                        images = selectedImagesForHighlight,
+                                                        isBlogMode = (currentDoc.category == "video" || readingModeTab == "blog")
                                                     )
                                                     showHighlightCreator = false
                                                     selectedTextForHighlight = null
@@ -773,7 +826,8 @@ fun ReadingPane(
                                                     viewModel.addHighlight(
                                                         text = selectedTextForHighlight!!,
                                                         color = colorName,
-                                                        images = selectedImagesForHighlight
+                                                        images = selectedImagesForHighlight,
+                                                        isBlogMode = (currentDoc.category == "video" || readingModeTab == "blog")
                                                     )
                                                     showHighlightCreator = false
                                                     selectedTextForHighlight = null
@@ -1043,6 +1097,118 @@ fun ReadingPane(
             }
         }
 
+        // --- BottomSheet 5: Blog Quote Preview BottomSheet ---
+        val previewOpen by viewModel.previewBottomSheetOpen.collectAsState()
+        val previewQuote by viewModel.previewQuoteText.collectAsState()
+        val previewParagraph by viewModel.previewParagraphText.collectAsState()
+
+        if (previewOpen) {
+            ModalBottomSheet(
+                onDismissRequest = { viewModel.closePreviewBottomSheet() },
+                containerColor = MaterialTheme.colorScheme.surface,
+                scrimColor = Color.Black.copy(alpha = 0.4f)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp, vertical = 16.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text("🔗 原文段落对比预览", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                            if (!previewQuote.isNullOrBlank()) {
+                                Surface(
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+                                ) {
+                                    Text(
+                                        "“${previewQuote}”",
+                                        fontSize = 11.sp,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                    )
+                                }
+                            }
+                        }
+                        IconButton(onClick = { viewModel.closePreviewBottomSheet() }) {
+                            Icon(Icons.Default.Close, contentDescription = "Close", tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 280.dp)
+                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+                            .padding(14.dp)
+                    ) {
+                        Text(
+                            text = previewParagraph ?: "未能在正文中精准定位到对应段落。",
+                            fontSize = 14.sp,
+                            lineHeight = 22.sp,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(18.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        TextButton(onClick = { viewModel.closePreviewBottomSheet() }) {
+                            Text("关闭")
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Button(
+                            onClick = {
+                                viewModel.closePreviewBottomSheet()
+                                readingModeTab = "text"
+                                val query = viewModel.matchedQuoteQuery.value ?: ""
+                                if (query.isNotBlank()) {
+                                    val cleanQuery = query.removePrefix("#quote-").replace("'", "\\'")
+                                    webViewRefState?.evaluateJavascript(
+                                        "(function() { " +
+                                        "  var clean = '$cleanQuery'; " +
+                                        "  var elements = document.querySelectorAll('p, h1, h2, h3, h4, h5, h6, li, blockquote'); " +
+                                        "  var target = null; " +
+                                        "  for (var i = 0; i < elements.length; i++) { " +
+                                        "    var txt = elements[i].innerText || elements[i].textContent || ''; " +
+                                        "    if (txt.indexOf(clean) !== -1) { target = elements[i]; break; } " +
+                                        "  } " +
+                                        "  if (target) { " +
+                                        "    target.scrollIntoView({ behavior: 'smooth', block: 'center' }); " +
+                                        "    var orig = target.style.backgroundColor; " +
+                                        "    target.style.transition = 'background-color 0.4s ease'; " +
+                                        "    target.style.backgroundColor = 'rgba(255, 215, 0, 0.4)'; " +
+                                        "    setTimeout(function() { target.style.backgroundColor = orig; }, 1800); " +
+                                        "  } " +
+                                        "})()",
+                                        null
+                                    )
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                        ) {
+                            Text("📍 定位跳转至正文该处", color = Color.White, fontWeight = FontWeight.SemiBold)
+                        }
+                    }
+                }
+            }
+        }
+
         // AI Command Result Dialog
         if (showAiDialog) {
             var aiResponse by remember { mutableStateOf<String?>(null) }
@@ -1238,17 +1404,27 @@ fun HtmlContentViewer(
                             viewModel.seekVideoTo(secs)
                             onSeekTo?.invoke(secs)
                             return true
+                        } else if (urlStr.contains("#quote-") || urlStr.startsWith("quote:")) {
+                            val query = urlStr.substringAfter("#quote-").substringAfter("quote:")
+                            viewModel.onBlogQuoteClick(query, viewModel.selectedDoc.value)
+                            return true
                         }
                         return super.shouldOverrideUrlLoading(view, request)
                     }
 
                     @Deprecated("Deprecated in Java")
                     override fun shouldOverrideUrlLoading(view: WebView?, urlStr: String?): Boolean {
-                        if (urlStr != null && urlStr.startsWith("seekto:")) {
-                            val secs = urlStr.removePrefix("seekto:").toFloatOrNull() ?: 0f
-                            viewModel.seekVideoTo(secs)
-                            onSeekTo?.invoke(secs)
-                            return true
+                        if (urlStr != null) {
+                            if (urlStr.startsWith("seekto:")) {
+                                val secs = urlStr.removePrefix("seekto:").toFloatOrNull() ?: 0f
+                                viewModel.seekVideoTo(secs)
+                                onSeekTo?.invoke(secs)
+                                return true
+                            } else if (urlStr.contains("#quote-") || urlStr.startsWith("quote:")) {
+                                val query = urlStr.substringAfter("#quote-").substringAfter("quote:")
+                                viewModel.onBlogQuoteClick(query, viewModel.selectedDoc.value)
+                                return true
+                            }
                         }
                         return super.shouldOverrideUrlLoading(view, urlStr)
                     }
@@ -1963,18 +2139,25 @@ fun HtmlContentViewer(
                           if (!root) return highlights;
                           const fullText = root.textContent;
                           const processedHighlights = highlights.map(hl => {
-                            if (hl.location_start == null || hl.location_end == null) {
-                              if (hl.text) {
-                                const offset = findFuzzyOffset(fullText, hl.text);
-                                if (offset) {
-                                  return { ...hl, location_start: offset.start, location_end: offset.end };
-                                }
+                            var isValidOffset = false;
+                            if (hl.location_start != null && hl.location_end != null && hl.location_start < fullText.length) {
+                              var seg = fullText.substring(hl.location_start, Math.min(hl.location_end, fullText.length));
+                              if (hl.text && (seg === hl.text || seg.trim() === (hl.text || '').trim())) {
+                                isValidOffset = true;
+                              }
+                            }
+                            if (!isValidOffset && hl.text) {
+                              const offset = findFuzzyOffset(fullText, hl.text);
+                              if (offset) {
+                                return Object.assign({}, hl, { location_start: offset.start, location_end: offset.end });
+                              } else {
+                                return Object.assign({}, hl, { location_start: null, location_end: null });
                               }
                             }
                             return hl;
                           });
                           // 执行 DOM 渲染（与原逻辑一致）
-                          restoreHighlights(root, highlights);
+                          restoreHighlights(root, processedHighlights);
                           return processedHighlights;
                         }
 

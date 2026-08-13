@@ -2265,7 +2265,33 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
 
                 val doc = docDao.getDocumentById(documentId)
-                val titleToUse = docTitle ?: doc?.title ?: "视频文章"
+                val titleToUse = docTitle ?: doc?.title ?: "文章概览"
+
+                // 非视频类通用文章
+                if (doc?.category != "video") {
+                    val contentText = doc?.html_content ?: doc?.summary ?: doc?.title ?: ""
+                    if (contentText.isBlank()) {
+                        _aiErrorMessage.value = "⚠️ 文章正文为空，无法生成 AI 博客。"
+                        _blogLoading.value = false
+                        return@launch
+                    }
+                    val blogMd = com.readerq.app.api.AndroidSubtitleFetcher.generateBlogNativeForArticle(
+                        titleToUse, contentText, openAiKey, openAiBase, openAiModel
+                    )
+                    if (!blogMd.isNullOrBlank()) {
+                        settingDao.setSetting(SettingEntity("blog_$documentId", blogMd))
+                        doc?.let { docDao.insertDocument(it.copy(blog_content = blogMd)) }
+                        _aiErrorMessage.value = null
+                        _blogContent.value = blogMd
+                        saveBlog(documentId, blogMd)
+                    } else {
+                        _aiErrorMessage.value = "⚠️ AI 博客生成结果为空，请稍后重试。"
+                    }
+                    _blogLoading.value = false
+                    return@launch
+                }
+
+                // 视频类文章
                 val rawSrt = settingDao.getSetting("subtitle_$documentId")
 
                 if (rawSrt.isNullOrBlank()) {
@@ -2297,11 +2323,80 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
             } catch (e: Exception) {
                 println("[generateBlogForDocument] Error: ${e.message}")
-                _aiErrorMessage.value = "⚠️ 生成 AI 视频博客失败: ${e.message}"
+                _aiErrorMessage.value = "⚠️ 生成 AI 博客失败: ${e.message}"
             } finally {
                 _blogLoading.value = false
             }
         }
+    }
+
+    // 🔗 博客模式下的原文引用与浮动预览状态
+    private val _previewQuoteText = MutableStateFlow<String?>(null)
+    val previewQuoteText: StateFlow<String?> = _previewQuoteText.asStateFlow()
+
+    private val _previewParagraphText = MutableStateFlow<String?>(null)
+    val previewParagraphText: StateFlow<String?> = _previewParagraphText.asStateFlow()
+
+    private val _previewBottomSheetOpen = MutableStateFlow(false)
+    val previewBottomSheetOpen: StateFlow<Boolean> = _previewBottomSheetOpen.asStateFlow()
+
+    private val _matchedQuoteQuery = MutableStateFlow<String?>(null)
+    val matchedQuoteQuery: StateFlow<String?> = _matchedQuoteQuery.asStateFlow()
+
+    fun onBlogQuoteClick(quoteQuery: String, doc: DocumentEntity?) {
+        val rawQuery = quoteQuery.removePrefix("#quote-").trim()
+        val cleanQuery = try {
+            java.net.URLDecoder.decode(rawQuery, "UTF-8")
+        } catch (e: Exception) {
+            rawQuery
+        }
+        val matchedText = findMatchedParagraphText(doc?.html_content, doc?.summary, cleanQuery)
+        _previewQuoteText.value = cleanQuery
+        _previewParagraphText.value = matchedText
+        _matchedQuoteQuery.value = quoteQuery
+        _previewBottomSheetOpen.value = true
+    }
+
+    fun closePreviewBottomSheet() {
+        _previewBottomSheetOpen.value = false
+    }
+
+    fun findMatchedParagraphText(htmlContent: String?, summary: String?, quoteQuery: String): String {
+        val rawQuery = quoteQuery.removePrefix("#quote-").trim()
+        val cleanQuery = try {
+            java.net.URLDecoder.decode(rawQuery, "UTF-8")
+        } catch (e: Exception) {
+            rawQuery
+        }
+        if (cleanQuery.isBlank()) return summary ?: "未能在正文中匹配到精准段落。"
+
+        if (!htmlContent.isNullOrBlank()) {
+            val cleanHtmlText = htmlContent.replace(Regex("<[^>]+>"), "\n")
+            val lines = cleanHtmlText.split("\n")
+                .map { it.trim() }
+                .filter { it.length > 5 }
+
+            for (line in lines) {
+                if (line.contains(cleanQuery)) return line
+            }
+
+            var bestLine = ""
+            var maxHits = 0
+            val queryChars = cleanQuery.toSet()
+            for (line in lines) {
+                var hits = 0
+                for (c in queryChars) {
+                    if (line.contains(c)) hits++
+                }
+                if (hits > maxHits && (hits.toDouble() / queryChars.size) > 0.4) {
+                    maxHits = hits
+                    bestLine = line
+                }
+            }
+            if (bestLine.isNotBlank()) return bestLine
+        }
+
+        return summary ?: "未能在正文中匹配到精准段落。"
     }
 
     fun updateSidebarWidth(width: Float) {
@@ -3004,7 +3099,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         note: String? = null,
         color: String = "yellow",
         location: Int = 0,
-        images: List<HighlightImage> = emptyList()
+        images: List<HighlightImage> = emptyList(),
+        isBlogMode: Boolean = false
     ) {
         if (text.trim().isEmpty() && images.isEmpty()) return
         val doc = _selectedDoc.value ?: return
@@ -3013,7 +3109,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch(Dispatchers.IO) {
             val localId = "local_" + System.currentTimeMillis()
             val nowIso = java.time.Instant.now().toString()
-            val defaultTags = listOf("readerq")
+            val effectiveBlogMode = isBlogMode || doc.category == "video"
+            val defaultTags = if (effectiveBlogMode) listOf("readerq", "blog") else listOf("readerq")
             var localHl = HighlightEntity(
                 id = localId,
                 document_id = doc.id,

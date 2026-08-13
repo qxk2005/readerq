@@ -7,15 +7,17 @@ import { convertToBlogStream } from '@/lib/ai';
 
 export async function POST(request) {
   try {
-    const { transcript, title, customPrompt } = await request.json();
-    if (!transcript) {
-      return new Response(JSON.stringify({ error: '缺少字幕内容' }), {
+    const { transcript, content, articleContent, title, customPrompt, isVideo, category } = await request.json();
+    const rawText = transcript || content || articleContent;
+    if (!rawText || !rawText.trim()) {
+      return new Response(JSON.stringify({ error: '缺少文章或字幕内容' }), {
         status: 400,
         headers: { 'Content-Type': 'application/json' },
       });
     }
 
-    const generator = convertToBlogStream(transcript, title || '未知视频', customPrompt);
+    const isVideoDoc = isVideo !== undefined ? Boolean(isVideo) : (category === 'video');
+    const generator = convertToBlogStream(rawText, title || '未知文档', customPrompt, isVideoDoc);
 
     const encoder = new TextEncoder();
     const customStream = new ReadableStream({

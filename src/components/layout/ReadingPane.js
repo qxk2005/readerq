@@ -10,7 +10,9 @@ import GhostReader from '@/components/ai/GhostReader';
 import HighlightEditor from '@/components/HighlightEditor';
 import TagInput from '@/components/TagInput';
 import VideoReadingPane from '@/components/video/VideoReadingPane';
-import { BookOpen, Link, Info, Edit3, Bot, Loader2, ClipboardList, AlertTriangle, RefreshCw, CheckCircle2, XCircle, ImageIcon, Upload, Trash2, RotateCcw, Inbox, Clock, Archive, Volume2, Share2, Play, Pause, SkipBack, SkipForward, X, Copy, Check, ArrowUpDown, Target, ArrowLeft } from 'lucide-react';
+import ParagraphPreviewDrawer from '@/components/common/ParagraphPreviewDrawer';
+import GeneralBlogArticleRenderer from '@/components/common/GeneralBlogArticleRenderer';
+import { BookOpen, Link, Info, Edit3, Bot, Loader2, ClipboardList, AlertTriangle, RefreshCw, CheckCircle2, XCircle, ImageIcon, Upload, Trash2, RotateCcw, Inbox, Clock, Archive, Volume2, Share2, Play, Pause, SkipBack, SkipForward, X, Copy, Check, ArrowUpDown, Target, ArrowLeft, Sparkles, FileText } from 'lucide-react';
 import RssAiRecommendView from '@/components/home/RssAiRecommendView';
 
 const scrollToElement = (container, element) => {
@@ -88,6 +90,16 @@ export default function ReadingPane() {
   const [sidebarEditTags, setSidebarEditTags] = useState([]);
   const [shareCopied, setShareCopied] = useState(false);
   const [videoTabMode, setVideoTabMode] = useState('subtitle'); // 'subtitle' | 'blog'
+  const [readingTabMode, setReadingTabMode] = useState('text'); // 'text' | 'blog'
+  const [generalBlogContent, setGeneralBlogContent] = useState('');
+  const [isBlogGenerating, setIsBlogGenerating] = useState(false);
+  const [blogStreamProgress, setBlogStreamProgress] = useState('');
+  const lastGeneratedBlogRef = useRef('');
+
+  const [previewDrawerOpen, setPreviewDrawerOpen] = useState(false);
+  const [previewQuoteText, setPreviewQuoteText] = useState('');
+  const [previewParagraphText, setPreviewParagraphText] = useState('');
+  const [matchedAnchorQuery, setMatchedAnchorQuery] = useState('');
   const [highlightSortMode, setHighlightSortMode] = useState('position_asc'); // 'position_asc' | 'position_desc' | 'time_asc' | 'time_desc'
 
   // 🎯 点选高亮选择器 (Point-to-Point Highlight Picker) 状态
@@ -96,8 +108,13 @@ export default function ReadingPane() {
 
   useEffect(() => {
     setVideoTabMode('subtitle');
+    setReadingTabMode('text');
     setIsPickerMode(false);
     setPickerStart(null);
+    setPreviewDrawerOpen(false);
+    setGeneralBlogContent(selectedDoc?.blog_content || '');
+    lastGeneratedBlogRef.current = selectedDoc?.blog_content || '';
+    setBlogStreamProgress('');
   }, [selectedDoc?.id]);
 
   const isDocVideo = useMemo(() => {
@@ -107,6 +124,218 @@ export default function ReadingPane() {
     if (url.includes('youtube.com') || url.includes('youtu.be') || url.includes('bilibili.com')) return true;
     return false;
   }, [selectedDoc]);
+
+  // 从原文章节点树或字符串中通过模糊算法检索匹配的段落
+  const findMatchedParagraphText = useCallback((quoteQuery) => {
+    if (!quoteQuery) return '';
+    const cleanQuery = decodeURIComponent(quoteQuery).replace(/^#quote-/, '').trim();
+    if (!cleanQuery) return '';
+
+    if (articleRef.current) {
+      const elements = articleRef.current.querySelectorAll('p, h1, h2, h3, h4, h5, h6, li, blockquote');
+      let bestElText = '';
+      let maxHit = 0;
+      elements.forEach(el => {
+        const text = (el.innerText || el.textContent || '').trim();
+        if (text.includes(cleanQuery)) {
+          bestElText = text;
+          maxHit = 999;
+        } else if (maxHit < 999) {
+          let hits = 0;
+          const chars = cleanQuery.split('');
+          chars.forEach(c => { if (text.includes(c)) hits++; });
+          if (hits / chars.length > 0.5 && hits > maxHit) {
+            maxHit = hits;
+            bestElText = text;
+          }
+        }
+      });
+      if (bestElText) return bestElText;
+    }
+
+    if (selectedDoc?.html_content) {
+      const tempDiv = document.createElement('div');
+      tempDiv.innerHTML = selectedDoc.html_content;
+      const textBlocks = Array.from(tempDiv.querySelectorAll('p, h1, h2, h3, h4, h5, h6, li, blockquote'))
+        .map(el => (el.innerText || el.textContent || '').trim())
+        .filter(t => t.length > 5);
+
+      for (const block of textBlocks) {
+        if (block.includes(cleanQuery)) return block;
+      }
+      for (const block of textBlocks) {
+        let hits = 0;
+        const chars = cleanQuery.split('');
+        chars.forEach(c => { if (block.includes(c)) hits++; });
+        if (hits / chars.length > 0.5) return block;
+      }
+    }
+    return selectedDoc?.summary || '未能在原文中找到完全匹配的段落。';
+  }, [selectedDoc]);
+
+  // 点击博客原文引用锚点的事件句柄
+  const handleBlogQuoteClick = useCallback((quoteQuery) => {
+    const matchedText = findMatchedParagraphText(quoteQuery);
+    setPreviewQuoteText(quoteQuery.replace(/^#quote-/, ''));
+    setPreviewParagraphText(matchedText);
+    setMatchedAnchorQuery(quoteQuery);
+    setPreviewDrawerOpen(true);
+  }, [findMatchedParagraphText]);
+
+  // 从浮动预览抽屉跳转回正文对应段落
+  const handleJumpToOriginalFromDrawer = useCallback(() => {
+    setReadingTabMode('text');
+    setPreviewDrawerOpen(false);
+
+    // 若正文 HTML 缺失，自动发起全网网页抓取与解析
+    if (selectedDoc?.id && (!selectedDoc?.html_content || selectedDoc.html_content.trim().length < 20)) {
+      if (fetchDocumentDetails) {
+        fetchDocumentDetails(selectedDoc.id);
+      }
+    }
+
+    const performJumpScroll = (attempts = 0) => {
+      if (!articleRef.current || !matchedAnchorQuery) {
+        if (attempts < 10) setTimeout(() => performJumpScroll(attempts + 1), 100);
+        return;
+      }
+
+      const cleanQuery = decodeURIComponent(matchedAnchorQuery).replace(/^#quote-/, '').trim();
+      if (!cleanQuery) return;
+
+      const elements = articleRef.current.querySelectorAll('p, h1, h2, h3, h4, h5, h6, li, blockquote, div');
+      let targetEl = null;
+
+      // 1. 尝试精确定位包含匹配词句的 DOM
+      for (let i = 0; i < elements.length; i++) {
+        const el = elements[i];
+        const text = (el.innerText || el.textContent || '').trim();
+        if (text && text.includes(cleanQuery)) {
+          targetEl = el;
+          break;
+        }
+      }
+
+      // 2. 若无完全匹配，按字符重合率模糊搜索最吻合段落
+      if (!targetEl && cleanQuery.length > 2) {
+        let maxHits = 0;
+        const queryChars = cleanQuery.split('');
+        elements.forEach(el => {
+          const text = (el.innerText || el.textContent || '').trim();
+          if (text.length > 5 && text.length < cleanQuery.length + 600) {
+            let hits = 0;
+            queryChars.forEach(c => { if (text.includes(c)) hits++; });
+            const ratio = hits / queryChars.length;
+            if (ratio > 0.35 && hits > maxHits) {
+              maxHits = hits;
+              targetEl = el;
+            }
+          }
+        });
+      }
+
+      const scrollContainer = document.getElementById('article-scroll-container');
+      if (targetEl && scrollContainer) {
+        scrollToElement(scrollContainer, targetEl);
+        targetEl.style.transition = 'background-color 0.4s ease';
+        const originalBg = targetEl.style.backgroundColor;
+        targetEl.style.backgroundColor = 'rgba(255, 215, 0, 0.4)';
+        setTimeout(() => {
+          targetEl.style.backgroundColor = originalBg;
+        }, 1800);
+      } else if (attempts < 8) {
+        setTimeout(() => performJumpScroll(attempts + 1), 120);
+      }
+    };
+
+    setTimeout(() => performJumpScroll(0), 80);
+  }, [matchedAnchorQuery, selectedDoc, fetchDocumentDetails]);
+
+  // 静默预加载/生成通用文章 AI 博客
+  const triggerGenerateBlog = useCallback((force = false) => {
+    if (!selectedDoc?.id || isDocVideo) return;
+    if (!force && selectedDoc.blog_content) {
+      setGeneralBlogContent(selectedDoc.blog_content);
+      lastGeneratedBlogRef.current = selectedDoc.blog_content;
+      setBlogStreamProgress('');
+      return;
+    }
+
+    const docId = selectedDoc.id;
+    const contentText = selectedDoc.html_content || selectedDoc.summary || selectedDoc.title || '';
+    if (!contentText.trim() || contentText.length < 30) return;
+
+    setIsBlogGenerating(true);
+    setBlogStreamProgress('⚡ 正在解析长文结构并连接 AI 大模型...');
+    setGeneralBlogContent('');
+    lastGeneratedBlogRef.current = '';
+
+    fetch('/api/ai/blog-convert', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        content: contentText,
+        title: selectedDoc.title || '无标题文章',
+        category: selectedDoc.category,
+        isVideo: false
+      })
+    })
+      .then(async (res) => {
+        if (!res.ok) throw new Error('AI 博客转换 API 返回异常 status ' + res.status);
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let accumulatedMd = '';
+
+        setBlogStreamProgress('🧠 AI 正在理解深层逻辑与生成要点拆解...');
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          const chunk = decoder.decode(value, { stream: true });
+          accumulatedMd += chunk;
+          lastGeneratedBlogRef.current = accumulatedMd;
+          setGeneralBlogContent(accumulatedMd);
+          setBlogStreamProgress(`✨ 正在流式生成 Markdown 导读... (已生成 ${accumulatedMd.length} 字)`);
+        }
+
+        if (accumulatedMd.trim()) {
+          setBlogStreamProgress('💾 生成完毕，保存至本地与同步云端...');
+          fetch(`/api/documents/${docId}/blog`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ blogContent: accumulatedMd })
+          });
+          if (updateDocumentLocally) {
+            updateDocumentLocally(docId, { blog_content: accumulatedMd });
+          }
+        }
+      })
+      .catch(err => {
+        console.error('预生成 AI 博客出错:', err);
+        setBlogStreamProgress(`⚠️ 博客生成中断: ${err.message || '网络连接失败'}`);
+      })
+      .finally(() => {
+        setIsBlogGenerating(false);
+      });
+  }, [selectedDoc?.id, selectedDoc?.html_content, selectedDoc?.summary, selectedDoc?.title, selectedDoc?.category, selectedDoc?.blog_content, isDocVideo, updateDocumentLocally]);
+
+  useEffect(() => {
+    if (selectedDoc?.id && !isDocVideo) {
+      if (!selectedDoc.html_content || selectedDoc.html_content.trim() === '') {
+        if (fetchDocumentDetails) {
+          fetchDocumentDetails(selectedDoc.id);
+        }
+      }
+      if (selectedDoc.blog_content) {
+        if (lastGeneratedBlogRef.current !== selectedDoc.blog_content) {
+          setGeneralBlogContent(selectedDoc.blog_content);
+          lastGeneratedBlogRef.current = selectedDoc.blog_content;
+        }
+      } else {
+        triggerGenerateBlog(false);
+      }
+    }
+  }, [selectedDoc?.id, isDocVideo, selectedDoc?.blog_content, selectedDoc?.html_content, triggerGenerateBlog, fetchDocumentDetails]);
 
   // 安全提取划线高亮标签名称列表 (兼容数组/对象/缺失，过滤掉杂质 '0')
   const extractTagNames = useCallback((tagsInput) => {
@@ -365,8 +594,8 @@ export default function ReadingPane() {
 
       // 3. 如果正在编辑某个高亮（editingHighlight），重新获取正文中对应 mark 元素的坐标
       if (editingHighlight?.id) {
-        const articleContainer = selectedDoc?.category === 'video'
-          ? document.querySelector('.blog-article')
+        const articleContainer = (selectedDoc?.category === 'video' || readingTabMode === 'blog')
+          ? (document.querySelector('.blog-article') || articleRef.current)
           : articleRef.current;
         const mark = articleContainer?.querySelector(`mark[data-highlight-id="${editingHighlight.id}"]`);
         if (mark) {
@@ -383,7 +612,7 @@ export default function ReadingPane() {
     return () => {
       scrollContainer.removeEventListener('scroll', handleScrollAndSyncFloating);
     };
-  }, [editingHighlight?.id, selectedDoc?.category]);
+  }, [editingHighlight?.id, selectedDoc?.category, readingTabMode]);
 
   // 加载文档的标签和备注
   useEffect(() => {
@@ -493,36 +722,81 @@ export default function ReadingPane() {
     });
   };
 
-  // 渲染高亮
+  const hasBlogTag = (hl) => {
+    if (!hl || !hl.tags) return false;
+    if (Array.isArray(hl.tags)) {
+      return hl.tags.some(t => typeof t === 'string' ? t.toLowerCase() === 'blog' : (t?.name || t?.key || '').toLowerCase() === 'blog');
+    }
+    if (typeof hl.tags === 'object') {
+      return Object.keys(hl.tags).some(k => k.toLowerCase() === 'blog' || (hl.tags[k]?.name || '').toLowerCase() === 'blog');
+    }
+    if (typeof hl.tags === 'string') {
+      try {
+        const parsed = JSON.parse(hl.tags);
+        return hasBlogTag({ tags: parsed });
+      } catch (e) {
+        return hl.tags.toLowerCase().includes('blog');
+      }
+    }
+    return false;
+  };
+
+  // 博客模式高亮还原函数 — 由 GeneralBlogArticleRenderer 的 onRendered 回调驱动
+  // 这解决了 ReactMarkdown 重新渲染会摧毁已注入 <mark> 的 React 声明式/命令式冲突
+  const restoreBlogHighlightsToContainer = useCallback((container) => {
+    if (!container || !highlights || highlights.length === 0) return;
+    // 清理上一轮旧 mark 元素
+    container.querySelectorAll('mark[data-highlight-id]').forEach(mark => {
+      try {
+        const parent = mark.parentNode;
+        if (parent && parent.contains(mark)) {
+          while (mark.firstChild) {
+            parent.insertBefore(mark.firstChild, mark);
+          }
+          parent.removeChild(mark);
+          parent.normalize();
+        }
+      } catch (e) {
+        // 忽略个别复杂跨节点 mark 的解包错误
+      }
+    });
+    attachImageErrorFallback(container);
+    const processed = restoreHighlights(container, highlights, (hl, e) => {
+      const rect = e.target.getBoundingClientRect();
+      setEditingHighlight({ ...hl, rect });
+    });
+    if (processed) {
+      const posMap = {};
+      processed.forEach(h => { if (h.location_start != null) posMap[h.id] = h.location_start; });
+      highlightPositionsRef.current = posMap;
+      setPositionsReady(c => c + 1);
+    }
+  }, [highlights]);
+
+  // 渲染高亮（仅处理正文模式；博客模式由 onRendered 回调驱动）
   useEffect(() => {
     let timerId = null;
-    const articleContainer = selectedDoc?.category === 'video'
+    const isBlogActive = isDocVideo ? videoTabMode === 'blog' : readingTabMode === 'blog';
+
+    const articleContainer = (isDocVideo || isBlogActive)
       ? document.querySelector('.blog-article')
       : articleRef.current;
 
-    if (articleContainer && !isContentLoading && !isLoadingHighlights) {
-      if (selectedDoc?.category === 'video') {
-        // 视频文章生成的博客：仅在 Tab 激活为 'blog' 且博客内容就绪时渲染高亮
-        if (videoTabMode === 'blog' && selectedDoc?.blog_content) {
+    if (!isContentLoading && !isLoadingHighlights) {
+      if (isBlogActive) {
+        // 博客模式：高亮还原由 GeneralBlogArticleRenderer onRendered 回调驱动
+        // 但当用户从正文切回博客时（DOM 已存在、不会触发 onRendered），需要这里兜底
+        const activeBlogContent = isDocVideo ? selectedDoc?.blog_content : (generalBlogContent || selectedDoc?.blog_content);
+        if (activeBlogContent) {
           timerId = setTimeout(() => {
-            const activeContainer = document.querySelector('.blog-article') || articleContainer;
+            const activeContainer = document.querySelector('.blog-article');
             if (!activeContainer) return;
-            attachImageErrorFallback(activeContainer);
-            const processed = restoreHighlights(activeContainer, highlights, (hl, e) => {
-              const rect = e.target.getBoundingClientRect();
-              setEditingHighlight({ ...hl, rect });
-            });
-            // 缓存推算出的 location_start 到 ref，供侧边栏排序使用
-            if (processed) {
-              const posMap = {};
-              processed.forEach(h => { if (h.location_start != null) posMap[h.id] = h.location_start; });
-              highlightPositionsRef.current = posMap;
-              setPositionsReady(c => c + 1);
-            }
-          }, 100);
+            restoreBlogHighlightsToContainer(activeContainer);
+          }, 150);
         }
-      } else if (selectedDoc?.html_content) {
-        // 普通文章高亮渲染
+      } else if (articleContainer && selectedDoc?.html_content) {
+        // 正文模式 (readingTabMode === 'text')：仅在正文模式下才装载原 HTML 并还原高亮
+        const textHighlights = highlights.filter(hl => !hasBlogTag(hl));
         const scrollContainer = document.getElementById('article-scroll-container');
         const shouldPreserveScroll = lastRenderedDocIdRef.current === selectedDoc?.id;
         const prevScrollTop = (shouldPreserveScroll && scrollContainer) ? scrollContainer.scrollTop : 0;
@@ -535,7 +809,7 @@ export default function ReadingPane() {
 
         timerId = setTimeout(() => {
           if (!articleContainer) return;
-          const processed = restoreHighlights(articleContainer, highlights, (hl, e) => {
+          const processed = restoreHighlights(articleContainer, textHighlights, (hl, e) => {
             const rect = e.target.getBoundingClientRect();
             setEditingHighlight({ ...hl, rect });
           });
@@ -564,7 +838,7 @@ export default function ReadingPane() {
       if (timerId !== null) clearTimeout(timerId);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedDoc?.id, isContentLoading, isLoadingHighlights, highlights, selectedDoc?.category, selectedDoc?.blog_content, videoTabMode]);
+  }, [selectedDoc?.id, isContentLoading, isLoadingHighlights, highlights, selectedDoc?.category, selectedDoc?.blog_content, videoTabMode, readingTabMode, generalBlogContent]);
 
   // 当正文中选中或点击某个高亮段落时，同步展开并定位右侧边栏的对应项目
   useEffect(() => {
@@ -687,10 +961,9 @@ export default function ReadingPane() {
   };
 
   // 监听选中文本 & 高亮点击（事件委托）
-  // 监听选中文本 & 高亮点击（事件委托）
   const handleMouseUp = (e) => {
-    const articleContainer = selectedDoc?.category === 'video'
-      ? document.querySelector('.blog-article')
+    const articleContainer = (selectedDoc?.category === 'video' || readingTabMode === 'blog')
+      ? (document.querySelector('.blog-article') || articleRef.current)
       : articleRef.current;
 
     // 检测是否点击了已有的高亮 <mark> 元素（事件委托模式）
@@ -874,8 +1147,8 @@ export default function ReadingPane() {
       return;
     }
 
-    const articleContainer = selectedDoc?.category === 'video'
-      ? document.querySelector('.blog-article')
+    const articleContainer = (selectedDoc?.category === 'video' || readingTabMode === 'blog')
+      ? (document.querySelector('.blog-article') || articleRef.current)
       : articleRef.current;
 
     if (!articleContainer || !articleContainer.contains(e.target)) return;
@@ -976,6 +1249,11 @@ export default function ReadingPane() {
     const selectionImages = selection.images || [];
     const selectionRect = selection.rect;
     
+    const isBlogMode = isDocVideo ? videoTabMode === 'blog' : readingTabMode === 'blog';
+    const initialTags = isBlogMode
+      ? { readerq: { name: 'readerq' }, blog: { name: 'blog' } }
+      : { readerq: { name: 'readerq' } };
+
     const newHl = {
       id: crypto.randomUUID(),
       document_id: selectedDoc.id,
@@ -986,7 +1264,7 @@ export default function ReadingPane() {
       location_start: selection.location_start,
       location_end: selection.location_end,
       note: '',
-      tags: {}
+      tags: initialTags
     };
 
     setSelection(null);
@@ -1451,6 +1729,62 @@ export default function ReadingPane() {
               已读 {Math.round(selectedDoc.reading_progress * 100)}%
             </span>
           )}
+          {!isDocVideo && (
+            <div
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                padding: '2px',
+                backgroundColor: 'var(--color-bg-tertiary, rgba(0, 0, 0, 0.06))',
+                borderRadius: '16px',
+                border: '1px solid var(--color-border-subtle, rgba(255, 255, 255, 0.1))',
+                marginLeft: '8px',
+              }}
+            >
+              <button
+                onClick={() => setReadingTabMode('text')}
+                style={{
+                  padding: '3px 10px',
+                  borderRadius: '14px',
+                  border: 'none',
+                  fontSize: '12px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  backgroundColor: readingTabMode === 'text' ? 'var(--color-bg-primary, #ffffff)' : 'transparent',
+                  color: readingTabMode === 'text' ? 'var(--color-text-primary)' : 'var(--color-text-tertiary)',
+                  boxShadow: readingTabMode === 'text' ? '0 1px 4px rgba(0, 0, 0, 0.12)' : 'none',
+                  transition: 'all 0.15s ease',
+                }}
+              >
+                <FileText size={13} />
+                正文
+              </button>
+              <button
+                onClick={() => setReadingTabMode('blog')}
+                style={{
+                  padding: '3px 10px',
+                  borderRadius: '14px',
+                  border: 'none',
+                  fontSize: '12px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  backgroundColor: readingTabMode === 'blog' ? 'var(--color-accent, #007aff)' : 'transparent',
+                  color: readingTabMode === 'blog' ? '#ffffff' : 'var(--color-text-tertiary)',
+                  boxShadow: readingTabMode === 'blog' ? '0 1px 4px rgba(0, 122, 255, 0.3)' : 'none',
+                  transition: 'all 0.15s ease',
+                }}
+              >
+                <Sparkles size={13} />
+                博客
+              </button>
+            </div>
+          )}
         </div>
         <div className="reading-header-right">
           {/* 🎯 点选高亮模式按钮 (置顶第一优先级，凸显视觉) */}
@@ -1736,8 +2070,8 @@ export default function ReadingPane() {
                 )}
               </div>
 
-              {/* 摘要（视频类型不显示摘要，直接展示播放器） */}
-              {selectedDoc.category !== 'video' && selectedDoc.summary && (
+              {/* 摘要（视频类型与博客模式下均不显示原生摘要，直接由 AI 博客导读提供中文概述） */}
+              {selectedDoc.category !== 'video' && readingTabMode !== 'blog' && selectedDoc.summary && (
                 <div style={{
                   padding: 'var(--space-4)',
                   background: 'var(--color-bg-secondary)',
@@ -1755,9 +2089,42 @@ export default function ReadingPane() {
                 </div>
               )}
 
-              {/* 文章正文 */}
-              {selectedDoc.html_content !== null ? (
-                selectedDoc.html_content ? (
+              {/* 文章正文 / 博客模式切换 */}
+              <div style={{ display: readingTabMode === 'blog' ? 'block' : 'none' }}>
+                <GeneralBlogArticleRenderer
+                  blogContent={generalBlogContent}
+                  onQuoteClick={handleBlogQuoteClick}
+                  isGenerating={isBlogGenerating}
+                  streamProgress={blogStreamProgress}
+                  onRegenerate={() => triggerGenerateBlog(true)}
+                  onRendered={restoreBlogHighlightsToContainer}
+                />
+              </div>
+
+              <div style={{ display: readingTabMode === 'text' ? 'block' : 'none' }}>
+                {contentError ? (
+                  <div className="reading-article-body" style={{ margin: 'var(--space-6) 0' }}>
+                    <div style={{
+                      padding: 'var(--space-4)',
+                      background: 'rgba(239, 68, 68, 0.08)',
+                      borderLeft: '4px solid var(--color-danger)',
+                      borderRadius: 'var(--radius-md)',
+                      color: 'var(--color-text-secondary)',
+                      fontSize: 'var(--text-sm)',
+                      marginBottom: 'var(--space-4)'
+                    }}>
+                      <div style={{ fontWeight: '600', color: 'var(--color-danger)', marginBottom: 'var(--space-2)', display: 'flex', alignItems: 'center', gap: '6px' }}><AlertTriangle size={16} /> 获取正文内容失败</div>
+                      <p style={{ margin: 0, fontSize: 'var(--text-xs)' }}>{contentError}</p>
+                    </div>
+                    <button
+                      className="btn btn-primary"
+                      onClick={() => fetchDocumentDetails(selectedDoc.id)}
+                      style={{ fontSize: 'var(--text-xs)', padding: 'var(--space-2) var(--space-4)' }}
+                    >
+                      <span style={{ display: 'flex', alignItems: 'center', gap: '6px', justifyContent: 'center' }}><RefreshCw size={14} /> 重新同步正文</span>
+                    </button>
+                  </div>
+                ) : selectedDoc.html_content ? (
                   <div
                     ref={articleRef}
                     className="reading-article-body"
@@ -1771,7 +2138,7 @@ export default function ReadingPane() {
                       textAlign: 'center', marginBottom: '24px'
                     }}>
                       <p style={{ color: 'var(--color-text-secondary)', fontSize: '14px', marginBottom: '16px', lineHeight: '1.6' }}>
-                        此 RSS/网页文章尚未装载正文。您可以点击下方按钮一键发起全网动态抓取与解析：
+                        {isContentLoading ? '⚡ 正在为您全网动态解析与抓取网页正文...' : '此 RSS/网页文章尚未装载正文。我们已自动为您发起抓取，您也可手动刷新：'}
                       </p>
                       <button
                         className="btn btn-primary"
@@ -1791,36 +2158,8 @@ export default function ReadingPane() {
                       </div>
                     )}
                   </div>
-                )
-              ) : contentError ? (
-                <div className="reading-article-body" style={{ margin: 'var(--space-6) 0' }}>
-                  <div style={{
-                    padding: 'var(--space-4)',
-                    background: 'rgba(239, 68, 68, 0.08)',
-                    borderLeft: '4px solid var(--color-danger)',
-                    borderRadius: 'var(--radius-md)',
-                    color: 'var(--color-text-secondary)',
-                    fontSize: 'var(--text-sm)',
-                    marginBottom: 'var(--space-4)'
-                  }}>
-                    <div style={{ fontWeight: '600', color: 'var(--color-danger)', marginBottom: 'var(--space-2)', display: 'flex', alignItems: 'center', gap: '6px' }}><AlertTriangle size={16} /> 获取正文内容失败</div>
-                    <p style={{ margin: 0, fontSize: 'var(--text-xs)' }}>{contentError}</p>
-                  </div>
-                  <button
-                    className="btn btn-primary"
-                    onClick={() => fetchDocumentDetails(selectedDoc.id)}
-                    style={{ fontSize: 'var(--text-xs)', padding: 'var(--space-2) var(--space-4)' }}
-                  >
-                    <span style={{ display: 'flex', alignItems: 'center', gap: '6px', justifyContent: 'center' }}><RefreshCw size={14} /> 重新同步正文</span>
-                  </button>
-                </div>
-              ) : (
-                <div className="reading-article-body">
-                  <p style={{ color: 'var(--color-text-tertiary)', fontStyle: 'italic' }}>
-                    文章正文暂未加载。请先同步完整内容，或点击上方链接在原始网站阅读。
-                  </p>
-                </div>
-              )}
+                )}
+              </div>
             </>
           )}
         </article>
@@ -1828,6 +2167,14 @@ export default function ReadingPane() {
       )}
       </div> {/* Close article-scroll-container */}
       </div> {/* Close left main flex area */}
+
+      <ParagraphPreviewDrawer
+        isOpen={previewDrawerOpen}
+        onClose={() => setPreviewDrawerOpen(false)}
+        quoteText={previewQuoteText}
+        paragraphText={previewParagraphText}
+        onJumpToOriginal={handleJumpToOriginalFromDrawer}
+      />
 
       {/* 右侧边栏 (Tabs: Info, Notebook, Chat) */}
       {rightPanelTab && (
@@ -2023,26 +2370,56 @@ export default function ReadingPane() {
                           transition: 'border-color 0.15s, box-shadow 0.15s'
                         }}
                         onClick={() => {
-                          // 滚动到正文中的高亮位置
-                          const performScroll = () => {
-                            const mark = articleRef.current?.querySelector(`mark[data-highlight-id="${hl.id}"]`);
-                            const scrollContainer = selectedDoc?.category === 'video'
-                              ? document.querySelector('.subtitle-content')
+                          const isCurrentlyBlog = isDocVideo ? videoTabMode === 'blog' : readingTabMode === 'blog';
+                          const currentContainer = (isDocVideo || isCurrentlyBlog)
+                            ? document.querySelector('.blog-article')
+                            : articleRef.current;
+                          const otherContainer = isCurrentlyBlog
+                            ? articleRef.current
+                            : document.querySelector('.blog-article');
+
+                          // 1. 优先尝试在当前 Tab 激活的容器中查找对应的 <mark>
+                          let targetMark = currentContainer?.querySelector(`mark[data-highlight-id="${hl.id}"]`);
+                          let shouldSwitchTab = false;
+
+                          // 2. 如果当前容器未查找到该高亮，但在另一容器中存在该高亮，触发自动切态
+                          if (!targetMark && otherContainer) {
+                            const otherMark = otherContainer.querySelector(`mark[data-highlight-id="${hl.id}"]`);
+                            if (otherMark) {
+                              shouldSwitchTab = true;
+                            }
+                          }
+
+                          const doScrollToMark = (container) => {
+                            const mark = container?.querySelector(`mark[data-highlight-id="${hl.id}"]`);
+                            const scrollContainer = isDocVideo
+                              ? (document.querySelector('.subtitle-content') || document.getElementById('article-scroll-container'))
                               : document.getElementById('article-scroll-container');
                             if (mark && scrollContainer) {
                               scrollToElement(scrollContainer, mark);
+                              mark.style.transition = 'background-color 0.4s ease';
+                              const originalBg = mark.style.backgroundColor;
+                              mark.style.backgroundColor = 'rgba(255, 215, 0, 0.6)';
+                              setTimeout(() => {
+                                mark.style.backgroundColor = originalBg;
+                              }, 1800);
                             }
                           };
 
-                          if (selectedDoc?.category === 'video' && videoTabMode !== 'blog') {
-                            setVideoTabMode('blog');
-                            setTimeout(performScroll, 200);
+                          if (shouldSwitchTab) {
+                            const nextMode = isCurrentlyBlog ? (isDocVideo ? 'subtitle' : 'text') : 'blog';
+                            if (isDocVideo) setVideoTabMode(nextMode);
+                            else setReadingTabMode(nextMode);
+                            setTimeout(() => {
+                              const newActiveContainer = nextMode === 'blog' ? document.querySelector('.blog-article') : articleRef.current;
+                              doScrollToMark(newActiveContainer);
+                            }, 150);
                           } else {
-                            performScroll();
+                            doScrollToMark(currentContainer);
                           }
-                          
+
                           if (isEditing) return;
-                          
+
                           setSidebarEditingId(hl.id);
                           setSidebarEditNote(hl.note || '');
                           setSidebarEditTags(extractTagNames(hl?.tags));
@@ -2237,9 +2614,11 @@ export default function ReadingPane() {
                                 className="btn btn-primary btn-sm"
                                 style={{ fontSize: '12px', padding: '4px 8px' }}
                                 onClick={() => {
+                                  const isBlogHl = hasBlogTag(hl);
                                   const tagsObj = {};
                                   sidebarEditTags.forEach(t => tagsObj[t] = 1);
                                   if (!tagsObj['readerq']) tagsObj['readerq'] = 1;
+                                  if (isBlogHl && !tagsObj['blog']) tagsObj['blog'] = 1;
                                   handleUpdateHighlight(hl.id, { note: sidebarEditNote, tags: tagsObj });
                                   setSidebarEditingId(null);
                                 }}

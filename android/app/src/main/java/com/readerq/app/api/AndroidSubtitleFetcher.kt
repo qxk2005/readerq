@@ -819,6 +819,84 @@ $subtitleTranscript
         }
     }
 
+    /**
+     * 100% Android 原生调用 AI 生成通用文章的 Markdown 结构化博客文章（含 [原文](#quote-...) 语义锚点）
+     */
+    suspend fun generateBlogNativeForArticle(
+        title: String,
+        contentText: String,
+        apiKey: String,
+        baseUrl: String = "https://api.openai.com/v1",
+        model: String = "gpt-3.5-turbo"
+    ): String? {
+        if (contentText.isBlank() || apiKey.isBlank()) return null
+
+        val cleanBaseUrl = baseUrl.trim().removeSuffix("/")
+        val endpoint = "$cleanBaseUrl/chat/completions"
+
+        val truncatedText = contentText.take(12000)
+
+        val prompt = """
+你是一位资深的高级读书笔记与文章分析专家，专门将长文、报告、书籍章节转译为结构化的精品博客导读文章。
+
+你的任务是将一篇给定的文章转译为一篇逻辑缜密、要点突出、极具阅读价值的简体中文博客导读。
+
+要求：
+1. **输出语言**：必须完全使用简体中文撰写，无论原文是英文、中文或其他语言；
+2. **文章结构**：使用 Markdown 格式，包含导读摘要、核心章节拆解（使用 ## 和 ### 标题）、关键事实/要点列表；
+3. **原文语义引用锚点（极度重要）**：
+   - 在每一个 Markdown 章节标题末尾，以及关键要点/数据结论末尾，附带一个针对原文对应短语或句子的语义引用链接，格式严格为 `[原文](#quote-原文中的关键短语或标题句)`；
+   - 例如：`## 架构设计原理 [原文](#quote-架构设计的首要原则)` 或 `- 吞吐量提升了40% [原文](#quote-性能测试显示吞吐量提升40%)`；
+   - `#quote-` 后面的文字必须取自原文中能代表该段落/要点特征的连续文本片段（10-25个字），以便阅读器通过文本模糊查找定位到原文对应段落；
+4. **内容质量**：高度提炼核心思想，去除修饰性废话，保持极高的信息密度；
+5. **输出纯净性**：严禁包含任何 `<|begin_of_sentence|>` 等模型 Tag 或伪代码指令；
+6. 直接输出标准的 Markdown 正文，不要包含多余说明。
+
+文章标题: $title
+文章正文:
+$truncatedText
+""".trim()
+
+        try {
+            val payload = buildJsonObject {
+                put("model", model)
+                put("messages", buildJsonArray {
+                    add(buildJsonObject {
+                        put("role", "user")
+                        put("content", prompt)
+                    })
+                })
+                put("temperature", 0.4)
+            }.toString()
+
+            val response = client.post(endpoint) {
+                header(HttpHeaders.Authorization, "Bearer $apiKey")
+                header(HttpHeaders.ContentType, ContentType.Application.Json)
+                setBody(payload)
+            }
+
+            if (response.status.isSuccess()) {
+                val respText = response.bodyAsText()
+                val jsonResponse = jsonParser.parseToJsonElement(respText).jsonObject
+                val content = jsonResponse["choices"]?.jsonArray?.firstOrNull()?.jsonObject
+                    ?.get("message")?.jsonObject?.get("content")?.jsonPrimitive?.content ?: ""
+
+                val rawContent = content.replace(Regex("^```markdown\\s*"), "")
+                    .replace(Regex("^```\\s*"), "")
+                    .replace(Regex("\\s*```$"), "")
+                    .trim()
+                return cleanBlogMarkdownText(rawContent)
+            } else {
+                val errBody = response.bodyAsText().take(300)
+                println("[AndroidSubtitleFetcher] generateBlogNativeForArticle HTTP error ${response.status}, body=$errBody")
+                throw Exception("AI API 文章博客生成错误 (${response.status.value}): $errBody")
+            }
+        } catch (e: Exception) {
+            println("[AndroidSubtitleFetcher] generateBlogNativeForArticle exception: ${e.message}")
+            throw e
+        }
+    }
+
     fun cleanBlogMarkdownText(text: String?): String {
         if (text.isNullOrBlank()) return ""
 

@@ -219,18 +219,19 @@ export async function chat(messages, documentContext) {
 }
 
 /**
- * 视频字幕转博客文章 (流式响应)
- * 将带时间戳的字幕文本转译为 InfoQ 风格的技术博客
- * @param {string} transcript - 带时间戳的完整字幕文本
- * @param {string} title - 视频标题
- * @param {string} [customPrompt] - 用户自定义的系统提示词（可选）
+ * 文章/字幕转博客文章 (流式响应)
+ * 支持视频字幕（带时间戳 [MM:SS]）及通用文章/PDF/EPUB（带语义引用锚点 [原文](#quote-...)）
+ * @param {string} contentText - 文本或字幕内容
+ * @param {string} title - 文章标题
+ * @param {string} [customPrompt] - 用户自定义系统提示词
+ * @param {boolean} [isVideo=false] - 是否为视频文章
  */
-export async function* convertToBlogStream(transcript, title, customPrompt) {
+export async function* convertToBlogStream(contentText, title, customPrompt, isVideo = false) {
   const client = createAIClient();
   const model = getModelName();
 
-  // 默认的博客转译系统提示词
-  const defaultPrompt = `你是一位资深的技术博客编辑，专门为 InfoQ 等技术媒体撰写高质量的博客文章。
+  // 默认视频博客提示词
+  const defaultVideoPrompt = `你是一位资深的技术博客编辑，专门为 InfoQ 等技术媒体撰写高质量的博客文章。
 
 你的任务是将一段视频字幕（含时间戳）转译为一篇结构清晰、内容丰富的博客文章。
 
@@ -249,18 +250,37 @@ export async function* convertToBlogStream(transcript, title, customPrompt) {
 ## 输出格式：
 直接输出简体中文 Markdown 格式的博客文章，不需要额外的说明或注释。`;
 
-  // 优先使用用户自定义提示词，否则使用默认提示词
-  const dbPrompt = getDbSetting('video_blog_prompt');
+  // 默认通用文章博客提示词
+  const defaultGeneralPrompt = `你是一位资深的高级读书笔记与文章分析专家，专门将长文、报告、书籍章节转译为结构化的精品博客导读文章。
+
+你的任务是将一篇给定的文章转译为一篇逻辑缜密、要点突出、极具阅读价值的简体中文博客导读。
+
+## 要求：
+1. **输出语言**：必须完全使用简体中文撰写，无论原文是英文、中文或其他语言。
+2. **文章结构**：使用 Markdown 格式，包含导读摘要、核心章节拆解（使用 ## 和 ### 标题）、关键事实/要点列表。
+3. **原文语义引用锚点（极度重要）**：
+   - 在每一个 Markdown 章节标题末尾，以及关键要点/数据结论末尾，附带一个针对原文对应短语或句子的语义引用链接，格式严格为 \`[原文](#quote-原文中的关键短语或标题句)\`。
+   - 例如：\`## 架构设计原理 [原文](#quote-架构设计的首要原则)\` 或 \`- 吞吐量提升了40% [原文](#quote-性能测试显示吞吐量提升40%)\`。
+   - \`#quote-\` 后面的文字必须取自原文中能代表该段落/要点特征的连续文本片段（10-25个字），以便阅读器通过文本模糊查找定位到原文对应段落。
+4. **内容质量**：高度提炼核心思想，去除修饰性废话，保持极高的信息密度。
+5. **输出纯净性**：严禁包含任何 <|begin_of_sentence|> 等模型 Tag 或伪代码指令。
+
+## 输出格式：
+直接输出简体中文 Markdown 格式的博客文章，不要包含额外的自我介绍或说明。`;
+
+  const defaultPrompt = isVideo ? defaultVideoPrompt : defaultGeneralPrompt;
+  const dbPrompt = getDbSetting(isVideo ? 'video_blog_prompt' : 'article_blog_prompt');
   const systemPrompt = customPrompt || dbPrompt || defaultPrompt;
+
+  const userPrompt = isVideo
+    ? `请将以下视频字幕转译为一篇简体中文博客文章。无论原始字幕是什么语言，输出必须全部使用简体中文，并在每个章节标题结尾必须带上对应的时间戳 [MM:SS]，严禁在正文段落内出现 [xx:xx] 时间戳。严禁输出任何 <|begin_of_sentence|> 等模型标记或 #include 等伪指令。\n\n视频标题：${title}\n\n字幕内容：\n${contentText}`
+    : `请将以下文章转译为一篇结构精炼的简体中文博客导读文章。无论原文是何种语言，输出必须全部使用简体中文。在各个章节标题及关键事实要点结尾必须包含针对原文的引用链接格式 [原文](#quote-原文关键片段)。严禁输出任何 <|begin_of_sentence|> 等模型标记或伪代码。\n\n文章标题：${title}\n\n文章内容：\n${contentText.substring(0, 15000)}`;
 
   const stream = await client.chat.completions.create({
     model,
     messages: [
       { role: 'system', content: systemPrompt },
-      {
-        role: 'user',
-        content: `请将以下视频字幕转译为一篇简体中文博客文章。无论原始字幕是什么语言，输出必须全部使用简体中文，并在每个章节标题结尾必须带上对应的时间戳 [MM:SS]，严禁在正文段落内出现 [xx:xx] 时间戳。严禁输出任何 <|begin_of_sentence|> 等模型标记或 #include 等伪指令。\n\n视频标题：${title}\n\n字幕内容：\n${transcript}`,
-      }
+      { role: 'user', content: userPrompt }
     ],
     temperature: 0.4,
     max_tokens: Math.max(getMaxTokens(), 8192),
@@ -273,7 +293,6 @@ export async function* convertToBlogStream(transcript, title, customPrompt) {
   for await (const chunk of stream) {
     let content = chunk.choices[0]?.delta?.content;
     if (content) {
-      // 实时过滤流式输出中的 Special Tokens
       content = content.replace(specialTokenPattern, '');
       if (content) {
         yield content;

@@ -92,28 +92,34 @@ export default function TagInput({ value, onChange, allTags = [], placeholder = 
           minHeight: '34px'
         }}
       >
-        {(value || []).map((tag, idx) => (
-          <span 
-            key={`${tag}-${idx}`} 
-            style={{ 
-              display: 'flex', 
-              alignItems: 'center', 
-              backgroundColor: 'var(--color-bg-tertiary)', 
-              padding: '2px 6px', 
-              borderRadius: '4px',
-              fontSize: '11px',
-              color: 'var(--color-text-secondary)'
-            }}
-          >
-            #{tag}
-            <button 
-              onClick={(e) => { e.stopPropagation(); removeTag(tag); }}
-              style={{ background: 'none', border: 'none', marginLeft: '4px', cursor: 'pointer', opacity: 0.6, fontSize: '10px' }}
+        {(value || []).map((tag, idx) => {
+          const isBlogTag = typeof tag === 'string' && tag.toLowerCase() === 'blog';
+          return (
+            <span 
+              key={`${tag}-${idx}`} 
+              style={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                backgroundColor: isBlogTag ? 'rgba(0, 122, 255, 0.12)' : 'var(--color-bg-tertiary)', 
+                padding: '2px 6px', 
+                borderRadius: '4px',
+                fontSize: '11px',
+                color: isBlogTag ? 'var(--color-accent, #007aff)' : 'var(--color-text-secondary)',
+                fontWeight: isBlogTag ? 600 : 400
+              }}
             >
-              ✕
-            </button>
-          </span>
-        ))}
+              {isBlogTag ? '✨ blog' : `#${tag}`}
+              {!isBlogTag && (
+                <button 
+                  onClick={(e) => { e.stopPropagation(); removeTag(tag); }}
+                  style={{ background: 'none', border: 'none', marginLeft: '4px', cursor: 'pointer', opacity: 0.6, fontSize: '10px' }}
+                >
+                  ✕
+                </button>
+              )}
+            </span>
+          );
+        })}
         <input
           type="text"
           value={inputValue}
