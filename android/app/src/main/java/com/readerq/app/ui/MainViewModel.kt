@@ -2343,7 +2343,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _matchedQuoteQuery = MutableStateFlow<String?>(null)
     val matchedQuoteQuery: StateFlow<String?> = _matchedQuoteQuery.asStateFlow()
 
+    private val _pendingQuoteQuery = MutableStateFlow<String?>(null)
+    val pendingQuoteQuery: StateFlow<String?> = _pendingQuoteQuery.asStateFlow()
+
+    fun setPendingQuoteQuery(query: String?) {
+        _pendingQuoteQuery.value = query
+    }
+
     fun onBlogQuoteClick(quoteQuery: String, doc: DocumentEntity?) {
+        android.util.Log.d("ReaderQ_Quote", "onBlogQuoteClick triggered: query=$quoteQuery, docId=${doc?.id}")
         val rawQuery = quoteQuery.removePrefix("#quote-").trim()
         val cleanQuery = try {
             java.net.URLDecoder.decode(rawQuery, "UTF-8")
@@ -2354,6 +2362,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _previewQuoteText.value = cleanQuery
         _previewParagraphText.value = matchedText
         _matchedQuoteQuery.value = quoteQuery
+        _pendingQuoteQuery.value = quoteQuery
         _previewBottomSheetOpen.value = true
     }
 
