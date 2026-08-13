@@ -2073,6 +2073,8 @@ fun HtmlContentViewer(
                               return { start: originalStart, end: originalEnd };
                             }
                           }
+                          return null;
+                        }
                         function findFuzzyOffsetsForBlock(fullText, query) {
                           if (!query || !fullText) return [];
                           const singleMatch = findFuzzyOffset(fullText, query);
