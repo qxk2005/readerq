@@ -84,6 +84,7 @@ fun ReadingPane(
     var readingModeTab by remember { mutableStateOf("text") }
     var webViewRefState by remember { mutableStateOf<WebView?>(null) }
     var quoteJumpTrigger by remember { mutableStateOf(0) }
+    var pendingHighlightToScroll by remember { mutableStateOf<Pair<String, String>?>(null) }
 
     var showAaSheet by remember { mutableStateOf(false) }
     var showNotebookSheet by remember { mutableStateOf(false) }
@@ -129,6 +130,34 @@ fun ReadingPane(
     }
 
     doc?.let { currentDoc ->
+        LaunchedEffect(viewModel, currentDoc.id) {
+            viewModel.scrollToHighlightEvent.collect { hlId ->
+                val targetHl = viewModel.highlights.value.find { it.id == hlId }
+                val hlText = targetHl?.text ?: ""
+                val isBlogHl = targetHl?.tags_json?.let { it.contains("\"blog\"") || it.contains("blog") } ?: false
+                
+                val targetMode = if (isBlogHl) "blog" else "text"
+                val needModeSwitch = if (isBlogHl) {
+                    readingModeTab != "blog"
+                } else {
+                    readingModeTab == "blog" && currentDoc.category != "video"
+                }
+
+                if (needModeSwitch) {
+                    readingModeTab = targetMode
+                    if (targetMode == "blog" && currentDoc.blog_content.isNullOrBlank()) {
+                        viewModel.generateBlogForDocument(currentDoc.id, currentDoc.title)
+                    }
+                    pendingHighlightToScroll = Pair(hlId, hlText)
+                } else {
+                    pendingHighlightToScroll = Pair(hlId, hlText)
+                    val hlStr = org.json.JSONObject.quote(hlId)
+                    val textStr = org.json.JSONObject.quote(hlText)
+                    val js = "if (typeof window.scrollToHighlight === 'function') { window.scrollToHighlight($hlStr, $textStr); }"
+                    webViewRefState?.evaluateJavascript(js, null)
+                }
+            }
+        }
         Column(
             modifier = modifier
                 .fillMaxSize()
@@ -553,7 +582,8 @@ fun ReadingPane(
                     initialProgress = currentDoc.reading_progress,
                     isVideo = currentDoc.category == "video",
                     pendingQuoteQuery = if (readingModeTab == "text") pendingQuoteQuery else null,
-                    quoteJumpTrigger = quoteJumpTrigger
+                    quoteJumpTrigger = quoteJumpTrigger,
+                    pendingHighlightToScroll = pendingHighlightToScroll
                 )
 
                 // 🎯 安卓端原生 AI 博客交互状态覆盖层 (未生成 / 生成中)
@@ -1299,7 +1329,8 @@ fun HtmlContentViewer(
     onWebViewCreated: (WebView) -> Unit = {},
     onSeekTo: ((Float) -> Unit)? = null,
     pendingQuoteQuery: String? = null,
-    quoteJumpTrigger: Int = 0
+    quoteJumpTrigger: Int = 0,
+    pendingHighlightToScroll: Pair<String, String>? = null
 ) {
     // 防抖定时器用于延迟持久化进度
     val progressSaveJob = remember { mutableStateOf<Job?>(null) }
@@ -1323,8 +1354,6 @@ fun HtmlContentViewer(
     ) {
         "<div style='display:flex;flex-direction:column;align-items:center;justify-content:center;height:80vh;color:#888;font-style:italic;'><p>内容正在加载中...</p></div>"
     } else {
-        // 移除文章 HTML 中的 <script> 标签及其内容，防止它们干扰我们注入的应用级 JS 代码
-        // （文章内容中的 </script> 会过早关闭我们的 <script> 块，导致 JS 语法错误）
         html.replace(Regex("<script[^>]*>.*?</script>", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)), "")
     }
 
@@ -1332,25 +1361,28 @@ fun HtmlContentViewer(
     val currentKey = "${docId}_${cleanHtml.hashCode()}_${theme}_${fontFamily}_${fontSize}_${lineHeight}_${contentWidth}"
     val pageReady = remember { mutableStateOf(false) }
 
+    LaunchedEffect(pendingHighlightToScroll, pageReady.value, lastLoadedKey.value) {
+        val pending = pendingHighlightToScroll
+        if (pending != null && pageReady.value && lastLoadedKey.value == currentKey) {
+            val hlStr = org.json.JSONObject.quote(pending.first)
+            val textStr = org.json.JSONObject.quote(pending.second)
+            val js = "if (typeof window.scrollToHighlight === 'function') { window.scrollToHighlight($hlStr, $textStr); }"
+            webViewRef.value?.evaluateJavascript(js, null)
+        }
+    }
+
     LaunchedEffect(pendingQuoteQuery, pageReady.value, lastLoadedKey.value, quoteJumpTrigger) {
-        android.util.Log.d("ReaderQ_Quote", "LaunchedEffect triggered: pendingQuoteQuery=$pendingQuoteQuery, pageReady=${pageReady.value}, lastLoadedKey=${lastLoadedKey.value}, currentKey=$currentKey, quoteJumpTrigger=$quoteJumpTrigger, webViewRef=${webViewRef.value != null}")
         if (!pendingQuoteQuery.isNullOrBlank()) {
-            // 如果页面尚未就绪，等待页面加载完成
             if (!pageReady.value || lastLoadedKey.value != currentKey) {
-                android.util.Log.d("ReaderQ_Quote", "⏳ Waiting for page ready... pageReady=${pageReady.value}, keyMatch=${lastLoadedKey.value == currentKey}")
-                // 等待最多 5 秒，每 100ms 检查一次
                 var waited = 0
                 while ((!pageReady.value || lastLoadedKey.value != currentKey) && waited < 5000) {
                     kotlinx.coroutines.delay(100)
                     waited += 100
                 }
                 if (!pageReady.value || lastLoadedKey.value != currentKey) {
-                    android.util.Log.d("ReaderQ_Quote", "❌ Timeout waiting for page ready after ${waited}ms")
                     return@LaunchedEffect
                 }
-                android.util.Log.d("ReaderQ_Quote", "✅ Page became ready after ${waited}ms")
             }
-            android.util.Log.d("ReaderQ_Quote", "✅ All conditions met! Executing quote jump JS...")
             val query = pendingQuoteQuery
             val hintRaw = viewModel.previewParagraphText.value
             val qStr = org.json.JSONObject.quote(query)
@@ -1361,6 +1393,7 @@ fun HtmlContentViewer(
                     try {
                         var rawQuote = $qStr;
                         var hintText = $pStr;
+                        console.log('[ReaderQ_Quote_JS] Starting locate. rawQuote="' + rawQuote + '", hintText="' + (hintText ? hintText.substring(0, 50) : '') + '"');
                         var candidates = [];
                         if (rawQuote) {
                             var cleanRaw = rawQuote;
@@ -1370,47 +1403,89 @@ fun HtmlContentViewer(
                         }
                         if (hintText) {
                             var cleanHint = hintText.replace(/^["“'”\s]+|["“'”\s]+$/g, '').trim();
-                            if (cleanHint.length >= 2) candidates.push(cleanHint);
+                            if (cleanHint.length >= 2 && candidates.indexOf(cleanHint) === -1) candidates.push(cleanHint);
                         }
+                        console.log('[ReaderQ_Quote_JS] Candidates: ' + JSON.stringify(candidates.map(function(c){ return c.substring(0,40); })));
                         if (candidates.length === 0) return;
 
-                        var elements = Array.from(document.querySelectorAll('p, h1, h2, h3, h4, h5, h6, li, blockquote, section, article, div, td, th, span'));
                         var target = null;
 
-                        for (var c = 0; c < candidates.length && !target; c++) {
-                            var queryStr = candidates[c];
-                            for (var i = 0; i < elements.length; i++) {
-                                var el = elements[i];
-                                if (el.children.length > 8 && el.tagName === 'DIV') continue;
-                                var txt = (el.innerText || el.textContent || '').trim();
-                                if (txt.length > 0 && (txt.indexOf(queryStr) !== -1 || queryStr.indexOf(txt) !== -1)) {
-                                    target = el;
-                                    break;
-                                }
+                        // 1. Direct ID / Anchor match
+                        if (rawQuote) {
+                            var idClean = rawQuote.replace(/^#/, '');
+                            target = document.getElementById(idClean) ||
+                                     document.querySelector('[name="' + idClean + '"]') ||
+                                     document.querySelector('[data-quote*="' + candidates[0] + '"]');
+                            if (target) {
+                                console.log('[ReaderQ_Quote_JS] Found target via direct ID/name anchor!');
                             }
                         }
 
+                        // 2. DOM text element search (depth-first / leaf-preferring)
                         if (!target) {
-                            for (var c2 = 0; c2 < candidates.length && !target; c2++) {
-                                var str = candidates[c2];
-                                var subKeys = [];
-                                var words = str.split(/\s+/).filter(Boolean);
-                                if (words.length >= 3) {
-                                    subKeys.push(words.slice(0, 5).join(' '));
-                                    if (words.length >= 8) subKeys.push(words.slice(3, 8).join(' '));
-                                }
-                                if (str.length > 10) subKeys.push(str.substring(0, 20));
+                            var allElements = Array.from(document.querySelectorAll('p, h1, h2, h3, h4, h5, h6, li, blockquote, dt, dd, td, th, span, div, section, article'));
+                            var validElements = allElements.filter(function(el) {
+                                if (el === document.body || el === document.documentElement) return false;
+                                // Ignore container elements that have more than 3 block children
+                                var blockChildCount = el.querySelectorAll('p, h1, h2, h3, h4, h5, h6, li, blockquote, section, article, div').length;
+                                return blockChildCount <= 3;
+                            });
 
-                                for (var k = 0; k < subKeys.length && !target; k++) {
-                                    var key = subKeys[k];
-                                    if (key.length < 2) continue;
-                                    for (var j = 0; j < elements.length; j++) {
-                                        var el2 = elements[j];
-                                        if (el2.children.length > 8 && el2.tagName === 'DIV') continue;
-                                        var txt2 = (el2.innerText || el2.textContent || '').trim();
-                                        if (txt2.length > 0 && txt2.indexOf(key) !== -1) {
-                                            target = el2;
-                                            break;
+                            // Sort by DOM depth descending so we inspect leaf elements first before container parents
+                            validElements.sort(function(a, b) {
+                                var dA = 0, dB = 0, pA = a, pB = b;
+                                while (pA) { dA++; pA = pA.parentElement; }
+                                while (pB) { dB++; pB = pB.parentElement; }
+                                return dB - dA;
+                            });
+
+                            for (var c = 0; c < candidates.length && !target; c++) {
+                                var queryStr = candidates[c];
+                                for (var i = 0; i < validElements.length; i++) {
+                                    var el = validElements[i];
+                                    var txt = (el.innerText || el.textContent || '').trim();
+                                    if (!txt) continue;
+
+                                    // Check 1: Element text contains the candidate query
+                                    if (txt.indexOf(queryStr) !== -1) {
+                                        target = el;
+                                        console.log('[ReaderQ_Quote_JS] ✅ Match type 1 (txt contains candidate #' + c + '): tag=' + el.tagName + ', txt="' + txt.substring(0,40) + '"');
+                                        break;
+                                    }
+                                    // Check 2: Candidate query contains element text ONLY if element text is long enough (>= 10 chars)
+                                    if (txt.length >= 10 && queryStr.indexOf(txt) !== -1) {
+                                        target = el;
+                                        console.log('[ReaderQ_Quote_JS] ✅ Match type 2 (candidate contains txt): tag=' + el.tagName + ', txt="' + txt.substring(0,40) + '"');
+                                        break;
+                                    }
+                                }
+                            }
+
+                            // 3. Fallback: Word/Chunk substring matching
+                            if (!target) {
+                                console.log('[ReaderQ_Quote_JS] Trying fallback chunk search...');
+                                for (var c2 = 0; c2 < candidates.length && !target; c2++) {
+                                    var str = candidates[c2];
+                                    var subKeys = [];
+                                    if (str.length >= 6) {
+                                        subKeys.push(str.substring(0, Math.min(15, str.length)));
+                                        if (str.length >= 20) {
+                                            var mid = Math.floor(str.length / 2);
+                                            subKeys.push(str.substring(mid - 7, mid + 8));
+                                        }
+                                    }
+
+                                    for (var k = 0; k < subKeys.length && !target; k++) {
+                                        var key = subKeys[k].trim();
+                                        if (key.length < 4) continue;
+                                        for (var j = 0; j < validElements.length; j++) {
+                                            var el2 = validElements[j];
+                                            var txt2 = (el2.innerText || el2.textContent || '').trim();
+                                            if (txt2.length >= 4 && txt2.indexOf(key) !== -1) {
+                                                target = el2;
+                                                console.log('[ReaderQ_Quote_JS] ✅ Fallback chunk match! key="' + key + '", tag=' + el2.tagName + ', txt="' + txt2.substring(0,40) + '"');
+                                                break;
+                                            }
                                         }
                                     }
                                 }
@@ -1418,8 +1493,29 @@ fun HtmlContentViewer(
                         }
 
                         if (target) {
-                            target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                            var scrollToTarget = function(reason) {
+                                try {
+                                    var rect = target.getBoundingClientRect();
+                                    var currentScrollTop = window.pageYOffset || document.documentElement.scrollTop || 0;
+                                    var targetY = rect.top + currentScrollTop - (window.innerHeight / 3);
+                                    var finalY = Math.max(0, Math.round(targetY));
+                                    console.log('[ReaderQ_Quote_JS] 🎯 Scroll (' + reason + '): targetY=' + finalY + ', rect.top=' + Math.round(rect.top) + ', currentScroll=' + Math.round(currentScrollTop));
+                                    window.scrollTo(0, finalY);
+                                } catch(e) {
+                                    console.error('[ReaderQ_Quote_JS] Scroll error:', e);
+                                }
+                            };
 
+                            // 1. Immediate scroll
+                            scrollToTarget('immediate');
+
+                            // 2. Retry at 300ms to handle initial layout shifts
+                            setTimeout(function() { scrollToTarget('300ms-retry'); }, 300);
+
+                            // 3. Retry at 800ms to handle late image loads
+                            setTimeout(function() { scrollToTarget('800ms-retry'); }, 800);
+
+                            // Highlight element background
                             var origBg = target.style.backgroundColor;
                             var origTrans = target.style.transition;
                             target.style.transition = 'background-color 0.4s ease';
@@ -1428,14 +1524,19 @@ fun HtmlContentViewer(
                             setTimeout(function() {
                                 target.style.backgroundColor = origBg || '';
                                 target.style.transition = origTrans || '';
-                            }, 2600);
+                            }, 3500);
 
-                            if (window.AndroidBridge && typeof window.AndroidBridge.onQuoteLocated === 'function') {
-                                window.AndroidBridge.onQuoteLocated();
-                            }
+                            // Inform Kotlin layer after 1500ms so pending state settles
+                            setTimeout(function() {
+                                if (window.AndroidBridge && typeof window.AndroidBridge.onQuoteLocated === 'function') {
+                                    window.AndroidBridge.onQuoteLocated();
+                                }
+                            }, 1500);
+                        } else {
+                            console.log('[ReaderQ_Quote_JS] ❌ No target found in WebView DOM');
                         }
                     } catch(e) {
-                        console.error('locate error:', e);
+                        console.error('[ReaderQ_Quote_JS] Locate error:', e);
                     }
                 })();
             """.trimIndent()
@@ -1454,6 +1555,13 @@ fun HtmlContentViewer(
             WebView(context).apply {
                 webViewRef.value = this
                 onWebViewCreated(this)
+                
+                webChromeClient = object : android.webkit.WebChromeClient() {
+                    override fun onConsoleMessage(consoleMessage: android.webkit.ConsoleMessage?): Boolean {
+                        android.util.Log.d("ReaderQ_Quote_JS", "[${consoleMessage?.messageLevel()}] ${consoleMessage?.message()} (${consoleMessage?.sourceId()}:${consoleMessage?.lineNumber()})")
+                        return true
+                    }
+                }
                 
                 webViewClient = object : android.webkit.WebViewClient() {
                     override fun onPageFinished(view: WebView?, url: String?) {
@@ -2200,18 +2308,68 @@ fun HtmlContentViewer(
                           }
                         };
 
-                        window.scrollToHighlight = function(hlId) {
+                        window.scrollToHighlight = function(hlId, hlText) {
                           try {
-                            const mark = document.querySelector('mark[data-highlight-id="' + hlId + '"]');
-                            if (mark) {
-                              const containerRect = document.body.getBoundingClientRect();
-                              const elementRect = mark.getBoundingClientRect();
-                              const relativeTop = elementRect.top - containerRect.top;
-                              const targetScrollTop = relativeTop - (window.innerHeight / 2) + (elementRect.height / 2);
-                              window.scrollTo({
-                                top: targetScrollTop,
-                                behavior: 'smooth'
-                              });
+                            console.log('[ReaderQ_Quote_JS] scrollToHighlight called: hlId="' + hlId + '", hlText="' + (hlText ? hlText.substring(0, 30) : '') + '"');
+                            var target = document.querySelector('mark[data-highlight-id="' + hlId + '"], mark[data-highlight-id^="' + hlId + '-"]');
+                            if (!target && hlText) {
+                              var cleanText = hlText.replace(/^["“'”\s]+|["“'”\s]+$/g, '').trim();
+                              if (cleanText.length >= 2) {
+                                var elms = Array.from(document.querySelectorAll('p, h1, h2, h3, h4, h5, h6, li, blockquote, dt, dd, td, th, span, div, mark'));
+                                var validElements = elms.filter(function(el) {
+                                  if (el === document.body || el === document.documentElement) return false;
+                                  var blockChildCount = el.querySelectorAll('p, h1, h2, h3, h4, h5, h6, li, blockquote, section, article, div').length;
+                                  return blockChildCount <= 3;
+                                });
+
+                                validElements.sort(function(a, b) {
+                                  var dA = 0, dB = 0, pA = a, pB = b;
+                                  while (pA) { dA++; pA = pA.parentElement; }
+                                  while (pB) { dB++; pB = pB.parentElement; }
+                                  return dB - dA;
+                                });
+
+                                for (var i = 0; i < validElements.length; i++) {
+                                  var el = validElements[i];
+                                  var txt = (el.innerText || el.textContent || '').trim();
+                                  if (txt && (txt.indexOf(cleanText) !== -1 || (txt.length >= 10 && cleanText.indexOf(txt) !== -1))) {
+                                    target = el;
+                                    console.log('[ReaderQ_Quote_JS] ✅ scrollToHighlight fallback found target! tag=' + el.tagName);
+                                    break;
+                                  }
+                                }
+                              }
+                            }
+
+                            if (target) {
+                              var scrollToTarget = function(reason) {
+                                try {
+                                  var rect = target.getBoundingClientRect();
+                                  var currentScrollTop = window.pageYOffset || document.documentElement.scrollTop || 0;
+                                  var targetY = rect.top + currentScrollTop - (window.innerHeight / 3);
+                                  var finalY = Math.max(0, Math.round(targetY));
+                                  console.log('[ReaderQ_Quote_JS] 🎯 scrollToHighlight (' + reason + '): targetY=' + finalY + ', rect.top=' + Math.round(rect.top));
+                                  window.scrollTo(0, finalY);
+                                } catch(e) {
+                                  console.error("scrollToHighlight scroll error:", e);
+                                }
+                              };
+
+                              scrollToTarget('immediate');
+                              setTimeout(function() { scrollToTarget('300ms-retry'); }, 300);
+                              setTimeout(function() { scrollToTarget('800ms-retry'); }, 800);
+
+                              var origBg = target.style.backgroundColor;
+                              var origTrans = target.style.transition;
+                              target.style.transition = 'background-color 0.4s ease';
+                              target.style.backgroundColor = 'rgba(255, 215, 0, 0.75)';
+                              target.style.borderRadius = '4px';
+                              setTimeout(function() {
+                                target.style.backgroundColor = origBg || '';
+                                target.style.transition = origTrans || '';
+                              }, 3500);
+                            } else {
+                              console.log('[ReaderQ_Quote_JS] ❌ scrollToHighlight: target not found for hlId=' + hlId);
                             }
                           } catch(e) {
                             console.error("Failed to scrollToHighlight:", e);

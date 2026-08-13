@@ -637,7 +637,15 @@ fun NotebookHighlightCard(
                     textColor = mainTextColor,
                     fontSize = 13.sp,
                     lineHeight = 18.sp,
-                    tagBg = tagBg
+                    tagBg = tagBg,
+                    onUrlClick = { url ->
+                        val doc = viewModel.selectedDoc.value
+                        viewModel.onBlogQuoteClick(url, doc)
+                    },
+                    onTextClick = {
+                        onEditingChange(true)
+                        viewModel.triggerScrollToHighlight(hl.id)
+                    }
                 )
             }
 
@@ -1046,6 +1054,8 @@ fun HighlightContentWithImages(
     lineHeight: androidx.compose.ui.unit.TextUnit = 18.sp,
     fontWeight: FontWeight = FontWeight.Normal,
     tagBg: Color = Color.Gray.copy(alpha = 0.2f),
+    onUrlClick: ((String) -> Unit)? = null,
+    onTextClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     var previewImageUrl by remember { mutableStateOf<String?>(null) }
@@ -1089,12 +1099,23 @@ fun HighlightContentWithImages(
             when (block) {
                 is HighlightBlock.TextBlock -> {
                     val annotatedText = buildMarkdownAnnotatedString(block.text, textColor)
-                    Text(
+                    androidx.compose.foundation.text.ClickableText(
                         text = annotatedText,
-                        color = textColor,
-                        fontSize = fontSize,
-                        lineHeight = lineHeight,
-                        modifier = Modifier.fillMaxWidth()
+                        style = androidx.compose.ui.text.TextStyle(
+                            color = textColor,
+                            fontSize = fontSize,
+                            lineHeight = lineHeight,
+                            fontWeight = fontWeight
+                        ),
+                        modifier = Modifier.fillMaxWidth(),
+                        onClick = { offset ->
+                            val urlAnnotation = annotatedText.getStringAnnotations(tag = "URL", start = offset, end = offset).firstOrNull()
+                            if (urlAnnotation != null) {
+                                onUrlClick?.invoke(urlAnnotation.item)
+                            } else {
+                                onTextClick?.invoke()
+                            }
+                        }
                     )
                 }
                 is HighlightBlock.ImageBlock -> {
