@@ -1405,7 +1405,8 @@ fun HtmlContentViewer(
                             onSeekTo?.invoke(secs)
                             return true
                         } else if (urlStr.contains("#quote-") || urlStr.startsWith("quote:")) {
-                            val query = urlStr.substringAfter("#quote-").substringAfter("quote:")
+                            val rawQuery = urlStr.substringAfter("#quote-").substringAfter("quote:")
+                            val query = try { java.net.URLDecoder.decode(rawQuery, "UTF-8") } catch (e: Exception) { rawQuery }
                             viewModel.onBlogQuoteClick(query, viewModel.selectedDoc.value)
                             return true
                         }
@@ -1421,7 +1422,8 @@ fun HtmlContentViewer(
                                 onSeekTo?.invoke(secs)
                                 return true
                             } else if (urlStr.contains("#quote-") || urlStr.startsWith("quote:")) {
-                                val query = urlStr.substringAfter("#quote-").substringAfter("quote:")
+                                val rawQuery = urlStr.substringAfter("#quote-").substringAfter("quote:")
+                                val query = try { java.net.URLDecoder.decode(rawQuery, "UTF-8") } catch (e: Exception) { rawQuery }
                                 viewModel.onBlogQuoteClick(query, viewModel.selectedDoc.value)
                                 return true
                             }
@@ -2325,7 +2327,12 @@ private fun markdownToHtml(markdown: String): String {
     
     html = html.replace(Regex("\\*\\*(.*?)\\*\\*"), "<strong>$1</strong>")
     html = html.replace(Regex("\\*(.*?)\\*"), "<em>$1</em>")
-    html = html.replace(Regex("\\[(.*?)\\]\\((.*?)\\)"), "<a href=\"$2\">$1</a>")
+    html = html.replace(Regex("\\[(.*?)\\]\\((#quote-[^)]+)\\)")) { m ->
+        val label = m.groupValues[1]
+        val rawHref = m.groupValues[2]
+        "<span class=\"blog-quote-anchor\" onclick=\"location.href='$rawHref'\" style=\"display:inline-flex;align-items:center;gap:3px;padding:1px 8px;margin:0 4px;border-radius:12px;background-color:rgba(0,122,255,0.12);color:#007aff;font-size:12px;font-weight:600;cursor:pointer;border:1px solid rgba(0,122,255,0.25);vertical-align:middle;\">🔗 $label</span>"
+    }
+    html = html.replace(Regex("\\[(.*?)\\]\\((?!#quote-)(.*?)\\)"), "<a href=\"$2\" target=\"_blank\">$1</a>")
 
     return html
 }

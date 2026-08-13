@@ -121,7 +121,41 @@ const processChildrenForParagraph = (children) => {
 
 // 受 React.memo 保护的博客文章独立渲染组件
 // 隔离父组件 SubtitlePanel 因 currentTime 频繁 update 导致的 Re-render，彻底避免 DOM 选区失焦
-const BlogArticleRenderer = React.memo(function BlogArticleRenderer({ blogContent, onSeek, articleRef }) {
+const BlogArticleRenderer = React.memo(function BlogArticleRenderer({ blogContent, onSeek, articleRef, onRendered }) {
+  const internalRef = useRef(null);
+  const resolvedRef = articleRef || internalRef;
+
+  // 当 blogContent 改变时，通知父组件 DOM 已就绪以还原高亮划线
+  const lastNotifiedContentRef = useRef('');
+  useEffect(() => {
+    if (blogContent && onRendered && resolvedRef.current) {
+      if (lastNotifiedContentRef.current === blogContent) return;
+      lastNotifiedContentRef.current = blogContent;
+      const timer = setTimeout(() => {
+        if (resolvedRef.current) {
+          onRendered(resolvedRef.current);
+        }
+      }, 80);
+      return () => clearTimeout(timer);
+    }
+  }, [blogContent, onRendered, resolvedRef]);
+
+  // 预处理 Markdown：自动清洗与 URI 编码 [原文](#quote-含空格的短语) 中的 URL 部分
+  const sanitizedBlogContent = useMemo(() => {
+    if (!blogContent) return '';
+    return blogContent.replace(/\[([^\]]+)\]\(#quote-([^\n\)]+)\)/g, (match, label, quoteText) => {
+      const cleanQuote = quoteText.trim();
+      let encodedQuote = cleanQuote;
+      try {
+        const decoded = decodeURIComponent(cleanQuote);
+        encodedQuote = encodeURIComponent(decoded);
+      } catch (e) {
+        encodedQuote = encodeURIComponent(cleanQuote);
+      }
+      return `[${label}](#quote-${encodedQuote})`;
+    });
+  }, [blogContent]);
+
   const components = useMemo(() => ({
     h1: ({ children }) => <h1>{processChildrenForTimestamps(children, onSeek)}</h1>,
     h2: ({ children }) => <h2>{processChildrenForTimestamps(children, onSeek)}</h2>,
@@ -133,9 +167,9 @@ const BlogArticleRenderer = React.memo(function BlogArticleRenderer({ blogConten
   }), [onSeek]);
 
   return (
-    <div className="blog-article reading-article-body" ref={articleRef}>
+    <div className="blog-article reading-article-body" ref={resolvedRef}>
       <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
-        {blogContent}
+        {sanitizedBlogContent}
       </ReactMarkdown>
     </div>
   );
@@ -151,7 +185,7 @@ export default function SubtitlePanel({
   articleRef, selectedDoc, onBlogUpdated,
   mode, onModeChange,
   hasNewerSubtitleVersion, onApplyNewerSubtitles, isApplyingNewerSubtitles, onIgnoreNewerSubtitles,
-  subtitleVersionInfo
+  subtitleVersionInfo, onRendered
 }) {
   // 格式化 ISO 时间为人类可读的本地时间
   const formatTime = (isoStr) => {
@@ -1018,6 +1052,7 @@ export default function SubtitlePanel({
                 blogContent={blogContent}
                 onSeek={onSeek}
                 articleRef={articleRef}
+                onRendered={onRendered}
               />
             ) : !isBlogLoading ? (
               <div className="subtitle-empty">

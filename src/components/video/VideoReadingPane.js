@@ -17,7 +17,7 @@ import { Maximize2, Minimize2, Captions, LogIn, ExternalLink, Film, Sliders, Col
  * 
  * @param {Object} selectedDoc - 当前选中的文档对象
  */
-export default function VideoReadingPane({ selectedDoc, articleRef, updateDocumentLocally, videoTabMode, onVideoTabChange }) {
+export default function VideoReadingPane({ selectedDoc, articleRef, updateDocumentLocally, videoTabMode, onVideoTabChange, onBlogRendered }) {
   const { videoSettings, setVideoSettings } = useTheme();
   const playerRef = useRef(null);
   const [currentTime, setCurrentTime] = useState(0);
@@ -754,6 +754,7 @@ export default function VideoReadingPane({ selectedDoc, articleRef, updateDocume
           }}
           mode={videoTabMode}
           onModeChange={onVideoTabChange}
+          onRendered={onBlogRendered}
           hasNewerSubtitleVersion={hasNewerSubtitleVersion}
           onApplyNewerSubtitles={handleApplyNewerSubtitles}
           isApplyingNewerSubtitles={isApplyingNewerSubtitles}

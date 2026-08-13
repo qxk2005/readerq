@@ -47,6 +47,7 @@ export function AppProvider({ children }) {
     setShowOnboardingWizard(true);
   }, []);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [docListMode, setDocListMode] = useState('full'); // 'full' (380px卡片) | 'slim' (200px单行) | 'micro' (68px图标轨)
   const [isContentLoading, setIsContentLoading] = useState(false);
   const [contentError, setContentError] = useState(null);
   const [toast, setToast] = useState(null); // { message, type: 'info' | 'success' | 'warning' | 'error', id }
@@ -413,6 +414,15 @@ export function AppProvider({ children }) {
       if (saved !== null) {
         setSidebarCollapsed(saved === 'true');
       }
+      const savedMode = localStorage.getItem('readerq_doclist_mode');
+      if (savedMode && ['full', 'slim', 'micro'].includes(savedMode)) {
+        setDocListMode(savedMode);
+      } else {
+        const savedCompact = localStorage.getItem('readerq_doclist_compact');
+        if (savedCompact === 'true') {
+          setDocListMode('micro');
+        }
+      }
     }
     fetch('/api/settings')
       .then(res => res.json())
@@ -420,6 +430,11 @@ export function AppProvider({ children }) {
         if (data) {
           if (data.ui_sidebar_collapsed !== undefined && data.ui_sidebar_collapsed !== '') {
             setSidebarCollapsed(data.ui_sidebar_collapsed === 'true');
+          }
+          if (data.ui_doclist_mode && ['full', 'slim', 'micro'].includes(data.ui_doclist_mode)) {
+            setDocListMode(data.ui_doclist_mode);
+          } else if (data.ui_doclist_compact === 'true') {
+            setDocListMode('micro');
           }
           // 自动检测是否为首次启动：如果未完成向导且缺少关键凭证，则触发配置向导
           const isCompleted = data.onboarding_completed === 'true';
@@ -435,16 +450,20 @@ export function AppProvider({ children }) {
       .finally(() => setIsSidebarInit(true));
   }, []);
 
-  // 当 sidebarCollapsed 发生变更时持久化保存
+  // 当 sidebarCollapsed 或 docListMode 发生变更时持久化保存
   useEffect(() => {
     if (!isSidebarInit) return;
     localStorage.setItem('readerq_sidebar_collapsed', sidebarCollapsed.toString());
+    localStorage.setItem('readerq_doclist_mode', docListMode);
     fetch('/api/settings', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ui_sidebar_collapsed: sidebarCollapsed.toString() }),
+      body: JSON.stringify({
+        ui_sidebar_collapsed: sidebarCollapsed.toString(),
+        ui_doclist_mode: docListMode,
+      }),
     }).catch(() => {});
-  }, [sidebarCollapsed, isSidebarInit]);
+  }, [sidebarCollapsed, docListMode, isSidebarInit]);
 
   // 初始化加载
   useEffect(() => {
@@ -498,6 +517,8 @@ export function AppProvider({ children }) {
     launchOnboardingWizard,
     sidebarCollapsed,
     setSidebarCollapsed,
+    docListMode,
+    setDocListMode,
     isContentLoading,
     contentError,
     toast,

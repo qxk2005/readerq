@@ -37,6 +37,8 @@ export default function HomePage() {
     showOnboardingWizard,
     setShowOnboardingWizard,
     isReopeningOnboarding,
+    docListMode,
+    setDocListMode,
   } = useApp();
   const { toggleTheme } = useTheme();
 
@@ -186,6 +188,16 @@ export default function HomePage() {
         cycleRightPanelTab();
       }
 
+      // \ -> 轮询切换文章列表模式 (全量卡片 380px -> 精简单行 200px -> 微型图标 68px)
+      if (e.key === '\\' && !e.metaKey && !e.ctrlKey && document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA') {
+        e.preventDefault();
+        setDocListMode(prev => {
+          if (prev === 'full') return 'slim';
+          if (prev === 'slim') return 'micro';
+          return 'full';
+        });
+      }
+
       // Escape -> 关闭弹窗
       if (e.key === 'Escape') {
         setShowCommandPalette(false);
@@ -254,11 +266,13 @@ export default function HomePage() {
           </div>
         ) : (
           <>
-            <DocumentList width={docListWidth} />
-            <div 
-              className={`resizer-bar ${isResizingDocList ? 'dragging' : ''}`} 
-              onMouseDown={handleDocListResizeStart} 
-            />
+            <DocumentList width={docListMode === 'micro' ? 68 : docListMode === 'slim' ? 200 : docListWidth} />
+            {docListMode === 'full' && (
+              <div 
+                className={`resizer-bar ${isResizingDocList ? 'dragging' : ''}`} 
+                onMouseDown={handleDocListResizeStart} 
+              />
+            )}
             <ReadingPane />
           </>
         )}

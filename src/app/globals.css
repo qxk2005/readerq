@@ -585,6 +585,266 @@ textarea:focus {
   padding: var(--space-2);
 }
 
+/* ---- CRM 级别三档文档列表模式 (Full 380px / Slim 200px / Micro 68px) ---- */
+
+/* 1. 图标轨模式 (Micro Mode - 68px Dock) */
+.doclist-panel.doclist-mode-micro {
+  width: 68px !important;
+  min-width: 68px !important;
+  max-width: 68px !important;
+  padding: 0;
+  align-items: center;
+  overflow: visible !important;
+  border-right: 1px solid var(--color-border);
+}
+
+.doclist-mode-micro .doclist-content {
+  padding: 8px 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  overflow-y: auto;
+  overflow-x: visible;
+}
+
+.doc-card-micro-item {
+  position: relative;
+  cursor: pointer;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+  padding: 3px 0;
+}
+
+/* Linear/Slack 经典 CRM 选中指示器 */
+.micro-active-indicator {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3.5px;
+  height: 26px;
+  background: var(--color-accent);
+  border-top-right-radius: 3px;
+  border-bottom-right-radius: 3px;
+  box-shadow: 0 0 8px var(--color-accent);
+  z-index: 10;
+}
+
+.doc-card-micro-thumb-wrapper {
+  position: relative;
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: var(--shadow-sm);
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border-light);
+}
+
+.doc-card-micro-item:hover .doc-card-micro-thumb-wrapper {
+  transform: scale(1.08);
+  border-color: var(--color-accent);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.16);
+  z-index: 100;
+}
+
+.doc-card-micro-item.active .doc-card-micro-thumb-wrapper {
+  border-color: var(--color-accent);
+  background: rgba(0, 122, 255, 0.1);
+  box-shadow: 0 0 0 2px var(--color-accent), 0 4px 14px rgba(0, 122, 255, 0.28);
+  transform: scale(1.05);
+}
+
+.doc-card-micro-image {
+  width: 100%;
+  height: 100%;
+  border-radius: 10px;
+  object-fit: cover;
+  display: block;
+}
+
+.doc-card-micro-type-badge {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--color-bg-primary);
+  border: 1px solid var(--color-border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-secondary);
+  box-shadow: 0 2px 4px rgba(0,0,0,0.15);
+  z-index: 2;
+}
+
+.doc-card-micro-progress-track {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 2.5px;
+  background: rgba(0,0,0,0.2);
+  border-bottom-left-radius: 9px;
+  border-bottom-right-radius: 9px;
+  overflow: hidden;
+}
+
+.doc-card-micro-progress-bar {
+  height: 100%;
+  background: var(--color-accent);
+}
+
+/* 2. 精简单行列表模式 (Slim Mode - 200px List) */
+.doclist-panel.doclist-mode-slim {
+  width: 200px !important;
+  min-width: 200px !important;
+  max-width: 200px !important;
+  border-right: 1px solid var(--color-border);
+}
+
+.doclist-mode-slim .doclist-content {
+  padding: 6px 4px;
+}
+
+.doc-card-slim-item {
+  position: relative;
+  height: 42px;
+  padding: 6px 10px;
+  margin: 3px 2px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  border: 1px solid transparent;
+}
+
+.doc-card-slim-item:hover {
+  background: var(--color-bg-hover);
+  transform: translateX(2px);
+}
+
+.doc-card-slim-item.active {
+  background: var(--color-accent-light);
+  border-color: rgba(0, 122, 255, 0.25);
+}
+
+.doc-card-slim-cover {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+}
+
+.doc-card-slim-title {
+  flex: 1;
+  min-width: 0;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--color-text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.doc-card-slim-item.active .doc-card-slim-title {
+  font-weight: 600;
+  color: var(--color-accent);
+}
+
+.doc-card-slim-progress-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-accent);
+  flex-shrink: 0;
+}
+
+.doc-card-slim-type {
+  color: var(--color-text-tertiary);
+  flex-shrink: 0;
+  display: flex;
+}
+
+/* 3. 浮动 Hover 卡片 (Glassmorphism CRM Popover) */
+.doc-card-compact-popover {
+  position: absolute;
+  left: 62px;
+  width: 280px;
+  background: var(--color-bg-card, #1e1e1e);
+  backdrop-filter: blur(16px);
+  border: 1px solid var(--color-border);
+  border-radius: 14px;
+  padding: 12px 14px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.25);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 0.15s cubic-bezier(0.16, 1, 0.3, 1), transform 0.15s cubic-bezier(0.16, 1, 0.3, 1), visibility 0.15s ease;
+  z-index: 9999;
+}
+
+.doc-card-compact-popover.popover-up {
+  bottom: -4px;
+  transform: translateX(-6px) scale(0.96);
+}
+
+.doc-card-compact-popover.popover-down {
+  top: -4px;
+  transform: translateX(-6px) scale(0.96);
+}
+
+.doc-card-micro-item:hover .doc-card-compact-popover,
+.doc-card-slim-item:hover .doc-card-compact-popover {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transform: translateX(0) scale(1);
+}
+
+.doc-card-compact-popover-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  margin-bottom: 6px;
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.doc-card-compact-popover-summary {
+  font-size: 11.5px;
+  color: var(--color-text-secondary);
+  line-height: 1.45;
+  margin-bottom: 8px;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.doc-card-compact-popover-footer {
+  font-size: 10.5px;
+  color: var(--color-text-tertiary);
+}
+
+.doc-card-compact-popover-tag {
+  font-size: 10px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: rgba(0, 122, 255, 0.1);
+  color: var(--color-accent);
+}
+
 /* ---- 文档卡片 (Apple macOS / iOS Card Aesthetics) ---- */
 .doc-card {
   padding: var(--space-3) var(--space-4);

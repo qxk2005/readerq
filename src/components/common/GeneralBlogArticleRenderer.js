@@ -38,10 +38,34 @@ const GeneralBlogArticleRenderer = React.memo(function GeneralBlogArticleRendere
       return () => clearTimeout(timer);
     }
   }, [blogContent, isGenerating, onRendered, resolvedRef]);
+
+  // 预处理 Markdown：自动清洗与 URI 编码 [原文](#quote-含空格或英文的短语) 中的 URL 部分
+  // 解决 CommonMark 规范不允许 URL 包含未转义空格/特殊符号导致 [原文](#quote-foo bar) 无法解析为 <a> 链接的问题
+  const sanitizedBlogContent = useMemo(() => {
+    if (!blogContent) return '';
+    return blogContent.replace(/\[([^\]]+)\]\(#quote-([^\n\)]+)\)/g, (match, label, quoteText) => {
+      const cleanQuote = quoteText.trim();
+      let encodedQuote = cleanQuote;
+      try {
+        const decoded = decodeURIComponent(cleanQuote);
+        encodedQuote = encodeURIComponent(decoded);
+      } catch (e) {
+        encodedQuote = encodeURIComponent(cleanQuote);
+      }
+      return `[${label}](#quote-${encodedQuote})`;
+    });
+  }, [blogContent]);
+
   const components = useMemo(() => ({
     a: ({ href, children }) => {
       if (href && href.startsWith('#quote-')) {
-        const quoteText = href.replace(/^#quote-/, '');
+        const rawQuote = href.replace(/^#quote-/, '');
+        let quoteText = rawQuote;
+        try {
+          quoteText = decodeURIComponent(rawQuote);
+        } catch (e) {
+          quoteText = rawQuote;
+        }
         return (
           <span
             className="blog-quote-anchor"
@@ -171,7 +195,7 @@ const GeneralBlogArticleRenderer = React.memo(function GeneralBlogArticleRendere
 
       {/* 实时流式输出的 Markdown 文章渲染 */}
       <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
-        {blogContent}
+        {sanitizedBlogContent}
       </ReactMarkdown>
 
       {/* 生成完成后的底部重新生成按钮 */}

@@ -5,11 +5,11 @@ import { useApp } from '@/context/AppContext';
 import { useTheme } from '@/context/ThemeContext';
 import { LOCATION_LABELS, formatDate, truncateText, extractDomain } from '@/lib/utils';
 import { CATEGORY_ICONS_SVG, getCategoryIcon } from '@/components/ui/icons';
-import { Search, Inbox, Clock, Archive, RefreshCw, FileText, Tag, Trash2, RotateCcw } from 'lucide-react';
+import { Search, Inbox, Clock, Archive, RefreshCw, FileText, Tag, Trash2, RotateCcw, PanelLeftClose, PanelLeftOpen, LayoutList, AlignJustify, Grid, Columns } from 'lucide-react';
 
 import ArticleCoverPlaceholder from '@/components/common/ArticleCoverPlaceholder';
 
-function DocumentCard({ doc, index, isActive, onClick, isSelectionMode, isSelected, onToggleSelect, onMoveDoc, onDeleteDoc, currentView }) {
+function DocumentCard({ doc, index, isActive, onClick, isSelectionMode, isSelected, onToggleSelect, onMoveDoc, onDeleteDoc, currentView, docListMode }) {
   const { docListElements } = useTheme();
   const { switchTag } = useApp();
   const [imgFailed, setImgFailed] = useState(false);
@@ -58,6 +58,132 @@ function DocumentCard({ doc, index, isActive, onClick, isSelectionMode, isSelect
 
   const visibleTags = tagList.slice(0, 2);
   const extraTagsCount = tagList.length - visibleTags.length;
+
+  // --- 模式 1：CRM 图标轨模式 (68px Icon Dock) ---
+  if (docListMode === 'micro') {
+    return (
+      <div
+        className={`doc-card-micro-item ${isActive ? 'active' : ''} ${isSelected ? 'selected' : ''}`}
+        onClick={handleClick}
+      >
+        {/* 左侧 Active 垂直指示条 (Slack/Linear 经典 CRM 选中样式) */}
+        {isActive && <div className="micro-active-indicator" />}
+
+        <div className="doc-card-micro-thumb-wrapper">
+          {doc.image_url && !imgFailed ? (
+            <img
+              className="doc-card-micro-image"
+              src={doc.image_url}
+              alt=""
+              loading="lazy"
+              onError={() => setImgFailed(true)}
+            />
+          ) : (
+            <ArticleCoverPlaceholder doc={doc} mode="thumb" width="42px" height="42px" />
+          )}
+
+          {/* 文章分类微型角标 */}
+          <span className="doc-card-micro-type-badge" title={doc.category || '文章'}>
+            {getCategoryIcon(doc.category, 9)}
+          </span>
+
+          {/* 底部已读进度线条 */}
+          {doc.reading_progress > 0 && doc.reading_progress < 1 && (
+            <div className="doc-card-micro-progress-track">
+              <div
+                className="doc-card-micro-progress-bar"
+                style={{ width: `${doc.reading_progress * 100}%` }}
+              />
+            </div>
+          )}
+        </div>
+
+        {/* 鼠标悬停 CRM 级 Popover 浮层预览 */}
+        <div className={`doc-card-compact-popover ${isTopItem ? 'popover-down' : 'popover-up'}`}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+            <span style={{ fontSize: '11px', fontWeight: '600', color: 'var(--color-accent)', background: 'rgba(0,122,255,0.08)', padding: '2px 6px', borderRadius: '4px' }}>
+              {extractDomain(doc.source_url || doc.url) || doc.category || '文章'}
+            </span>
+            {doc.reading_time && (
+              <span style={{ fontSize: '10.5px', color: 'var(--color-text-tertiary)' }}>
+                ⏱️ {doc.reading_time}
+              </span>
+            )}
+          </div>
+
+          <div className="doc-card-compact-popover-title">{doc.title || '无标题'}</div>
+
+          {doc.summary && (
+            <div className="doc-card-compact-popover-summary">
+              {truncateText(doc.summary, 90)}
+            </div>
+          )}
+
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '8px', paddingTop: '6px', borderTop: '1px solid var(--color-border-light)' }}>
+            <span style={{ fontSize: '10.5px', color: 'var(--color-text-tertiary)' }}>
+              {formatDate(doc.updated_at || doc.created_at)}
+            </span>
+            <div style={{ display: 'flex', gap: '4px' }} onClick={(e) => e.stopPropagation()}>
+              <button className="doc-card-action-btn" title="收件箱" onClick={() => onMoveDoc(doc.id, 'new')}><Inbox size={12} /></button>
+              <button className="doc-card-action-btn" title="稍后阅读" onClick={() => onMoveDoc(doc.id, 'later')}><Clock size={12} /></button>
+              <button className="doc-card-action-btn" title="归档" onClick={() => onMoveDoc(doc.id, 'archive')}><Archive size={12} /></button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // --- 模式 2：CRM 精简单行列表模式 (200px Slim View) ---
+  if (docListMode === 'slim') {
+    return (
+      <div
+        className={`doc-card-slim-item ${isActive ? 'active' : ''} ${isSelected ? 'selected' : ''}`}
+        onClick={handleClick}
+      >
+        <div className="doc-card-slim-cover">
+          {doc.image_url && !imgFailed ? (
+            <img
+              src={doc.image_url}
+              alt=""
+              loading="lazy"
+              onError={() => setImgFailed(true)}
+              style={{ width: '28px', height: '28px', borderRadius: '6px', objectFit: 'cover' }}
+            />
+          ) : (
+            <ArticleCoverPlaceholder doc={doc} mode="thumb" width="28px" height="28px" />
+          )}
+        </div>
+
+        <div className="doc-card-slim-title" title={doc.title}>
+          {doc.title || '无标题'}
+        </div>
+
+        {doc.reading_progress > 0 && doc.reading_progress < 1 ? (
+          <span className="doc-card-slim-progress-dot" title={`已读 ${Math.round(doc.reading_progress * 100)}%`} />
+        ) : (
+          <span className="doc-card-slim-type" title={doc.category}>
+            {getCategoryIcon(doc.category, 11)}
+          </span>
+        )}
+
+        {/* 悬停 Popover 浮层预览 */}
+        <div className={`doc-card-compact-popover ${isTopItem ? 'popover-down' : 'popover-up'}`} style={{ left: '196px' }}>
+          <div className="doc-card-compact-popover-title">{doc.title || '无标题'}</div>
+          {headerMetaItems.length > 0 && (
+            <div className="doc-card-compact-popover-meta">
+              {headerMetaItems.join(' · ')}
+            </div>
+          )}
+          {doc.summary && (
+            <div className="doc-card-compact-popover-summary">
+              {truncateText(doc.summary, 90)}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className={`doc-card ${isActive ? 'active' : ''} ${isSelected ? 'selected' : ''}`} onClick={handleClick}>
@@ -233,7 +359,8 @@ export default function DocumentList({ width }) {
     batchMoveDocuments,
     batchDeleteDocuments,
     syncData, isSyncing,
-    emptyTrash
+    emptyTrash,
+    docListMode, setDocListMode
   } = useApp();
 
   const [showEmptyConfirm, setShowEmptyConfirm] = useState(false);
@@ -299,7 +426,7 @@ export default function DocumentList({ width }) {
   });
 
   return (
-    <div className="doclist-panel doclist-container" style={{ width: `${width}px` }}>
+    <div className={`doclist-panel doclist-container doclist-mode-${docListMode}`} style={{ width: `${width}px` }}>
       {showEmptyConfirm && (
         <div style={{
           position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
@@ -325,96 +452,205 @@ export default function DocumentList({ width }) {
         </div>
       )}
 
-      <div className="doclist-header">
-        <div className="doclist-title">
-          <span>{getViewTitle()}</span>
-          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            {currentView === 'trash' && documents.some(d => d.location === 'trash') && (
-              <button
-                className="btn-icon"
-                onClick={() => setShowEmptyConfirm(true)}
-                data-tooltip="清空垃圾箱"
-                style={{ color: '#ef4444' }}
-              >
-                <Trash2 size={18} />
-              </button>
-            )}
+      {docListMode === 'micro' ? (
+        <div className="doclist-compact-header" style={{
+          padding: '12px 0 8px 0',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          gap: '8px',
+          borderBottom: '1px solid var(--color-border-light)',
+          flexShrink: 0,
+        }}>
+          <button
+            className="btn-icon"
+            onClick={() => setDocListMode('full')}
+            data-tooltip="展开文章列表 (全量卡片模式, 快捷键 '\')"
+            style={{ width: '38px', height: '38px', borderRadius: '10px', background: 'var(--color-bg-primary)', border: '1px solid var(--color-border)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          >
+            <PanelLeftOpen size={18} style={{ color: 'var(--color-accent)' }} />
+          </button>
+          <button
+            className="btn-icon"
+            onClick={() => setDocListMode('slim')}
+            data-tooltip="切换为单行极简列表 (200px)"
+            style={{ width: '28px', height: '28px', borderRadius: '6px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--color-text-secondary)' }}
+          >
+            <AlignJustify size={14} />
+          </button>
+          <div
+            style={{
+              fontSize: '10px',
+              fontWeight: '700',
+              color: 'var(--color-text-tertiary)',
+              padding: '2px 6px',
+              borderRadius: '8px',
+              background: 'var(--color-bg-tertiary)',
+            }}
+            title={`当前共 ${sortedDocs.length} 篇文档`}
+          >
+            {sortedDocs.length}
+          </div>
+        </div>
+      ) : docListMode === 'slim' ? (
+        <div className="doclist-slim-header" style={{
+          padding: '10px 12px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          borderBottom: '1px solid var(--color-border-light)',
+          flexShrink: 0,
+        }}>
+          <span style={{ fontSize: '13px', fontWeight: '600', color: 'var(--color-text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            {sortedDocs.length} 篇文档
+          </span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
             <button
               className="btn-icon"
-              onClick={() => {
-                if (!isSyncing) syncData({ full: false });
-              }}
-              disabled={isSyncing}
-              data-tooltip={isSyncing ? "同步中..." : "增量同步"}
-              style={{ opacity: isSyncing ? 0.7 : 1, cursor: isSyncing ? 'not-allowed' : 'pointer' }}
+              onClick={() => setDocListMode('micro')}
+              data-tooltip="图标轨模式 (68px)"
+              style={{ width: '24px', height: '24px', padding: 0 }}
             >
-              <RefreshCw size={18} style={isSyncing ? { animation: 'spin 1s linear infinite' } : {}} />
+              <Grid size={14} />
+            </button>
+            <button
+              className="btn-icon"
+              onClick={() => setDocListMode('full')}
+              data-tooltip="展开全量卡片 (380px)"
+              style={{ width: '24px', height: '24px', padding: 0 }}
+            >
+              <PanelLeftOpen size={14} />
             </button>
           </div>
         </div>
-        <div className="doclist-search">
-          <span className="doclist-search-icon"><Search size={14} /></span>
-          <input
-            type="text"
-            placeholder="搜索文档..."
-            value={searchQuery}
-            onChange={handleSearch}
-            id="search-input"
-          />
-        </div>
-      </div>
+      ) : (
+        <div className="doclist-header">
+          <div className="doclist-title">
+            <span>{getViewTitle()}</span>
+            <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              {/* CRM 级三档 View Mode Switcher */}
+              <div style={{
+                display: 'flex',
+                background: 'var(--color-bg-tertiary)',
+                padding: '2px',
+                borderRadius: '8px',
+                border: '1px solid var(--color-border-light)'
+              }}>
+                <button
+                  className={`btn-icon ${docListMode === 'full' ? 'active' : ''}`}
+                  onClick={() => setDocListMode('full')}
+                  data-tooltip="卡片视图 (380px)"
+                  style={{ width: '24px', height: '24px', padding: 0, borderRadius: '6px', background: docListMode === 'full' ? 'var(--color-bg-card)' : 'transparent', color: docListMode === 'full' ? 'var(--color-accent)' : 'var(--color-text-tertiary)' }}
+                >
+                  <LayoutList size={13} />
+                </button>
+                <button
+                  className={`btn-icon ${docListMode === 'slim' ? 'active' : ''}`}
+                  onClick={() => setDocListMode('slim')}
+                  data-tooltip="单行极简 (200px)"
+                  style={{ width: '24px', height: '24px', padding: 0, borderRadius: '6px', background: docListMode === 'slim' ? 'var(--color-bg-card)' : 'transparent', color: docListMode === 'slim' ? 'var(--color-accent)' : 'var(--color-text-tertiary)' }}
+                >
+                  <AlignJustify size={13} />
+                </button>
+                <button
+                  className={`btn-icon ${docListMode === 'micro' ? 'active' : ''}`}
+                  onClick={() => setDocListMode('micro')}
+                  data-tooltip="图标轨 (68px)"
+                  style={{ width: '24px', height: '24px', padding: 0, borderRadius: '6px', background: docListMode === 'micro' ? 'var(--color-bg-card)' : 'transparent', color: docListMode === 'micro' ? 'var(--color-accent)' : 'var(--color-text-tertiary)' }}
+                >
+                  <Grid size={13} />
+                </button>
+              </div>
 
-      <div className="doclist-toolbar">
-        {isSelectionMode ? (
-          <>
-            <span style={{ cursor: 'pointer', color: 'var(--color-accent)' }} onClick={() => setSelectedIds(new Set(sortedDocs.map(d => d.id)))}>全选</span>
-            <span style={{ marginLeft: '12px', cursor: 'pointer', color: 'var(--color-text-secondary)' }} onClick={() => setSelectedIds(new Set())}>清空</span>
-            <span style={{ marginLeft: '12px' }}>已选 {selectedIds.size} 篇</span>
-            <span style={{ marginLeft: 'auto' }}>
-              <button className="btn btn-ghost btn-sm" onClick={() => { setIsSelectionMode(false); setSelectedIds(new Set()); }}>取消</button>
-            </span>
-          </>
-        ) : (
-          <>
-            <span>{sortedDocs.length} 篇文档</span>
-            <span style={{ marginLeft: '12px', cursor: 'pointer', color: 'var(--color-text-secondary)', fontSize: '12px' }} onClick={() => setIsSelectionMode(true)}>
-              多选
-            </span>
-            {(currentView === 'feed' || currentCategory === 'rss' || currentCategory === 'feed') && (
-              <span
-                style={{
-                  marginLeft: '10px',
-                  cursor: 'pointer',
-                  color: 'var(--color-accent)',
-                  fontWeight: '600',
-                  fontSize: '12px'
+              {currentView === 'trash' && documents.some(d => d.location === 'trash') && (
+                <button
+                  className="btn-icon"
+                  onClick={() => setShowEmptyConfirm(true)}
+                  data-tooltip="清空垃圾箱"
+                  style={{ color: '#ef4444' }}
+                >
+                  <Trash2 size={18} />
+                </button>
+              )}
+              <button
+                className="btn-icon"
+                onClick={() => {
+                  if (!isSyncing) syncData({ full: false });
                 }}
-                onClick={() => setSelectedDoc(null)}
+                disabled={isSyncing}
+                data-tooltip={isSyncing ? "同步中..." : "增量同步"}
+                style={{ opacity: isSyncing ? 0.7 : 1, cursor: isSyncing ? 'not-allowed' : 'pointer' }}
               >
-                🤖 AI 推荐
+                <RefreshCw size={18} style={isSyncing ? { animation: 'spin 1s linear infinite' } : {}} />
+              </button>
+            </div>
+          </div>
+          <div className="doclist-search">
+            <span className="doclist-search-icon"><Search size={14} /></span>
+            <input
+              type="text"
+              placeholder="搜索文档..."
+              value={searchQuery}
+              onChange={handleSearch}
+              id="search-input"
+            />
+          </div>
+        </div>
+      )}
+
+      {docListMode === 'full' && (
+        <div className="doclist-toolbar">
+          {isSelectionMode ? (
+            <>
+              <span style={{ cursor: 'pointer', color: 'var(--color-accent)' }} onClick={() => setSelectedIds(new Set(sortedDocs.map(d => d.id)))}>全选</span>
+              <span style={{ marginLeft: '12px', cursor: 'pointer', color: 'var(--color-text-secondary)' }} onClick={() => setSelectedIds(new Set())}>清空</span>
+              <span style={{ marginLeft: '12px' }}>已选 {selectedIds.size} 篇</span>
+              <span style={{ marginLeft: 'auto' }}>
+                <button className="btn btn-ghost btn-sm" onClick={() => { setIsSelectionMode(false); setSelectedIds(new Set()); }}>取消</button>
               </span>
-            )}
-            <span style={{ marginLeft: 'auto' }}>
-              排序：
-              <select
-                value={sortBy}
-                onChange={(e) => setSortBy(e.target.value)}
-                style={{
-                  background: 'transparent',
-                  border: 'none',
-                  color: 'inherit',
-                  cursor: 'pointer',
-                  fontSize: 'inherit',
-                }}
-              >
-                <option value="updated">最近更新</option>
-                <option value="title">标题</option>
-                <option value="progress">阅读进度</option>
-              </select>
-            </span>
-          </>
-        )}
-      </div>
+            </>
+          ) : (
+            <>
+              <span>{sortedDocs.length} 篇文档</span>
+              <span style={{ marginLeft: '12px', cursor: 'pointer', color: 'var(--color-text-secondary)', fontSize: '12px' }} onClick={() => setIsSelectionMode(true)}>
+                多选
+              </span>
+              {(currentView === 'feed' || currentCategory === 'rss' || currentCategory === 'feed') && (
+                <span
+                  style={{
+                    marginLeft: '10px',
+                    cursor: 'pointer',
+                    color: 'var(--color-accent)',
+                    fontWeight: '600',
+                    fontSize: '12px'
+                  }}
+                  onClick={() => setSelectedDoc(null)}
+                >
+                  🤖 AI 推荐
+                </span>
+              )}
+              <span style={{ marginLeft: 'auto' }}>
+                排序：
+                <select
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value)}
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    color: 'inherit',
+                    cursor: 'pointer',
+                    fontSize: 'inherit',
+                  }}
+                >
+                  <option value="updated">最近更新</option>
+                  <option value="title">标题</option>
+                  <option value="progress">阅读进度</option>
+                </select>
+              </span>
+            </>
+          )}
+        </div>
+      )}
 
       <div className="doclist-content">
         {isLoading ? (
@@ -445,6 +681,7 @@ export default function DocumentList({ width }) {
                 onMoveDoc={handleMoveDoc}
                 onDeleteDoc={batchDeleteDocuments}
                 currentView={currentView}
+                docListMode={docListMode}
               />
             ))}
             {/* Observer Target for Infinite Scroll */}

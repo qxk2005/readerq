@@ -2009,6 +2009,7 @@ export default function ReadingPane() {
             updateDocumentLocally={updateDocumentLocally}
             videoTabMode={videoTabMode}
             onVideoTabChange={setVideoTabMode}
+            onBlogRendered={restoreBlogHighlightsToContainer}
           />
         </div>
       ) : (
