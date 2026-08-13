@@ -136,16 +136,20 @@ fun ReadingPane(
                 val hlText = targetHl?.text ?: ""
                 val isBlogHl = targetHl?.tags_json?.let { it.contains("\"blog\"") || it.contains("blog") } ?: false
                 
+                val isVideoDoc = currentDoc.category == "video"
                 val targetMode = if (isBlogHl) "blog" else "text"
-                val needModeSwitch = if (isBlogHl) {
+
+                val needModeSwitch = if (isVideoDoc) {
+                    false
+                } else if (isBlogHl) {
                     readingModeTab != "blog"
                 } else {
-                    readingModeTab == "blog" && currentDoc.category != "video"
+                    readingModeTab == "blog"
                 }
 
                 if (needModeSwitch) {
                     readingModeTab = targetMode
-                    if (targetMode == "blog" && currentDoc.blog_content.isNullOrBlank()) {
+                    if (!isVideoDoc && targetMode == "blog" && currentDoc.blog_content.isNullOrBlank()) {
                         viewModel.generateBlogForDocument(currentDoc.id, currentDoc.title)
                     }
                     pendingHighlightToScroll = Pair(hlId, hlText)
@@ -237,7 +241,7 @@ fun ReadingPane(
                                         .clip(RoundedCornerShape(12.dp))
                                         .clickable {
                                             readingModeTab = "blog"
-                                            if (blogContent.isNullOrBlank()) {
+                                            if (currentDoc.category != "video" && blogContent.isNullOrBlank()) {
                                                 viewModel.generateBlogForDocument(currentDoc.id, currentDoc.title)
                                             }
                                         }
