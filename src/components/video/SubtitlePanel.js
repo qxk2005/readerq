@@ -123,19 +123,18 @@ const processChildrenForParagraph = (children) => {
 // 隔离父组件 SubtitlePanel 因 currentTime 频繁 update 导致的 Re-render，彻底避免 DOM 选区失焦
 const BlogArticleRenderer = React.memo(function BlogArticleRenderer({ blogContent, onSeek, articleRef, onRendered }) {
   const internalRef = useRef(null);
-  const resolvedRef = articleRef || internalRef;
+  // 当传入的 articleRef.current 为空（如视频模式下无文章正文容器）时，自动降级为 internalRef
+  const resolvedRef = (articleRef && articleRef.current) ? articleRef : internalRef;
 
-  // 当 blogContent 改变时，通知父组件 DOM 已就绪以还原高亮划线
-  const lastNotifiedContentRef = useRef('');
+  // 当 blogContent 改变或 onRendered 更新时，通知父组件 DOM 已就绪以还原高亮划线
   useEffect(() => {
-    if (blogContent && onRendered && resolvedRef.current) {
-      if (lastNotifiedContentRef.current === blogContent) return;
-      lastNotifiedContentRef.current = blogContent;
+    if (blogContent && onRendered) {
       const timer = setTimeout(() => {
-        if (resolvedRef.current) {
-          onRendered(resolvedRef.current);
+        const domContainer = resolvedRef.current || document.querySelector('.blog-article');
+        if (domContainer) {
+          onRendered(domContainer);
         }
-      }, 80);
+      }, 100);
       return () => clearTimeout(timer);
     }
   }, [blogContent, onRendered, resolvedRef]);

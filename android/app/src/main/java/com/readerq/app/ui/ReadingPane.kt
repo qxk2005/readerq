@@ -1948,23 +1948,67 @@ fun HtmlContentViewer(
                               return { start: originalStart, end: originalEnd };
                             }
                           }
-                          return null;
+                        function findFuzzyOffsetsForBlock(fullText, query) {
+                          if (!query || !fullText) return [];
+                          const singleMatch = findFuzzyOffset(fullText, query);
+                          if (singleMatch) return [singleMatch];
+                          const lines = query.split(/[\n\r]+/).map(s => s.trim()).filter(Boolean);
+                          const results = [];
+                          const seenRanges = new Set();
+                          for (const line of lines) {
+                            const cleanLine = line.replace(/^([•\-\*]|\[\d+:\d+\]|💡|💬|\d+\.)\s*/g, '').replace(/\[\d+:\d+\]/g, '').trim();
+                            if (cleanLine.length < 4) continue;
+                            const match = findFuzzyOffset(fullText, cleanLine);
+                            if (match) {
+                              const key = match.start + '-' + match.end;
+                              if (!seenRanges.has(key)) {
+                                seenRanges.add(key);
+                                results.push(match);
+                              }
+                            } else {
+                              const subSentences = cleanLine.split(/[。；!?!?\n]+/).map(s => s.trim()).filter(s => s.length >= 6);
+                              for (const sub of subSentences) {
+                                const subMatch = findFuzzyOffset(fullText, sub);
+                                if (subMatch) {
+                                  const key = subMatch.start + '-' + subMatch.end;
+                                  if (!seenRanges.has(key)) {
+                                    seenRanges.add(key);
+                                    results.push(subMatch);
+                                  }
+                                }
+                              }
+                            }
+                          }
+                          return results;
                         }
 
                         function restoreHighlights(root, highlights) {
                           if (!root) return;
                           const fullText = root.textContent;
-                          const processedHighlights = highlights.map(hl => {
+                          const processedHighlights = [];
+                          for (const hl of highlights) {
                             if (hl.location_start == null || hl.location_end == null) {
                               if (hl.text) {
-                                const offset = findFuzzyOffset(fullText, hl.text);
-                                if (offset) {
-                                  return { ...hl, location_start: offset.start, location_end: offset.end };
+                                const matches = findFuzzyOffsetsForBlock(fullText, hl.text);
+                                if (matches.length > 0) {
+                                  matches.forEach((m, idx) => {
+                                    processedHighlights.push({
+                                      ...hl,
+                                      id: matches.length > 1 ? (hl.id + '-seg-' + idx) : hl.id,
+                                      location_start: m.start,
+                                      location_end: m.end
+                                    });
+                                  });
+                                } else {
+                                  processedHighlights.push({ ...hl, location_start: null, location_end: null });
                                 }
+                              } else {
+                                processedHighlights.push(hl);
                               }
+                            } else {
+                              processedHighlights.push(hl);
                             }
-                            return hl;
-                          });
+                          }
                           const validHighlights = processedHighlights.filter(hl => hl.location_start != null && hl.location_end != null);
                           const sorted = [...validHighlights].sort((a, b) => b.location_start - a.location_start);
                           for (const hl of sorted) {

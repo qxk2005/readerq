@@ -165,13 +165,67 @@ export function findFuzzyOffset(fullText, query) {
   return null;
 }
 
+// 智能分段/分句提取子文本区间，解决 AI 博客摘要与 Readwise 多段合并高亮中带有 Emoji / 时间戳 [0:29] / 列表符号导致整块匹配失败的问题
+function findFuzzyOffsetsForBlock(fullText, query) {
+  if (!query || !fullText) return [];
+  
+  // 1. 尝试整体匹配
+  const singleMatch = findFuzzyOffset(fullText, query);
+  if (singleMatch) return [singleMatch];
+
+  // 2. 整体未匹配时，按段落和换行拆分
+  const lines = query.split(/[\n\r]+/).map(s => s.trim()).filter(Boolean);
+  const results = [];
+  const seenRanges = new Set();
+
+  for (const line of lines) {
+    // 剥离开头的列表标记（如 •, -, *）、时间戳标签（如 [0:29]）及常见 Emoji
+    const cleanLine = line
+      .replace(/^([•\-\*]|\[\d+:\d+\]|💡|💬|\d+\.)\s*/g, '')
+      .replace(/\[\d+:\d+\]/g, '')
+      .trim();
+
+    if (cleanLine.length < 4) continue;
+
+    const match = findFuzzyOffset(fullText, cleanLine);
+    if (match) {
+      const key = `${match.start}-${match.end}`;
+      if (!seenRanges.has(key)) {
+        seenRanges.add(key);
+        results.push(match);
+      }
+    } else {
+      // 3. 进一步按句号/分号/问号/感叹号拆分长句子
+      const subSentences = cleanLine
+        .split(/[。；!?!?\n]+/)
+        .map(s => s.trim())
+        .filter(s => s.length >= 6);
+
+      for (const sub of subSentences) {
+        const subMatch = findFuzzyOffset(fullText, sub);
+        if (subMatch) {
+          const key = `${subMatch.start}-${subMatch.end}`;
+          if (!seenRanges.has(key)) {
+            seenRanges.add(key);
+            results.push(subMatch);
+          }
+        }
+      }
+    }
+  }
+
+  return results;
+}
+
 export function restoreHighlights(root, highlights, onHighlightClick) {
   if (!root) return highlights; // 返回原始数据
   const fullText = root.textContent;
   
   // 预处理高亮：校验当前容器 fullText 与 location_start 的匹配度
   // 如果位置不匹配（如正文与博客视图切换，或者从 Readwise 同步），通过模糊文本匹配重新定位
-  const processedHighlights = highlights.map(hl => {
+  const processedHighlights = [];
+
+  for (const hl of highlights) {
     let isValidOffset = false;
     if (hl.location_start != null && hl.location_end != null && hl.location_start < fullText.length) {
       const seg = fullText.substring(hl.location_start, Math.min(hl.location_end, fullText.length));
@@ -179,17 +233,28 @@ export function restoreHighlights(root, highlights, onHighlightClick) {
         isValidOffset = true;
       }
     }
-    
-    if (!isValidOffset && hl.text) {
-      const offset = findFuzzyOffset(fullText, hl.text);
-      if (offset) {
-        return { ...hl, location_start: offset.start, location_end: offset.end };
+
+    if (isValidOffset) {
+      processedHighlights.push(hl);
+    } else if (hl.text) {
+      // 使用分句智能离散匹配算法
+      const matches = findFuzzyOffsetsForBlock(fullText, hl.text);
+      if (matches.length > 0) {
+        matches.forEach((m, idx) => {
+          processedHighlights.push({
+            ...hl,
+            id: matches.length > 1 ? `${hl.id}-seg-${idx}` : hl.id,
+            location_start: m.start,
+            location_end: m.end
+          });
+        });
       } else {
-        return { ...hl, location_start: null, location_end: null };
+        processedHighlights.push({ ...hl, location_start: null, location_end: null });
       }
+    } else {
+      processedHighlights.push(hl);
     }
-    return hl;
-  });
+  }
 
   // 过滤掉仍然无法确定位置的高亮（如图片高亮），防止在文章开头生成空的 mark 标签
   const validHighlights = processedHighlights.filter(hl => hl.location_start != null && hl.location_end != null);

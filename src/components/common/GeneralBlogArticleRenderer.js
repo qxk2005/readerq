@@ -20,21 +20,17 @@ const GeneralBlogArticleRenderer = React.memo(function GeneralBlogArticleRendere
 }) {
   // 内部 ref 用于跟踪 .blog-article 容器
   const internalRef = useRef(null);
-  const resolvedRef = articleRef || internalRef;
+  const resolvedRef = (articleRef && articleRef.current) ? articleRef : internalRef;
 
   // 当 blogContent 改变且不在生成中时，通知父组件 DOM 已就绪
-  const lastNotifiedContentRef = useRef('');
   useEffect(() => {
-    if (blogContent && !isGenerating && onRendered && resolvedRef.current) {
-      // 避免对同一个内容重复通知
-      if (lastNotifiedContentRef.current === blogContent) return;
-      lastNotifiedContentRef.current = blogContent;
-      // 等待 React 完成 DOM 更新后再回调
+    if (blogContent && !isGenerating && onRendered) {
       const timer = setTimeout(() => {
-        if (resolvedRef.current) {
-          onRendered(resolvedRef.current);
+        const domContainer = resolvedRef.current || document.querySelector('.blog-article');
+        if (domContainer) {
+          onRendered(domContainer);
         }
-      }, 80);
+      }, 100);
       return () => clearTimeout(timer);
     }
   }, [blogContent, isGenerating, onRendered, resolvedRef]);
