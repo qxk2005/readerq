@@ -1596,7 +1596,13 @@ fun HtmlContentViewer(
     ) {
         "<div style='display:flex;flex-direction:column;align-items:center;justify-content:center;height:80vh;color:#888;font-style:italic;'><p>内容正在加载中...</p></div>"
     } else {
-        html.replace(Regex("<script[^>]*>.*?</script>", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)), "")
+        html
+            .replace(Regex("<script[^>]*>.*?</script>", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)), "")
+            .replace(Regex("<style[^>]*>.*?</style>", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)), "")
+            .replace(Regex("<head[^>]*>.*?</head>", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)), "")
+            .replace(Regex("<!DOCTYPE[^>]*>", setOf(RegexOption.IGNORE_CASE)), "")
+            .replace(Regex("</?html[^>]*>", setOf(RegexOption.IGNORE_CASE)), "")
+            .replace(Regex("</?body[^>]*>", setOf(RegexOption.IGNORE_CASE)), "")
     }
 
     val lastLoadedKey = remember { mutableStateOf("") }
