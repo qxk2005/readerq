@@ -978,23 +978,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _isFromAiRecommend.value = (doc != null && fromAi)
         if (doc != null) {
             _currentTab.value = "library"
-            android.util.Log.d("ReaderQ_Quote", "📄 selectDocument: id=${doc.id}, html_content isNull=${doc.html_content == null}, title=${doc.title?.take(30)}")
             if (doc.html_content == null) {
                 // 列表查询不含 html_content，先从本地 DB 加载完整数据
                 viewModelScope.launch(Dispatchers.IO) {
                     val fullDoc = docDao.getDocumentById(doc.id)
-                    android.util.Log.d("ReaderQ_Quote", "📄 getDocumentById: found=${fullDoc != null}, html_content isNull=${fullDoc?.html_content == null}, contentLen=${fullDoc?.html_content?.length ?: 0}")
                     if (fullDoc != null && fullDoc.html_content != null) {
                         _selectedDoc.value = fullDoc
-                        android.util.Log.d("ReaderQ_Quote", "📄 Updated selectedDoc with full content from local DB")
                     } else {
                         // 本地也无内容，从远程 API 获取
-                        android.util.Log.d("ReaderQ_Quote", "📄 Fetching from remote API for doc ${doc.id}")
                         fetchDocumentContent(doc.id)
                     }
                 }
-            } else {
-                android.util.Log.d("ReaderQ_Quote", "📄 html_content already present, len=${doc.html_content?.length ?: 0}")
             }
         }
     }
@@ -2366,7 +2360,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun onBlogQuoteClick(quoteQuery: String, doc: DocumentEntity?) {
-        android.util.Log.d("ReaderQ_Quote", "onBlogQuoteClick triggered: query=$quoteQuery, docId=${doc?.id}")
         val rawQuery = quoteQuery.removePrefix("#quote-").trim()
         val cleanQuery = try {
             java.net.URLDecoder.decode(rawQuery, "UTF-8")

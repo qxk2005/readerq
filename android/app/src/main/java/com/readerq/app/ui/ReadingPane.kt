@@ -4,6 +4,8 @@ import android.annotation.SuppressLint
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -85,6 +87,7 @@ fun ReadingPane(
     var webViewRefState by remember { mutableStateOf<WebView?>(null) }
     var quoteJumpTrigger by remember { mutableStateOf(0) }
     var pendingHighlightToScroll by remember { mutableStateOf<Pair<String, String>?>(null) }
+    var pendingExternalUrl by remember { mutableStateOf<String?>(null) }
 
     var showAaSheet by remember { mutableStateOf(false) }
     var showNotebookSheet by remember { mutableStateOf(false) }
@@ -129,6 +132,100 @@ fun ReadingPane(
         )
     }
 
+    pendingExternalUrl?.let { url ->
+        AlertDialog(
+            onDismissRequest = { pendingExternalUrl = null },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        painter = painterResource(id = R.drawable.ic_link),
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(22.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "外部链接跳转",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 17.sp,
+                        color = MaterialTheme.colorScheme.onBackground
+                    )
+                }
+            },
+            text = {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Text(
+                        text = "您正在点击文章中的外部超链接：",
+                        fontSize = 13.5.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Surface(
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = url,
+                            fontSize = 12.5.sp,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(10.dp),
+                            maxLines = 4,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val targetUrl = pendingExternalUrl
+                        pendingExternalUrl = null
+                        if (!targetUrl.isNullOrBlank()) {
+                            try {
+                                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(targetUrl))
+                                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                context.startActivity(intent)
+                            } catch (e: Exception) {
+                                Toast.makeText(context, "无法打开浏览器: ${e.message}", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Text("在默认浏览器中打开", color = Color.White, fontSize = 13.5.sp)
+                }
+            },
+            dismissButton = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    TextButton(
+                        onClick = { pendingExternalUrl = null }
+                    ) {
+                        Text("取消", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.5.sp)
+                    }
+                    Spacer(modifier = Modifier.width(4.dp))
+                    OutlinedButton(
+                        onClick = {
+                            val targetUrl = pendingExternalUrl
+                            if (!targetUrl.isNullOrBlank()) {
+                                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                val clip = ClipData.newPlainText("URL", targetUrl)
+                                clipboard.setPrimaryClip(clip)
+                                Toast.makeText(context, "已复制链接到剪贴板", Toast.LENGTH_SHORT).show()
+                            }
+                            pendingExternalUrl = null
+                        },
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Text("复制链接", fontSize = 13.5.sp)
+                    }
+                }
+            },
+            shape = RoundedCornerShape(16.dp)
+        )
+    }
+
     doc?.let { currentDoc ->
         LaunchedEffect(viewModel, currentDoc.id) {
             viewModel.scrollToHighlightEvent.collect { hlId ->
@@ -149,9 +246,6 @@ fun ReadingPane(
 
                 if (needModeSwitch) {
                     readingModeTab = targetMode
-                    if (!isVideoDoc && targetMode == "blog" && currentDoc.blog_content.isNullOrBlank()) {
-                        viewModel.generateBlogForDocument(currentDoc.id, currentDoc.title)
-                    }
                     pendingHighlightToScroll = Pair(hlId, hlText)
                 } else {
                     pendingHighlightToScroll = Pair(hlId, hlText)
@@ -241,9 +335,6 @@ fun ReadingPane(
                                         .clip(RoundedCornerShape(12.dp))
                                         .clickable {
                                             readingModeTab = "blog"
-                                            if (currentDoc.category != "video" && blogContent.isNullOrBlank()) {
-                                                viewModel.generateBlogForDocument(currentDoc.id, currentDoc.title)
-                                            }
                                         }
                                 ) {
                                     Text(
@@ -258,7 +349,7 @@ fun ReadingPane(
                         }
                     }
 
-                    // 🎯 点选高亮 Target 开关按钮 (单色 Vector Icon，风格与 Aa/Notebook 100% 保持一致)
+                    // 🎯 点选高亮 Target 开关按钮 (单色 Vector Icon，风格与 Notebook/AI 100% 保持一致)
                     IconButton(onClick = {
                         isPickerMode = !isPickerMode
                         val modeStr = if (isPickerMode) "true" else "false"
@@ -273,21 +364,6 @@ fun ReadingPane(
                         )
                     }
 
-                    // Aa Typesetting Setting Icon
-                    IconButton(onClick = {
-                        if (onBack == null) {
-                            val currentType = viewModel.detailPaneType.value
-                            if (currentType == "aa") {
-                                viewModel.closeDetailPane()
-                            } else {
-                                viewModel.openDetailPane("aa")
-                            }
-                        } else {
-                            showAaSheet = true
-                        }
-                    }) {
-                        Text("Aa", fontSize = 16.sp, color = textColor, fontWeight = FontWeight.Bold)
-                    }
                     // Notebook Highlights Icon
                     IconButton(onClick = {
                         if (onBack == null) {
@@ -377,16 +453,48 @@ fun ReadingPane(
                                     Toast.makeText(context, "文章链接已复制到剪贴板", Toast.LENGTH_SHORT).show()
                                 }
                             )
-                            Divider(color = Color.Gray.copy(alpha = 0.2f))
+                            DropdownMenuItem(
+                                text = { Text("字体设置") },
+                                leadingIcon = {
+                                    Icon(
+                                        painter = painterResource(id = R.drawable.ic_font),
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp),
+                                        tint = textColor
+                                    )
+                                },
+                                onClick = {
+                                    showOverflowMenu = false
+                                    if (onBack == null) {
+                                        val currentType = viewModel.detailPaneType.value
+                                        if (currentType == "aa") {
+                                            viewModel.closeDetailPane()
+                                        } else {
+                                            viewModel.openDetailPane("aa")
+                                        }
+                                    } else {
+                                        showAaSheet = true
+                                    }
+                                }
+                            )
                             DropdownMenuItem(
                                 text = { Text("元数据关于") },
+                                leadingIcon = {
+                                    Icon(
+                                        painter = painterResource(id = R.drawable.ic_info),
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp),
+                                        tint = textColor
+                                    )
+                                },
                                 onClick = {
                                     showOverflowMenu = false
                                     showInfoSheet = true
                                 }
                             )
+                            Divider(color = Color.Gray.copy(alpha = 0.2f))
                             DropdownMenuItem(
-                                text = { Text("✨ 重新生成 AI 博客") },
+                                text = { Text("重新生成 AI 博客") },
                                 leadingIcon = {
                                     Icon(
                                         painter = painterResource(id = R.drawable.ic_ai_assistant),
@@ -453,6 +561,14 @@ fun ReadingPane(
                             } else if (currentDoc.location == "archive") {
                                 DropdownMenuItem(
                                     text = { Text("恢复至收件箱", color = MaterialTheme.colorScheme.primary) },
+                                    leadingIcon = {
+                                        Icon(
+                                            painter = painterResource(id = R.drawable.ic_inbox),
+                                            contentDescription = null,
+                                            modifier = Modifier.size(18.dp),
+                                            tint = MaterialTheme.colorScheme.primary
+                                        )
+                                    },
                                     onClick = {
                                         showOverflowMenu = false
                                         pendingConfirmAction = PendingConfirmAction(
@@ -469,6 +585,14 @@ fun ReadingPane(
                                 )
                                 DropdownMenuItem(
                                     text = { Text("移入垃圾箱", color = Color.Red) },
+                                    leadingIcon = {
+                                        Icon(
+                                            painter = painterResource(id = R.drawable.ic_delete),
+                                            contentDescription = null,
+                                            modifier = Modifier.size(18.dp),
+                                            tint = Color.Red
+                                        )
+                                    },
                                     onClick = {
                                         showOverflowMenu = false
                                         pendingConfirmAction = PendingConfirmAction(
@@ -486,6 +610,14 @@ fun ReadingPane(
                             } else {
                                 DropdownMenuItem(
                                     text = { Text("归档文章", color = MaterialTheme.colorScheme.primary) },
+                                    leadingIcon = {
+                                        Icon(
+                                            painter = painterResource(id = R.drawable.ic_archive),
+                                            contentDescription = null,
+                                            modifier = Modifier.size(18.dp),
+                                            tint = MaterialTheme.colorScheme.primary
+                                        )
+                                    },
                                     onClick = {
                                         showOverflowMenu = false
                                         pendingConfirmAction = PendingConfirmAction(
@@ -502,6 +634,14 @@ fun ReadingPane(
                                 )
                                 DropdownMenuItem(
                                     text = { Text("删除文章", color = Color.Red) },
+                                    leadingIcon = {
+                                        Icon(
+                                            painter = painterResource(id = R.drawable.ic_delete),
+                                            contentDescription = null,
+                                            modifier = Modifier.size(18.dp),
+                                            tint = Color.Red
+                                        )
+                                    },
                                     onClick = {
                                         showOverflowMenu = false
                                         pendingConfirmAction = PendingConfirmAction(
@@ -587,7 +727,8 @@ fun ReadingPane(
                     isVideo = currentDoc.category == "video",
                     pendingQuoteQuery = if (readingModeTab == "text") pendingQuoteQuery else null,
                     quoteJumpTrigger = quoteJumpTrigger,
-                    pendingHighlightToScroll = pendingHighlightToScroll
+                    pendingHighlightToScroll = pendingHighlightToScroll,
+                    onExternalLinkClick = { pendingExternalUrl = it }
                 )
 
                 // 🎯 安卓端原生 AI 博客交互状态覆盖层 (未生成 / 生成中)
@@ -611,14 +752,14 @@ fun ReadingPane(
                                 )
                                 Spacer(modifier = Modifier.height(16.dp))
                                 Text(
-                                    text = "正在调用 AI 生成精选视频博客...",
+                                    text = if (currentDoc.category == "video") "正在调用 AI 生成精选视频博客..." else "正在调用 AI 生成精选文章博客...",
                                     fontSize = 15.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = MaterialTheme.colorScheme.onBackground
                                 )
                                 Spacer(modifier = Modifier.height(6.dp))
                                 Text(
-                                    text = "AI 正在梳理原视频字幕、归纳核心要点与嵌入时间戳",
+                                    text = if (currentDoc.category == "video") "AI 正在梳理原视频字幕、归纳核心要点与嵌入时间戳" else "AI 正在深度解析正文脉络、提炼核心论点与重构结构化精读文章",
                                     fontSize = 12.5.sp,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -632,14 +773,14 @@ fun ReadingPane(
                                     .padding(horizontal = 16.dp)
                             ) {
                                 Text(
-                                    text = "✨ 暂未生成 AI 视频博客",
+                                    text = if (currentDoc.category == "video") "✨ 暂未生成 AI 视频博客" else "✨ 暂未生成 AI 博客",
                                     fontSize = 18.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = MaterialTheme.colorScheme.onBackground
                                 )
                                 Spacer(modifier = Modifier.height(10.dp))
                                 Text(
-                                    text = "AI 将把视频字幕整理归纳为带有章节划分与时间戳跳播的 Markdown 结构化博客文章",
+                                    text = if (currentDoc.category == "video") "AI 将把视频字幕整理归纳为带有章节划分与时间戳跳播的 Markdown 结构化博客文章" else "AI 将把文章提炼为结构清晰、带有核心论点总结与原文引用的 Markdown 精读博客",
                                     fontSize = 13.5.sp,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     textAlign = androidx.compose.ui.text.style.TextAlign.Center,
@@ -653,7 +794,7 @@ fun ReadingPane(
                                     contentPadding = PaddingValues(horizontal = 20.dp, vertical = 12.dp)
                                 ) {
                                     Text(
-                                        text = "✨ 生成 AI 视频博客",
+                                        text = if (currentDoc.category == "video") "✨ 生成 AI 视频博客" else "✨ 生成 AI 博客",
                                         fontWeight = FontWeight.Bold,
                                         fontSize = 14.5.sp
                                     )
@@ -1234,13 +1375,11 @@ fun ReadingPane(
                         Button(
                             onClick = {
                                 val rawQuery = viewModel.matchedQuoteQuery.value ?: viewModel.pendingQuoteQuery.value ?: ""
-                                android.util.Log.d("ReaderQ_Quote", "📍 Button clicked! rawQuery=$rawQuery, current readingModeTab=$readingModeTab, trigger=$quoteJumpTrigger")
                                 viewModel.closePreviewBottomSheet()
                                 // 使用 trigger 递增确保 LaunchedEffect 一定重新执行
                                 viewModel.setPendingQuoteQuery(rawQuery)
                                 quoteJumpTrigger++
                                 readingModeTab = "text"
-                                android.util.Log.d("ReaderQ_Quote", "📍 After set: readingModeTab=$readingModeTab, pendingQuoteQuery=${viewModel.pendingQuoteQuery.value}, trigger=$quoteJumpTrigger")
                             },
                             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
                         ) {
@@ -1334,7 +1473,8 @@ fun HtmlContentViewer(
     onSeekTo: ((Float) -> Unit)? = null,
     pendingQuoteQuery: String? = null,
     quoteJumpTrigger: Int = 0,
-    pendingHighlightToScroll: Pair<String, String>? = null
+    pendingHighlightToScroll: Pair<String, String>? = null,
+    onExternalLinkClick: (String) -> Unit = {}
 ) {
     // 防抖定时器用于延迟持久化进度
     val progressSaveJob = remember { mutableStateOf<Job?>(null) }
@@ -1397,7 +1537,6 @@ fun HtmlContentViewer(
                     try {
                         var rawQuote = $qStr;
                         var hintText = $pStr;
-                        console.log('[ReaderQ_Quote_JS] Starting locate. rawQuote="' + rawQuote + '", hintText="' + (hintText ? hintText.substring(0, 50) : '') + '"');
                         var candidates = [];
                         if (rawQuote) {
                             var cleanRaw = rawQuote;
@@ -1409,7 +1548,6 @@ fun HtmlContentViewer(
                             var cleanHint = hintText.replace(/^["“'”\s]+|["“'”\s]+$/g, '').trim();
                             if (cleanHint.length >= 2 && candidates.indexOf(cleanHint) === -1) candidates.push(cleanHint);
                         }
-                        console.log('[ReaderQ_Quote_JS] Candidates: ' + JSON.stringify(candidates.map(function(c){ return c.substring(0,40); })));
                         if (candidates.length === 0) return;
 
                         var target = null;
@@ -1420,9 +1558,6 @@ fun HtmlContentViewer(
                             target = document.getElementById(idClean) ||
                                      document.querySelector('[name="' + idClean + '"]') ||
                                      document.querySelector('[data-quote*="' + candidates[0] + '"]');
-                            if (target) {
-                                console.log('[ReaderQ_Quote_JS] Found target via direct ID/name anchor!');
-                            }
                         }
 
                         // 2. DOM text element search (depth-first / leaf-preferring)
@@ -1453,13 +1588,11 @@ fun HtmlContentViewer(
                                     // Check 1: Element text contains the candidate query
                                     if (txt.indexOf(queryStr) !== -1) {
                                         target = el;
-                                        console.log('[ReaderQ_Quote_JS] ✅ Match type 1 (txt contains candidate #' + c + '): tag=' + el.tagName + ', txt="' + txt.substring(0,40) + '"');
                                         break;
                                     }
                                     // Check 2: Candidate query contains element text ONLY if element text is long enough (>= 10 chars)
                                     if (txt.length >= 10 && queryStr.indexOf(txt) !== -1) {
                                         target = el;
-                                        console.log('[ReaderQ_Quote_JS] ✅ Match type 2 (candidate contains txt): tag=' + el.tagName + ', txt="' + txt.substring(0,40) + '"');
                                         break;
                                     }
                                 }
@@ -1467,7 +1600,6 @@ fun HtmlContentViewer(
 
                             // 3. Fallback: Word/Chunk substring matching
                             if (!target) {
-                                console.log('[ReaderQ_Quote_JS] Trying fallback chunk search...');
                                 for (var c2 = 0; c2 < candidates.length && !target; c2++) {
                                     var str = candidates[c2];
                                     var subKeys = [];
@@ -1487,7 +1619,6 @@ fun HtmlContentViewer(
                                             var txt2 = (el2.innerText || el2.textContent || '').trim();
                                             if (txt2.length >= 4 && txt2.indexOf(key) !== -1) {
                                                 target = el2;
-                                                console.log('[ReaderQ_Quote_JS] ✅ Fallback chunk match! key="' + key + '", tag=' + el2.tagName + ', txt="' + txt2.substring(0,40) + '"');
                                                 break;
                                             }
                                         }
@@ -1503,11 +1634,8 @@ fun HtmlContentViewer(
                                     var currentScrollTop = window.pageYOffset || document.documentElement.scrollTop || 0;
                                     var targetY = rect.top + currentScrollTop - (window.innerHeight / 3);
                                     var finalY = Math.max(0, Math.round(targetY));
-                                    console.log('[ReaderQ_Quote_JS] 🎯 Scroll (' + reason + '): targetY=' + finalY + ', rect.top=' + Math.round(rect.top) + ', currentScroll=' + Math.round(currentScrollTop));
                                     window.scrollTo(0, finalY);
-                                } catch(e) {
-                                    console.error('[ReaderQ_Quote_JS] Scroll error:', e);
-                                }
+                                } catch(e) {}
                             };
 
                             // 1. Immediate scroll
@@ -1536,12 +1664,8 @@ fun HtmlContentViewer(
                                     window.AndroidBridge.onQuoteLocated();
                                 }
                             }, 1500);
-                        } else {
-                            console.log('[ReaderQ_Quote_JS] ❌ No target found in WebView DOM');
                         }
-                    } catch(e) {
-                        console.error('[ReaderQ_Quote_JS] Locate error:', e);
-                    }
+                    } catch(e) {}
                 })();
             """.trimIndent()
 
@@ -1560,12 +1684,7 @@ fun HtmlContentViewer(
                 webViewRef.value = this
                 onWebViewCreated(this)
                 
-                webChromeClient = object : android.webkit.WebChromeClient() {
-                    override fun onConsoleMessage(consoleMessage: android.webkit.ConsoleMessage?): Boolean {
-                        android.util.Log.d("ReaderQ_Quote_JS", "[${consoleMessage?.messageLevel()}] ${consoleMessage?.message()} (${consoleMessage?.sourceId()}:${consoleMessage?.lineNumber()})")
-                        return true
-                    }
-                }
+                webChromeClient = object : android.webkit.WebChromeClient() {}
                 
                 webViewClient = object : android.webkit.WebViewClient() {
                     override fun onPageFinished(view: WebView?, url: String?) {
@@ -1610,8 +1729,13 @@ fun HtmlContentViewer(
                             val query = try { java.net.URLDecoder.decode(rawQuery, "UTF-8") } catch (e: Exception) { rawQuery }
                             viewModel.onBlogQuoteClick(query, viewModel.selectedDoc.value)
                             return true
+                        } else if (urlStr.startsWith("http://") || urlStr.startsWith("https://") || urlStr.startsWith("mailto:") || urlStr.startsWith("tel:")) {
+                            onExternalLinkClick(urlStr)
+                            return true
+                        } else if (urlStr.startsWith("#")) {
+                            return false
                         }
-                        return super.shouldOverrideUrlLoading(view, request)
+                        return true
                     }
 
                     @Deprecated("Deprecated in Java")
@@ -1627,19 +1751,22 @@ fun HtmlContentViewer(
                                 val query = try { java.net.URLDecoder.decode(rawQuery, "UTF-8") } catch (e: Exception) { rawQuery }
                                 viewModel.onBlogQuoteClick(query, viewModel.selectedDoc.value)
                                 return true
+                            } else if (urlStr.startsWith("http://") || urlStr.startsWith("https://") || urlStr.startsWith("mailto:") || urlStr.startsWith("tel:")) {
+                                onExternalLinkClick(urlStr)
+                                return true
+                            } else if (urlStr.startsWith("#")) {
+                                return false
                             }
                         }
-                        return super.shouldOverrideUrlLoading(view, urlStr)
+                        return true
                     }
 
                     override fun onPageFinished(view: WebView?, url: String?) {
                         super.onPageFinished(view, url)
-                        android.util.Log.d("ReaderQ_Quote", "onPageFinished called! url=$url, pageReady=${pageReady.value}")
                         // 后备机制：如果 JS 端的 onPageReady() 没有执行（比如脚本异常），
                         // 在 onPageFinished 后延迟 500ms 强制设置 pageReady=true
                         view?.postDelayed({
                             if (!pageReady.value) {
-                                android.util.Log.d("ReaderQ_Quote", "onPageFinished fallback: JS onPageReady() not called, forcing pageReady=true")
                                 pageReady.value = true
                             }
                         }, 500)
@@ -1704,7 +1831,6 @@ fun HtmlContentViewer(
 
                     @JavascriptInterface
                     fun onPageReady() {
-                        android.util.Log.d("ReaderQ_Quote", "onPageReady() called from JS! Setting pageReady=true, lastLoadedKey=${lastLoadedKey.value}")
                         post {
                             pageReady.value = true
                         }
@@ -1745,7 +1871,6 @@ fun HtmlContentViewer(
 
                     @JavascriptInterface
                     fun onQuoteClick(quoteQuery: String) {
-                        android.util.Log.d("ReaderQ_Quote", "onQuoteClick received: $quoteQuery")
                         post {
                             val doc = viewModel.selectedDoc.value
                             viewModel.onBlogQuoteClick(quoteQuery, doc)
@@ -1761,12 +1886,18 @@ fun HtmlContentViewer(
 
                     @JavascriptInterface
                     fun onRegenerateBlog() {
-                        android.util.Log.d("ReaderQ_Blog", "onRegenerateBlog received")
                         post {
                             val doc = viewModel.selectedDoc.value
                             if (doc != null) {
                                 viewModel.generateBlogForDocument(doc.id, doc.title)
                             }
+                        }
+                    }
+
+                    @JavascriptInterface
+                    fun onExternalLinkClick(url: String) {
+                        post {
+                            onExternalLinkClick(url)
                         }
                     }
                 }, "AndroidBridge")
@@ -2314,7 +2445,6 @@ fun HtmlContentViewer(
 
                         window.scrollToHighlight = function(hlId, hlText) {
                           try {
-                            console.log('[ReaderQ_Quote_JS] scrollToHighlight called: hlId="' + hlId + '", hlText="' + (hlText ? hlText.substring(0, 30) : '') + '"');
                             var target = document.querySelector('mark[data-highlight-id="' + hlId + '"], mark[data-highlight-id^="' + hlId + '-"]');
                             if (!target && hlText) {
                               var cleanText = hlText.replace(/^["“'”\s]+|["“'”\s]+$/g, '').trim();
@@ -2338,7 +2468,6 @@ fun HtmlContentViewer(
                                   var txt = (el.innerText || el.textContent || '').trim();
                                   if (txt && (txt.indexOf(cleanText) !== -1 || (txt.length >= 10 && cleanText.indexOf(txt) !== -1))) {
                                     target = el;
-                                    console.log('[ReaderQ_Quote_JS] ✅ scrollToHighlight fallback found target! tag=' + el.tagName);
                                     break;
                                   }
                                 }
@@ -2352,7 +2481,6 @@ fun HtmlContentViewer(
                                   var currentScrollTop = window.pageYOffset || document.documentElement.scrollTop || 0;
                                   var targetY = rect.top + currentScrollTop - (window.innerHeight / 3);
                                   var finalY = Math.max(0, Math.round(targetY));
-                                  console.log('[ReaderQ_Quote_JS] 🎯 scrollToHighlight (' + reason + '): targetY=' + finalY + ', rect.top=' + Math.round(rect.top));
                                   window.scrollTo(0, finalY);
                                 } catch(e) {
                                   console.error("scrollToHighlight scroll error:", e);
@@ -2372,8 +2500,6 @@ fun HtmlContentViewer(
                                 target.style.backgroundColor = origBg || '';
                                 target.style.transition = origTrans || '';
                               }, 3500);
-                            } else {
-                              console.log('[ReaderQ_Quote_JS] ❌ scrollToHighlight: target not found for hlId=' + hlId);
                             }
                           } catch(e) {
                             console.error("Failed to scrollToHighlight:", e);
@@ -2575,6 +2701,30 @@ fun HtmlContentViewer(
 
                         document.addEventListener('click', handleQuoteAnchorClick, true);
 
+                        function handleGeneralLinkClick(e) {
+                          try {
+                            var a = e.target.closest('a');
+                            if (a) {
+                              if (getQuoteAnchor(a)) return;
+                              var href = a.getAttribute('href');
+                              if (href) {
+                                if (href.startsWith('seekto:') || href.startsWith('javascript:')) return;
+                                if (href.startsWith('http://') || href.startsWith('https://') || href.startsWith('mailto:') || href.startsWith('tel:')) {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  if (window.AndroidBridge && typeof window.AndroidBridge.onExternalLinkClick === 'function') {
+                                    window.AndroidBridge.onExternalLinkClick(href);
+                                  }
+                                }
+                              }
+                            }
+                          } catch(err) {
+                            console.error("handleGeneralLinkClick error:", err);
+                          }
+                        }
+
+                        document.addEventListener('click', handleGeneralLinkClick, true);
+
                         if (window.AndroidBridge && typeof window.AndroidBridge.onPageReady === 'function') {
                           window.AndroidBridge.onPageReady();
                         }
@@ -2600,11 +2750,9 @@ fun HtmlContentViewer(
             """.trimIndent()
 
             val keyChanged = lastLoadedKey.value != currentKey
-            android.util.Log.d("ReaderQ_Quote", "update block: keyChanged=$keyChanged, currentKey=$currentKey, pendingQuoteQuery=$pendingQuoteQuery, pageReady=${pageReady.value}")
             if (keyChanged) {
                 pageReady.value = false
                 lastLoadedKey.value = currentKey
-                android.util.Log.d("ReaderQ_Quote", "update block: loading new HTML, set pageReady=false, lastLoadedKey=$currentKey")
                 webView.loadDataWithBaseURL(null, styledHtml, "text/html", "UTF-8", null)
             } else if (pageReady.value) {
                 webView.evaluateJavascript("if (typeof window.updateHighlights === 'function') { window.updateHighlights($highlightsJson); }", null)
