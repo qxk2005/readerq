@@ -1,5 +1,6 @@
 package com.readerq.app.ui
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -34,7 +35,9 @@ fun RightCoverGridPane(
     documents: List<DocumentEntity>,
     theme: String,
     onDocumentClick: (DocumentEntity) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    isSidebarCollapsed: Boolean = false,
+    onToggleSidebar: (() -> Unit)? = null
 ) {
     val cardBg = when (theme) {
         "light" -> Color(0xFFFFFFFF)
@@ -53,6 +56,38 @@ fun RightCoverGridPane(
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
     ) {
+        if (isSidebarCollapsed && onToggleSidebar != null) {
+            Surface(
+                shape = RoundedCornerShape(20.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant,
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+                tonalElevation = 6.dp,
+                shadowElevation = 6.dp,
+                modifier = Modifier
+                    .padding(top = 16.dp, start = 20.dp)
+                    .align(Alignment.TopStart)
+                    .clickable { onToggleSidebar() }
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        painter = painterResource(id = R.drawable.ic_sidebar_toggle),
+                        contentDescription = "展开文档列表",
+                        tint = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "展开列表",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+            }
+        }
         if (documents.isEmpty()) {
             Box(
                 modifier = Modifier.fillMaxSize(),

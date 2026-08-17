@@ -41,6 +41,8 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.foundation.border
 import androidx.compose.ui.draw.clip
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.tween
 
 @Composable
 fun AdaptiveMainScreen(
@@ -381,16 +383,17 @@ fun AdaptiveMainScreen(
                                     
                                     // Calculate left sidebar width
                                     val maxAllowedSidebarWidth = maxWidthVal.value * 0.6f
-                                    val isSidebarCollapsedActual = if (selectedDoc == null) {
-                                        false
-                                    } else {
-                                        isSidebarCollapsed || (detailPaneType != null && !isDetailPaneCollapsed)
-                                    }
-                                    val currentSidebarWidth = if (isSidebarCollapsedActual) {
+                                    val isSidebarCollapsedActual = isSidebarCollapsed
+                                    val targetSidebarWidth = if (isSidebarCollapsedActual) {
                                         0.dp
                                     } else {
                                         sidebarWidthDp.coerceIn(200f, maxAllowedSidebarWidth).dp
                                     }
+                                    val currentSidebarWidth by animateDpAsState(
+                                        targetValue = targetSidebarWidth,
+                                        animationSpec = tween(durationMillis = 200),
+                                        label = "sidebarWidth"
+                                    )
 
                                     // Calculate right detail pane width
                                     val maxAllowedDetailWidth = maxWidthVal.value * 0.6f
@@ -544,7 +547,9 @@ fun AdaptiveMainScreen(
                                                 RightCoverGridPane(
                                                     documents = documents,
                                                     theme = theme,
-                                                    onDocumentClick = { doc -> viewModel.selectDocument(doc) }
+                                                    onDocumentClick = { doc -> viewModel.selectDocument(doc) },
+                                                    isSidebarCollapsed = isSidebarCollapsedActual,
+                                                    onToggleSidebar = { viewModel.toggleSidebarCollapsed() }
                                                 )
                                             }
                                         }

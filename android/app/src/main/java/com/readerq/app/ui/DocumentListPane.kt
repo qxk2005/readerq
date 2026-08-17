@@ -11,6 +11,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -46,6 +47,7 @@ fun DocumentListPane(
 
     var showSearchBar by remember { mutableStateOf(false) }
     var showAddDialog by remember { mutableStateOf(false) }
+    var showActionsMenu by remember { mutableStateOf(false) }
     val searchQuery by viewModel.searchQuery.collectAsState()
 
     // 确保在 Feed 标签卡中，View 为 feed
@@ -76,39 +78,130 @@ fun DocumentListPane(
                 )
             },
             actions = {
-                IconButton(onClick = { showSearchBar = !showSearchBar }) {
-                    Icon(
-                        imageVector = Icons.Default.Search,
-                        contentDescription = "Search",
-                        tint = MaterialTheme.colorScheme.onBackground
-                    )
-                }
-                IconButton(onClick = { showAddDialog = true }) {
-                    Icon(
-                        imageVector = Icons.Default.Add,
-                        contentDescription = "添加文章",
-                        tint = MaterialTheme.colorScheme.onBackground
-                    )
-                }
-                IconButton(onClick = { viewModel.toggleTheme() }) {
-                    Icon(
-                        painter = painterResource(
-                            id = when (theme) {
-                                "light" -> R.drawable.ic_theme_light
-                                "sepia" -> R.drawable.ic_theme_sepia
-                                else -> R.drawable.ic_theme_dark
+                // 1. 「功能 ▾」下拉小药丸
+                Box(modifier = Modifier.padding(end = 2.dp)) {
+                    Surface(
+                        shape = RoundedCornerShape(14.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.15f)),
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(14.dp))
+                            .clickable { showActionsMenu = true }
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(2.dp),
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)
+                        ) {
+                            Text(
+                                text = "功能",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Icon(
+                                imageVector = Icons.Default.ArrowDropDown,
+                                contentDescription = "功能菜单",
+                                tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
+
+                    DropdownMenu(
+                        expanded = showActionsMenu,
+                        onDismissRequest = { showActionsMenu = false }
+                    ) {
+                        DropdownMenuItem(
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Default.Search,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            },
+                            text = { Text("搜索文章", fontSize = 13.sp) },
+                            onClick = {
+                                showSearchBar = !showSearchBar
+                                showActionsMenu = false
                             }
-                        ),
-                        contentDescription = "Toggle Theme",
+                        )
+                        DropdownMenuItem(
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Default.Add,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            },
+                            text = { Text("添加文章", fontSize = 13.sp) },
+                            onClick = {
+                                showAddDialog = true
+                                showActionsMenu = false
+                            }
+                        )
+                        DropdownMenuItem(
+                            leadingIcon = {
+                                Icon(
+                                    painter = painterResource(
+                                        id = when (theme) {
+                                            "light" -> R.drawable.ic_theme_light
+                                            "sepia" -> R.drawable.ic_theme_sepia
+                                            else -> R.drawable.ic_theme_dark
+                                        }
+                                    ),
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            },
+                            text = {
+                                val themeName = when (theme) {
+                                    "light" -> "浅色"
+                                    "sepia" -> "羊皮纸"
+                                    else -> "深色"
+                                }
+                                Text("切换主题 ($themeName)", fontSize = 13.sp)
+                            },
+                            onClick = {
+                                viewModel.toggleTheme()
+                                showActionsMenu = false
+                            }
+                        )
+                        DropdownMenuItem(
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Default.Refresh,
+                                    contentDescription = null,
+                                    tint = if (isSyncing) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            },
+                            text = {
+                                Text(
+                                    if (isSyncing) "正在同步中..." else "立即同步数据",
+                                    fontSize = 13.sp,
+                                    color = if (isSyncing) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                                )
+                            },
+                            enabled = !isSyncing,
+                            onClick = {
+                                viewModel.startSync()
+                                showActionsMenu = false
+                            }
+                        )
+                    }
+                }
+
+                // 2. 「折叠列表」图标按钮
+                IconButton(
+                    onClick = { viewModel.toggleSidebarCollapsed() },
+                    modifier = Modifier.size(36.dp)
+                ) {
+                    Icon(
+                        painter = painterResource(id = R.drawable.ic_sidebar_toggle),
+                        contentDescription = "收起文档列表",
                         tint = MaterialTheme.colorScheme.onBackground,
                         modifier = Modifier.size(20.dp)
-                    )
-                }
-                IconButton(onClick = { viewModel.startSync() }, enabled = !isSyncing) {
-                    Icon(
-                        imageVector = Icons.Default.Refresh,
-                        contentDescription = "Sync",
-                        tint = if (isSyncing) Color.Gray else MaterialTheme.colorScheme.onBackground
                     )
                 }
             },

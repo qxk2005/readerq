@@ -23,6 +23,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Edit
@@ -284,167 +285,377 @@ fun ReadingPane(
                 }
             }
         }
-        Column(
+        BoxWithConstraints(
             modifier = modifier
                 .fillMaxSize()
                 .background(MaterialTheme.colorScheme.background)
         ) {
-            // Distraction-free Document Top Bar
-            TopAppBar(
-                title = {
-                    Text(
-                        text = currentDoc.title,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        fontSize = 15.sp,
-                        color = textColor,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                },
-                navigationIcon = {
-                    if (onBack != null) {
-                        IconButton(onClick = onBack) {
-                            Icon(
-                                imageVector = Icons.Default.ArrowBack,
-                                contentDescription = "Back",
-                                tint = textColor
-                            )
-                        }
-                    } else {
-                        // 在双栏模式下，如果左侧侧边栏折叠，展示 library 菜单按钮用于重新恢复侧边栏并折叠右详情
-                        val isSidebarCollapsed by viewModel.isSidebarCollapsed.collectAsState()
-                        if (isSidebarCollapsed) {
+            val paneWidth = maxWidth
+            val isNarrowVideoPill = paneWidth < 620.dp
+            val isNarrowArticlePill = paneWidth < 420.dp
+
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.background)
+            ) {
+                // Distraction-free Document Top Bar
+                TopAppBar(
+                    title = {
+                        Text(
+                            text = currentDoc.title,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            fontSize = 15.sp,
+                            color = textColor,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    },
+                    navigationIcon = {
+                        if (onBack != null) {
+                            IconButton(onClick = onBack) {
+                                Icon(
+                                    imageVector = Icons.Default.ArrowBack,
+                                    contentDescription = "Back",
+                                    tint = textColor
+                                )
+                            }
+                        } else {
+                            // 在双栏模式下，常驻展示侧边栏展开/折叠按钮，点击切换列表显示，保持当前文章继续阅读
+                            val isSidebarCollapsed by viewModel.isSidebarCollapsed.collectAsState()
                             IconButton(onClick = {
-                                viewModel.showSidebarAndCloseDetail()
-                                viewModel.selectDocument(null)
+                                viewModel.toggleSidebarCollapsed()
                             }) {
                                 Icon(
-                                    painter = painterResource(id = R.drawable.ic_tab_library),
-                                    contentDescription = "Show Documents List",
+                                    painter = painterResource(id = R.drawable.ic_sidebar_toggle),
+                                    contentDescription = if (isSidebarCollapsed) "展开文档列表" else "收起文档列表",
                                     tint = textColor,
                                     modifier = Modifier.size(20.dp)
                                 )
                             }
                         }
-                    }
-                },
-                actions = {
-                    if (currentDoc.category == "video") {
-                        // 视频文章「歌词 ↔ 博客 ↔ 字幕」三态一键切换 Segmented 按钮
-                        Surface(
-                            shape = RoundedCornerShape(16.dp),
-                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)),
-                            modifier = Modifier.padding(end = 6.dp)
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.padding(2.dp)
-                            ) {
-                                // 1. 歌词 (默认项)
-                                Surface(
-                                    shape = RoundedCornerShape(12.dp),
-                                    color = if (videoReadingMode == "lyrics") MaterialTheme.colorScheme.surface else Color.Transparent,
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(12.dp))
-                                        .clickable {
-                                            videoReadingMode = "lyrics"
-                                            viewModel.closeDetailPane()
-                                        }
-                                ) {
-                                    Text(
-                                        "歌词",
-                                        fontSize = 12.sp,
-                                        fontWeight = if (videoReadingMode == "lyrics") FontWeight.Bold else FontWeight.Normal,
-                                        color = if (videoReadingMode == "lyrics") MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
-                                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp)
-                                    )
+                    },
+                    actions = {
+                        if (currentDoc.category == "video") {
+                            if (isNarrowVideoPill) {
+                                // 紧凑下拉小药丸
+                                var isVideoMenuOpen by remember { mutableStateOf(false) }
+                                val currentModeLabel = when (videoReadingMode) {
+                                    "blog" -> "✨ 博客"
+                                    "subtitles" -> "字幕"
+                                    else -> "歌词"
                                 }
-                                // 2. 博客
-                                Surface(
-                                    shape = RoundedCornerShape(12.dp),
-                                    color = if (videoReadingMode == "blog") MaterialTheme.colorScheme.primary else Color.Transparent,
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(12.dp))
-                                        .clickable {
-                                            videoReadingMode = "blog"
+                                val isBlog = videoReadingMode == "blog"
+                                Box(modifier = Modifier.padding(end = 4.dp)) {
+                                    Surface(
+                                        shape = RoundedCornerShape(14.dp),
+                                        color = if (isBlog) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                                        border = BorderStroke(1.dp, if (isBlog) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.15f)),
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(14.dp))
+                                            .clickable { isVideoMenuOpen = true }
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(2.dp),
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)
+                                        ) {
+                                            Text(
+                                                text = currentModeLabel,
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = if (isBlog) Color.White else MaterialTheme.colorScheme.onSurface
+                                            )
+                                            Icon(
+                                                imageVector = Icons.Default.ArrowDropDown,
+                                                contentDescription = "切换视频模式",
+                                                tint = if (isBlog) Color.White else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                                                modifier = Modifier.size(16.dp)
+                                            )
                                         }
-                                ) {
-                                    Text(
-                                        "✨ 博客",
-                                        fontSize = 12.sp,
-                                        fontWeight = if (videoReadingMode == "blog") FontWeight.Bold else FontWeight.Normal,
-                                        color = if (videoReadingMode == "blog") Color.White else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
-                                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp)
-                                    )
+                                    }
+
+                                    DropdownMenu(
+                                        expanded = isVideoMenuOpen,
+                                        onDismissRequest = { isVideoMenuOpen = false }
+                                    ) {
+                                        DropdownMenuItem(
+                                            text = {
+                                                Row(
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                                    modifier = Modifier.fillMaxWidth()
+                                                ) {
+                                                    Text(
+                                                        "🎵 沉浸歌词",
+                                                        fontSize = 13.sp,
+                                                        fontWeight = if (videoReadingMode == "lyrics") FontWeight.Bold else FontWeight.Normal,
+                                                        color = if (videoReadingMode == "lyrics") MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                                                    )
+                                                    if (videoReadingMode == "lyrics") {
+                                                        Text("  ✓", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                                                    }
+                                                }
+                                            },
+                                            onClick = {
+                                                videoReadingMode = "lyrics"
+                                                viewModel.closeDetailPane()
+                                                isVideoMenuOpen = false
+                                            }
+                                        )
+                                        DropdownMenuItem(
+                                            text = {
+                                                Row(
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                                    modifier = Modifier.fillMaxWidth()
+                                                ) {
+                                                    Text(
+                                                        "✨ 视频博客",
+                                                        fontSize = 13.sp,
+                                                        fontWeight = if (videoReadingMode == "blog") FontWeight.Bold else FontWeight.Normal,
+                                                        color = if (videoReadingMode == "blog") MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                                                    )
+                                                    if (videoReadingMode == "blog") {
+                                                        Text("  ✓", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                                                    }
+                                                }
+                                            },
+                                            onClick = {
+                                                videoReadingMode = "blog"
+                                                isVideoMenuOpen = false
+                                            }
+                                        )
+                                        DropdownMenuItem(
+                                            text = {
+                                                Row(
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                                    modifier = Modifier.fillMaxWidth()
+                                                ) {
+                                                    Text(
+                                                        "📝 双语字幕",
+                                                        fontSize = 13.sp,
+                                                        fontWeight = if (videoReadingMode == "subtitles") FontWeight.Bold else FontWeight.Normal,
+                                                        color = if (videoReadingMode == "subtitles") MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                                                    )
+                                                    if (videoReadingMode == "subtitles") {
+                                                        Text("  ✓", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                                                    }
+                                                }
+                                            },
+                                            onClick = {
+                                                videoReadingMode = "subtitles"
+                                                isVideoMenuOpen = false
+                                            }
+                                        )
+                                    }
                                 }
-                                // 3. 字幕
+                            } else {
+                                // 完整三段式平铺药丸
                                 Surface(
-                                    shape = RoundedCornerShape(12.dp),
-                                    color = if (videoReadingMode == "subtitles") MaterialTheme.colorScheme.surface else Color.Transparent,
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(12.dp))
-                                        .clickable {
-                                            videoReadingMode = "subtitles"
-                                        }
+                                    shape = RoundedCornerShape(16.dp),
+                                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)),
+                                    modifier = Modifier.padding(end = 6.dp)
                                 ) {
-                                    Text(
-                                        "字幕",
-                                        fontSize = 12.sp,
-                                        fontWeight = if (videoReadingMode == "subtitles") FontWeight.Bold else FontWeight.Normal,
-                                        color = if (videoReadingMode == "subtitles") MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
-                                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp)
-                                    )
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.padding(2.dp)
+                                    ) {
+                                        // 1. 歌词 (默认项)
+                                        Surface(
+                                            shape = RoundedCornerShape(12.dp),
+                                            color = if (videoReadingMode == "lyrics") MaterialTheme.colorScheme.surface else Color.Transparent,
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(12.dp))
+                                                .clickable {
+                                                    videoReadingMode = "lyrics"
+                                                    viewModel.closeDetailPane()
+                                                }
+                                        ) {
+                                            Text(
+                                                "歌词",
+                                                fontSize = 12.sp,
+                                                fontWeight = if (videoReadingMode == "lyrics") FontWeight.Bold else FontWeight.Normal,
+                                                color = if (videoReadingMode == "lyrics") MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                                                modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp)
+                                            )
+                                        }
+                                        // 2. 博客
+                                        Surface(
+                                            shape = RoundedCornerShape(12.dp),
+                                            color = if (videoReadingMode == "blog") MaterialTheme.colorScheme.primary else Color.Transparent,
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(12.dp))
+                                                .clickable {
+                                                    videoReadingMode = "blog"
+                                                }
+                                        ) {
+                                            Text(
+                                                "✨ 博客",
+                                                fontSize = 12.sp,
+                                                fontWeight = if (videoReadingMode == "blog") FontWeight.Bold else FontWeight.Normal,
+                                                color = if (videoReadingMode == "blog") Color.White else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                                                modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp)
+                                            )
+                                        }
+                                        // 3. 字幕
+                                        Surface(
+                                            shape = RoundedCornerShape(12.dp),
+                                            color = if (videoReadingMode == "subtitles") MaterialTheme.colorScheme.surface else Color.Transparent,
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(12.dp))
+                                                .clickable {
+                                                    videoReadingMode = "subtitles"
+                                                }
+                                        ) {
+                                            Text(
+                                                "字幕",
+                                                fontSize = 12.sp,
+                                                fontWeight = if (videoReadingMode == "subtitles") FontWeight.Bold else FontWeight.Normal,
+                                                color = if (videoReadingMode == "subtitles") MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                                                modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        } else {
+                            if (isNarrowArticlePill) {
+                                // 普通文章紧凑下拉小药丸
+                                var isArticleMenuOpen by remember { mutableStateOf(false) }
+                                val currentModeLabel = if (readingModeTab == "blog") "✨ 博客" else "正文"
+                                val isBlog = readingModeTab == "blog"
+                                Box(modifier = Modifier.padding(end = 4.dp)) {
+                                    Surface(
+                                        shape = RoundedCornerShape(14.dp),
+                                        color = if (isBlog) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                                        border = BorderStroke(1.dp, if (isBlog) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.15f)),
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(14.dp))
+                                            .clickable { isArticleMenuOpen = true }
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(2.dp),
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)
+                                        ) {
+                                            Text(
+                                                text = currentModeLabel,
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = if (isBlog) Color.White else MaterialTheme.colorScheme.onSurface
+                                            )
+                                            Icon(
+                                                imageVector = Icons.Default.ArrowDropDown,
+                                                contentDescription = "切换阅读模式",
+                                                tint = if (isBlog) Color.White else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                        }
+                                    }
+
+                                    DropdownMenu(
+                                        expanded = isArticleMenuOpen,
+                                        onDismissRequest = { isArticleMenuOpen = false }
+                                    ) {
+                                        DropdownMenuItem(
+                                            text = {
+                                                Row(
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                                    modifier = Modifier.fillMaxWidth()
+                                                ) {
+                                                    Text(
+                                                        "📄 提取正文",
+                                                        fontSize = 13.sp,
+                                                        fontWeight = if (readingModeTab == "text") FontWeight.Bold else FontWeight.Normal,
+                                                        color = if (readingModeTab == "text") MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                                                    )
+                                                    if (readingModeTab == "text") {
+                                                        Text("  ✓", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                                                    }
+                                                }
+                                            },
+                                            onClick = {
+                                                readingModeTab = "text"
+                                                isArticleMenuOpen = false
+                                            }
+                                        )
+                                        DropdownMenuItem(
+                                            text = {
+                                                Row(
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                                    modifier = Modifier.fillMaxWidth()
+                                                ) {
+                                                    Text(
+                                                        "✨ 文章博客",
+                                                        fontSize = 13.sp,
+                                                        fontWeight = if (readingModeTab == "blog") FontWeight.Bold else FontWeight.Normal,
+                                                        color = if (readingModeTab == "blog") MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                                                    )
+                                                    if (readingModeTab == "blog") {
+                                                        Text("  ✓", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                                                    }
+                                                }
+                                            },
+                                            onClick = {
+                                                readingModeTab = "blog"
+                                                isArticleMenuOpen = false
+                                            }
+                                        )
+                                    }
+                                }
+                            } else {
+                                // 非视频文章「正文 ↔ 博客」双态一键切换 Segmented 按钮
+                                Surface(
+                                    shape = RoundedCornerShape(16.dp),
+                                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)),
+                                    modifier = Modifier.padding(end = 6.dp)
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.padding(2.dp)
+                                    ) {
+                                        Surface(
+                                            shape = RoundedCornerShape(12.dp),
+                                            color = if (readingModeTab == "text") MaterialTheme.colorScheme.surface else Color.Transparent,
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(12.dp))
+                                                .clickable { readingModeTab = "text" }
+                                        ) {
+                                            Text(
+                                                "正文",
+                                                fontSize = 12.sp,
+                                                fontWeight = if (readingModeTab == "text") FontWeight.Bold else FontWeight.Normal,
+                                                color = if (readingModeTab == "text") MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                                            )
+                                        }
+                                        Surface(
+                                            shape = RoundedCornerShape(12.dp),
+                                            color = if (readingModeTab == "blog") MaterialTheme.colorScheme.primary else Color.Transparent,
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(12.dp))
+                                                .clickable {
+                                                    readingModeTab = "blog"
+                                                }
+                                        ) {
+                                            Text(
+                                                "✨ 博客",
+                                                fontSize = 12.sp,
+                                                fontWeight = if (readingModeTab == "blog") FontWeight.Bold else FontWeight.Normal,
+                                                color = if (readingModeTab == "blog") Color.White else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                                            )
+                                        }
+                                    }
                                 }
                             }
                         }
-                    } else {
-                        // 非视频文章「正文 ↔ 博客」双态一键切换 Segmented 按钮
-                        Surface(
-                            shape = RoundedCornerShape(16.dp),
-                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)),
-                            modifier = Modifier.padding(end = 6.dp)
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.padding(2.dp)
-                            ) {
-                                Surface(
-                                    shape = RoundedCornerShape(12.dp),
-                                    color = if (readingModeTab == "text") MaterialTheme.colorScheme.surface else Color.Transparent,
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(12.dp))
-                                        .clickable { readingModeTab = "text" }
-                                ) {
-                                    Text(
-                                        "正文",
-                                        fontSize = 12.sp,
-                                        fontWeight = if (readingModeTab == "text") FontWeight.Bold else FontWeight.Normal,
-                                        color = if (readingModeTab == "text") MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
-                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
-                                    )
-                                }
-                                Surface(
-                                    shape = RoundedCornerShape(12.dp),
-                                    color = if (readingModeTab == "blog") MaterialTheme.colorScheme.primary else Color.Transparent,
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(12.dp))
-                                        .clickable {
-                                            readingModeTab = "blog"
-                                        }
-                                ) {
-                                    Text(
-                                        "✨ 博客",
-                                        fontSize = 12.sp,
-                                        fontWeight = if (readingModeTab == "blog") FontWeight.Bold else FontWeight.Normal,
-                                        color = if (readingModeTab == "blog") Color.White else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
-                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
-                                    )
-                                }
-                            }
-                        }
-                    }
 
                     // 🎯 点选高亮 Target 开关按钮 (单色 Vector Icon，风格与 Notebook/AI 100% 保持一致)
                     IconButton(onClick = {
@@ -1336,6 +1547,7 @@ fun ReadingPane(
                 }
             }
         }
+    }
 
         // --- BottomSheet 1: Aa typesetting settings ---
         if (showAaSheet) {
