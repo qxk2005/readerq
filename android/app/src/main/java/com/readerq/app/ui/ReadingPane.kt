@@ -3046,7 +3046,9 @@ fun VideoReadingContent(
                                 addJavascriptInterface(object : Any() {
                                     @android.webkit.JavascriptInterface
                                     fun updateTime(time: Float) {
-                                        currentTime = time
+                                        post {
+                                            currentTime = time
+                                        }
                                     }
                                 }, "AndroidApp")
                             }
@@ -3382,6 +3384,7 @@ fun LyricSubtitlePaneComposable(
     val accentColor = Color(0xFF3B82F6)
 
     var isAutoScrollEnabled by remember { mutableStateOf(true) }
+    var isUserInteracting by remember { mutableStateOf(false) }
 
     // SRT 文件选择器
     val srtPickerLauncher = rememberLauncherForActivityResult(
@@ -3583,30 +3586,58 @@ fun LyricSubtitlePaneComposable(
             val activeIndex = subtitles.indexOfLast { currentTime >= it.startTime }
             val coroutineScope = rememberCoroutineScope()
 
-            // 自动平滑居中滚动至当前播放的字幕行 (Apple Music 歌词效果)
-            LaunchedEffect(activeIndex, isAutoScrollEnabled) {
-                if (isAutoScrollEnabled && activeIndex >= 0 && activeIndex < subtitles.size) {
-                    listState.animateScrollToItem(
-                        index = activeIndex,
-                        scrollOffset = -180
-                    )
+            // 监听用户滑动状态：当用户滑动列表时，暂停自动跟随；停止滑动 3 秒后平滑恢复跟随
+            var isProgrammaticScroll by remember { mutableStateOf(false) }
+            LaunchedEffect(listState.isScrollInProgress) {
+                if (listState.isScrollInProgress) {
+                    if (!isProgrammaticScroll) {
+                        isUserInteracting = true
+                    }
+                } else {
+                    if (isUserInteracting) {
+                        kotlinx.coroutines.delay(3000L)
+                        isUserInteracting = false
+                    }
                 }
             }
 
-            // 判断当前播放字幕是否在屏幕可视范围内
-            val isCurrentVisible by remember(activeIndex, listState.layoutInfo.visibleItemsInfo) {
+            // 自动平滑居中滚动至当前播放的字幕行 (Apple Music 歌词效果)
+            LaunchedEffect(activeIndex, isAutoScrollEnabled, isUserInteracting) {
+                if (isAutoScrollEnabled && !isUserInteracting && activeIndex >= 0 && activeIndex < subtitles.size) {
+                    isProgrammaticScroll = true
+                    try {
+                        listState.animateScrollToItem(
+                            index = activeIndex,
+                            scrollOffset = 0
+                        )
+                    } finally {
+                        kotlinx.coroutines.delay(100L)
+                        isProgrammaticScroll = false
+                    }
+                }
+            }
+
+            // 判断当前播放字幕是否在屏幕可视范围内（仅当 activeIndex 改变时订阅计算，避免每帧触发重组）
+            val isCurrentVisible by remember(activeIndex) {
                 derivedStateOf {
                     if (activeIndex < 0) true
                     else listState.layoutInfo.visibleItemsInfo.any { it.index == activeIndex }
                 }
             }
 
-            Box(modifier = Modifier.fillMaxSize()) {
+            BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+                val viewportHeightDp = maxHeight
+                val verticalCenterPadding = (viewportHeightDp / 2 - 40.dp).coerceAtLeast(16.dp)
+
                 androidx.compose.foundation.lazy.LazyColumn(
                     state = listState,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    contentPadding = PaddingValues(
+                        top = verticalCenterPadding,
+                        bottom = verticalCenterPadding,
+                        start = 16.dp,
+                        end = 16.dp
+                    ),
+                    modifier = Modifier.fillMaxSize(),
                     verticalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
                     items(
@@ -3618,10 +3649,18 @@ fun LyricSubtitlePaneComposable(
 
                         val rowAlpha by animateFloatAsState(
                             targetValue = if (isActive) 1.0f else 0.45f,
-                            animationSpec = tween(durationMillis = 300)
+                            animationSpec = tween(durationMillis = 300),
+                            label = "lyricAlpha"
                         )
-                        // 不使用 animateFloatAsState 缩放字号，避免动态换行排版抖动与闪烁
-                        val titleSize = if (isActive) 16.5f else 13.5f
+                        val bgAlpha by animateFloatAsState(
+                            targetValue = if (isActive) 1.0f else 0.0f,
+                            animationSpec = tween(durationMillis = 300),
+                            label = "lyricBgAlpha"
+                        )
+
+                        // 固定基础字号，避免动态测量与重新换行导致高度跳跃与抖动
+                        val titleSize = 15.sp
+                        val subTitleSize = 12.5.sp
 
                         Column(
                             modifier = Modifier
@@ -3629,16 +3668,19 @@ fun LyricSubtitlePaneComposable(
                                 .alpha(rowAlpha)
                                 .clip(RoundedCornerShape(12.dp))
                                 .background(
-                                    if (isActive) {
-                                        if (isDark) Color(0xFF1E293B) else Color(0xFFEFF6FF)
-                                    } else Color.Transparent
+                                    if (isDark) {
+                                        Color(0xFF1E293B).copy(alpha = bgAlpha)
+                                    } else {
+                                        Color(0xFFEFF6FF).copy(alpha = bgAlpha)
+                                    }
                                 )
                                 .border(
-                                    width = if (isActive) 1.dp else 0.dp,
-                                    color = if (isActive) accentColor.copy(alpha = 0.5f) else Color.Transparent,
+                                    width = 1.dp,
+                                    color = if (isActive) accentColor.copy(alpha = 0.5f * bgAlpha) else Color.Transparent,
                                     shape = RoundedCornerShape(12.dp)
                                 )
                                 .clickable {
+                                    isUserInteracting = false
                                     viewModel.seekVideoTo(segment.startTime.toFloat())
                                     onSeekTo?.invoke(segment.startTime.toFloat())
                                 }
@@ -3671,9 +3713,9 @@ fun LyricSubtitlePaneComposable(
                             if (!segment.zh.isNullOrBlank()) {
                                 Text(
                                     text = segment.zh,
-                                    fontSize = titleSize.sp,
-                                    color = if (isActive) textColor else textColor.copy(alpha = 0.85f),
-                                    lineHeight = (titleSize * 1.35f).sp,
+                                    fontSize = titleSize,
+                                    color = if (isActive) (if (isDark) Color.White else Color(0xFF1E293B)) else textColor.copy(alpha = 0.85f),
+                                    lineHeight = 22.sp,
                                     fontWeight = if (isActive) FontWeight.Bold else FontWeight.Medium
                                 )
                                 val enText = segment.en ?: segment.text
@@ -3681,18 +3723,18 @@ fun LyricSubtitlePaneComposable(
                                     Spacer(modifier = Modifier.height(4.dp))
                                     Text(
                                         text = enText,
-                                        fontSize = (titleSize - 2.5f).sp,
-                                        color = if (isActive) accentColor.copy(alpha = 0.9f) else textColor.copy(alpha = 0.55f),
-                                        lineHeight = ((titleSize - 2.5f) * 1.3f).sp,
-                                        fontWeight = FontWeight.Normal
+                                        fontSize = subTitleSize,
+                                        color = if (isActive) accentColor.copy(alpha = 0.95f) else textColor.copy(alpha = 0.55f),
+                                        lineHeight = 17.sp,
+                                        fontWeight = if (isActive) FontWeight.Medium else FontWeight.Normal
                                     )
                                 }
                             } else {
                                 Text(
                                     text = segment.text,
-                                    fontSize = titleSize.sp,
-                                    color = if (isActive) textColor else textColor.copy(alpha = 0.85f),
-                                    lineHeight = (titleSize * 1.35f).sp,
+                                    fontSize = titleSize,
+                                    color = if (isActive) (if (isDark) Color.White else Color(0xFF1E293B)) else textColor.copy(alpha = 0.85f),
+                                    lineHeight = 22.sp,
                                     fontWeight = if (isActive) FontWeight.Bold else FontWeight.Medium
                                 )
                             }
@@ -3704,12 +3746,19 @@ fun LyricSubtitlePaneComposable(
                 if (!isCurrentVisible && activeIndex >= 0 && activeIndex < subtitles.size) {
                     Surface(
                         onClick = {
+                            isUserInteracting = false
                             isAutoScrollEnabled = true
                             coroutineScope.launch {
-                                listState.animateScrollToItem(
-                                    index = activeIndex,
-                                    scrollOffset = 0
-                                )
+                                isProgrammaticScroll = true
+                                try {
+                                    listState.animateScrollToItem(
+                                        index = activeIndex,
+                                        scrollOffset = 0
+                                    )
+                                } finally {
+                                    kotlinx.coroutines.delay(100L)
+                                    isProgrammaticScroll = false
+                                }
                             }
                         },
                         modifier = Modifier
