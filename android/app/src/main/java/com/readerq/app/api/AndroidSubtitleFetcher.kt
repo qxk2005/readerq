@@ -41,16 +41,17 @@ object AndroidSubtitleFetcher {
     /**
      * 从各种 YouTube URL 中提取 Video ID
      */
-    fun extractVideoId(url: String): String? {
-        if (url.isBlank()) return null
+    fun extractVideoId(url: String?): String? {
+        if (url.isNullOrBlank()) return null
+        val trimmed = url.trim()
+        if (Regex("^[a-zA-Z0-9_-]{11}$").matches(trimmed)) return trimmed
         val regexes = listOf(
-            Regex("(?:youtube\\.com\\/(?:[^\\/]+\\/.+\\/|(?:v|e(?:mbed)?)\\/|" +
-                    ".*[?&]v=)|youtu\\.be\\/)([^\"&?\\/\\s]{11})"),
-            Regex("^([^\"&?\\/\\s]{11})$")
+            Regex("""(?:youtube\.com/(?:watch(?:/)?\?(?:.*&)?v=|(?:embed|v|shorts|live)/)|youtu\.be/)([a-zA-Z0-9_-]{11})"""),
+            Regex("(?:youtube\\.com\\/(?:[^\\/]+\\/.+\\/|(?:v|e(?:mbed)?)\\/|.*[?&]v=)|youtu\\.be\\/)([^\"&?\\/\\s]{11})")
         )
         for (regex in regexes) {
-            val match = regex.find(url.trim())
-            if (match != null) return match.groupValues[1]
+            val match = regex.find(trimmed)
+            if (match != null && match.groupValues.size > 1) return match.groupValues[1]
         }
         return null
     }

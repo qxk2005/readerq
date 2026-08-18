@@ -4534,16 +4534,6 @@ fun SubtitlePanelComposable(
 /**
  * 从 URL 中提取 YouTube 视频 ID
  */
-private fun extractYouTubeVideoId(url: String): String? {
-    val patterns = listOf(
-        Regex("""(?:youtube\.com/watch\?.*v=|youtu\.be/|youtube\.com/embed/)([a-zA-Z0-9_-]{11})"""),
-        Regex("""(?:youtube\.com/shorts/)([a-zA-Z0-9_-]{11})""")
-    )
-    for (pattern in patterns) {
-        val match = pattern.find(url)
-        if (match != null) {
-            return match.groupValues[1]
-        }
-    }
-    return null
+private fun extractYouTubeVideoId(url: String?): String? {
+    return com.readerq.app.api.AndroidSubtitleFetcher.extractVideoId(url)
 }

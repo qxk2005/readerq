@@ -13,10 +13,21 @@ const execAsync = promisify(exec);
  * 从 URL 中提取 YouTube 视频 ID
  */
 export function extractYouTubeId(url) {
-  if (!url) return null;
-  const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
-  const match = url.match(regExp);
-  return (match && match[2].length === 11) ? match[2] : null;
+  if (!url || typeof url !== 'string') return null;
+  const trimmed = url.trim();
+  if (/^[a-zA-Z0-9_-]{11}$/.test(trimmed)) return trimmed;
+
+  const patterns = [
+    /(?:youtube\.com\/(?:watch(?:\/)?\?(?:.*&)?v=|(?:embed|v|shorts|live)\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/,
+    /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/,
+  ];
+
+  for (const pattern of patterns) {
+    const match = trimmed.match(pattern);
+    if (match && match[1]) return match[1];
+  }
+
+  return null;
 }
 
 /**

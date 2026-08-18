@@ -1459,12 +1459,27 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
                 val officialReadwiseUrl = rwSaveResult.url ?: "https://read.readwise.io/read/$officialDocId"
 
+                // 检查本地是否已有相同 source_url 的旧条目（避免产生重复卡片）
+                val existingOldId = docDao.findDocumentIdBySourceUrl(url)
+                if (existingOldId != null && existingOldId != officialDocId) {
+                    try {
+                        println("[saveDocumentByUrl] 发现同源旧文档 $existingOldId，自动清理以防重复")
+                        docDao.deleteDocument(existingOldId)
+                        hlDao.deleteHighlightsForDocument(existingOldId)
+                    } catch (_: Exception) {}
+                }
+
+                val autoThumb = if (isVideoUrl) {
+                    val videoId = com.readerq.app.api.AndroidSubtitleFetcher.extractVideoId(url)
+                    if (videoId != null) "https://img.youtube.com/vi/$videoId/hqdefault.jpg" else null
+                } else null
+
                 // 🎯 步骤 3：以官方权威 ID 立即落盘写入 Android 本地 Room 数据库，保证 ID 100% 官方一致，UI 列表秒刷
                 val nowIso = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", java.util.Locale.US).format(java.util.Date())
                 val newDocEntity = DocumentEntity(
                     id = officialDocId, // 100% 绑定 Readwise 官方唯一 ID！
-                    url = url,
-                    source_url = officialReadwiseUrl,
+                    url = officialReadwiseUrl, // Readwise 官方阅读链接
+                    source_url = url, // 原始网页/视频链接
                     title = if (isVideoUrl) "YouTube 视频文章" else "已保存文章",
                     author = author,
                     source = if (isVideoUrl) "youtube" else "web",
@@ -1478,7 +1493,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     published_date = null,
                     summary = null,
                     notes = notes,
-                    image_url = null,
+                    image_url = autoThumb,
                     reading_progress = 0f,
                     html_content = null,
                     tags_json = try {
@@ -2918,6 +2933,36 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                             docDao.deleteDocument(id)
                             hlDao.deleteHighlightsForDocument(id)
                         }
+                    }
+                }
+            }
+
+            // 智能本地同源 URL 去重：若发现多个条目具有相同的 source_url，保留标签或内容更完整的一条，清理陈旧冗余项
+            val allDocs = docDao.getAllDocumentsSync()
+            val urlGrouped = allDocs.groupBy { it.source_url?.trim()?.lowercase() }
+                .filter { !it.key.isNullOrBlank() && it.value.size > 1 }
+            for ((_, docs) in urlGrouped) {
+                val bestDoc = docs.maxByOrNull { doc ->
+                    var score = 0
+                    if (!doc.image_url.isNullOrBlank()) score += 20
+                    val tagCount = try {
+                        if (doc.tags_json?.startsWith("{") == true) {
+                            Json.decodeFromString<Map<String, Int>>(doc.tags_json).size
+                        } else if (doc.tags_json?.startsWith("[") == true) {
+                            Json.decodeFromString<List<String>>(doc.tags_json).size
+                        } else 0
+                    } catch (_: Exception) { 0 }
+                    score += tagCount * 10
+                    score
+                } ?: docs.first()
+
+                val redundantDocs = docs.filter { it.id != bestDoc.id }
+                for (redundant in redundantDocs) {
+                    println("[SmartPurge] 清理同源重复文档: id=${redundant.id} (保留最优 id=${bestDoc.id})")
+                    docDao.deleteDocument(redundant.id)
+                    hlDao.deleteHighlightsForDocument(redundant.id)
+                    if (_selectedDoc.value?.id == redundant.id) {
+                        _selectedDoc.value = bestDoc
                     }
                 }
             }
