@@ -36,6 +36,8 @@ data class ReadwiseDocItem(
     val image_url: String? = null,
     val reading_progress: Float = 0f,
     val html_content: String? = null,
+    val content: String? = null,
+    val html: String? = null,
     val tags: Map<String, ReadwiseTagItem> = emptyMap(),
     val saved_at: String? = null,
     val last_moved_at: String? = null,
@@ -43,9 +45,12 @@ data class ReadwiseDocItem(
 ) {
     val publishedDateString: String?
         get() {
-            val content = (published_date as? JsonPrimitive)?.contentOrNull
-            return if (content == "0" || content.isNullOrBlank()) null else content
+            val dateStr = (published_date as? JsonPrimitive)?.contentOrNull
+            return if (dateStr == "0" || dateStr.isNullOrBlank()) null else dateStr
         }
+
+    val resolvedHtmlContent: String?
+        get() = content ?: html_content ?: html
 }
 
 @Serializable

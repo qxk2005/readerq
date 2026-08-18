@@ -1801,7 +1801,6 @@ fun HtmlContentViewer(
     
     val cleanHtml = if (
         html.trim().equals("undefined", ignoreCase = true) ||
-        html.trim().contains("undefined", ignoreCase = true) ||
         html.trim().equals("null", ignoreCase = true) ||
         html.trim().isEmpty() ||
         html == "加载中..."

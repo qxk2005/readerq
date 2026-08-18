@@ -2573,11 +2573,25 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             try {
                 val client = ReadwiseClient(currentToken)
                 val response = client.listDocuments(id = docId, withHtmlContent = true)
+                var rawHtml: String? = null
                 if (response.results.isNotEmpty()) {
                     val item = response.results[0]
-                    val localDoc = docDao.getDocumentById(docId)
-                    if (localDoc != null) {
-                        val updated = localDoc.copy(html_content = item.html_content)
+                    rawHtml = item.resolvedHtmlContent
+                }
+
+                val localDoc = docDao.getDocumentById(docId)
+                if (localDoc != null) {
+                    if (rawHtml.isNullOrBlank() || rawHtml.length < 50) {
+                        val targetUrl = localDoc.source_url ?: localDoc.url
+                        if (!targetUrl.isNullOrBlank() && (targetUrl.startsWith("http://") || targetUrl.startsWith("https://"))) {
+                            try {
+                                rawHtml = fetchAndParseArticleHtml(targetUrl)
+                            } catch (_: Exception) {}
+                        }
+                    }
+
+                    if (!rawHtml.isNullOrBlank()) {
+                        val updated = localDoc.copy(html_content = rawHtml)
                         docDao.insertDocument(updated)
                         if (_selectedDoc.value?.id == docId) {
                             _selectedDoc.value = updated
@@ -2586,6 +2600,51 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
+            }
+        }
+    }
+
+    private suspend fun fetchAndParseArticleHtml(targetUrl: String): String? {
+        if (!targetUrl.startsWith("http://") && !targetUrl.startsWith("https://")) return null
+        return withContext(Dispatchers.IO) {
+            try {
+                val client = HttpClient(Android) {
+                    install(io.ktor.client.plugins.HttpTimeout) {
+                        requestTimeoutMillis = 10_000
+                        connectTimeoutMillis = 5_000
+                    }
+                }
+                val htmlText: String = client.get(targetUrl) {
+                    header(io.ktor.http.HttpHeaders.UserAgent, "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+                    header(io.ktor.http.HttpHeaders.Accept, "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+                }.bodyAsText()
+                client.close()
+
+                if (htmlText.isBlank()) return@withContext null
+
+                val articleMatch = Regex("<article[^>]*>([\\s\\S]*?)</article>", RegexOption.IGNORE_CASE).find(htmlText)
+                    ?: Regex("<main[^>]*>([\\s\\S]*?)</main>", RegexOption.IGNORE_CASE).find(htmlText)
+                    ?: Regex("<body[^>]*>([\\s\\S]*?)</body>", RegexOption.IGNORE_CASE).find(htmlText)
+
+                val content = articleMatch?.groupValues?.getOrNull(1) ?: htmlText
+                val clean = content
+                    .replace(Regex("<script[^>]*>[\\s\\S]*?</script>", RegexOption.IGNORE_CASE), "")
+                    .replace(Regex("<style[^>]*>[\\s\\S]*?</style>", RegexOption.IGNORE_CASE), "")
+                    .replace(Regex("<iframe[^>]*>[\\s\\S]*?</iframe>", RegexOption.IGNORE_CASE), "")
+                    .replace(Regex("<nav[^>]*>[\\s\\S]*?</nav>", RegexOption.IGNORE_CASE), "")
+                    .replace(Regex("<footer[^>]*>[\\s\\S]*?</footer>", RegexOption.IGNORE_CASE), "")
+
+                val blocks = Regex("<(p|h[1-6]|img|blockquote|ul|ol|pre|code)[^>]*>[\\s\\S]*?</\\1>|<img[^>]*>", RegexOption.IGNORE_CASE)
+                    .findAll(clean)
+                    .map { it.value }
+                    .toList()
+
+                if (blocks.isNotEmpty()) {
+                    blocks.joinToString("\n")
+                } else null
+            } catch (e: Exception) {
+                println("[fetchAndParseArticleHtml] Error fetching $targetUrl: ${e.message}")
+                null
             }
         }
     }
