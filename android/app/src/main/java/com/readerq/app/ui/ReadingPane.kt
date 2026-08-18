@@ -2088,38 +2088,7 @@ fun HtmlContentViewer(
                         }, 500)
                         view?.loadUrl(
                             "javascript:(function() { " +
-                                    // 阻尼减速自动滚动系统（iPhone 风格）
-                                    // 核心原理：使用平方根曲线对 scrollNeeded 进行阻尼映射
-                                    // 手指移动越快，实际滚动速度增长越缓慢
-                                    "var _selScrollThrottled = false; " +
-                                    "var _selScrollMAX = 30; " +  // 每帧最大滚动 30px（约 2 行文本）
-                                    "document.addEventListener('selectionchange', () => { " +
-                                    "  if (window.isPickerMode) return; " +
-                                    "  var sel = window.getSelection(); " +
-                                    "  if (!sel.isCollapsed && sel.rangeCount > 0) { " +
-                                    "    var range = sel.getRangeAt(0); " +
-                                    "    var text = extractSelectionText(range); " +
-                                    "    var images = extractImagesFromRange(range); " +
-                                    "    if (text.trim().length > 0 || images.length > 0) { " +
-                                    "      AndroidBridge.onTextSelected(text, JSON.stringify(images)); " +
-                                    "      var rect = range.getBoundingClientRect(); " +
-                                    "      var viewportHeight = window.innerHeight; " +
-                                    "      var triggerThreshold = viewportHeight - 240; " +
-                                    // 阻尼减速滚动：平方根曲线 + 最大速度上限 + rAF 节流
-                                    "      if (rect.bottom > triggerThreshold && !_selScrollThrottled) { " +
-                                    "        _selScrollThrottled = true; " +
-                                    "        requestAnimationFrame(function() { " +
-                                    "          _selScrollThrottled = false; " +
-                                    "          var rawDelta = rect.bottom - triggerThreshold; " +
-                                    // 平方根阻尼：rawDelta=100 → 实际滚 10, rawDelta=400 → 实际滚 20
-                                    "          var dampedDelta = Math.sqrt(rawDelta) * 3; " +
-                                    "          var finalScroll = Math.min(dampedDelta, _selScrollMAX); " +
-                                    "          window.scrollBy({ top: finalScroll, behavior: 'auto' }); " +
-                                    "        }); " +
-                                    "      } " +
-                                    "    } " +
-                                    "  } " +
-                                    "}); " +
+                                    "if (window.__initSelectionSystem) { window.__initSelectionSystem(); } " +
                                     "})()"
                         )
                     }
@@ -2317,6 +2286,144 @@ fun HtmlContentViewer(
                     <script>
                         window.isPickerMode = false;
                         window.pickerStart = null;
+                        window.__selectionSystemInitialized = false;
+
+                        function resolveTextNodeAndOffset(node, offset) {
+                            if (!node) return null;
+                            if (node.nodeType === Node.TEXT_NODE) {
+                                return { node: node, offset: Math.min(Math.max(0, offset), node.textContent.length) };
+                            }
+                            if (node.nodeType === Node.ELEMENT_NODE) {
+                                if (node.childNodes && node.childNodes.length > 0) {
+                                    var idx = Math.min(Math.max(0, offset), node.childNodes.length - 1);
+                                    var targetChild = node.childNodes[idx];
+                                    if (targetChild) {
+                                        if (targetChild.nodeType === Node.TEXT_NODE) {
+                                            return { node: targetChild, offset: 0 };
+                                        }
+                                        var walker = document.createTreeWalker(targetChild, NodeFilter.SHOW_TEXT, null, false);
+                                        var text = walker.nextNode();
+                                        if (text) return { node: text, offset: 0 };
+                                    }
+                                }
+                            }
+                            return { node: node, offset: offset };
+                        }
+
+                        function getAccurateSelectionRange(sel) {
+                            if (!sel || sel.isCollapsed || sel.rangeCount === 0) return null;
+                            
+                            var anchorNode = sel.anchorNode;
+                            var anchorOffset = sel.anchorOffset;
+                            var focusNode = sel.focusNode;
+                            var focusOffset = sel.focusOffset;
+                            
+                            if (!anchorNode || !focusNode) {
+                                try { return sel.getRangeAt(0); } catch(e) { return null; }
+                            }
+                            
+                            // 同一文本节点快速计算
+                            if (anchorNode === focusNode) {
+                                var r = document.createRange();
+                                var start = Math.min(anchorOffset, focusOffset);
+                                var end = Math.max(anchorOffset, focusOffset);
+                                r.setStart(anchorNode, start);
+                                r.setEnd(anchorNode, end);
+                                return r;
+                            }
+                            
+                            var pos = anchorNode.compareDocumentPosition(focusNode);
+                            var isForward = (pos & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
+                            
+                            var rawStartNode = isForward ? anchorNode : focusNode;
+                            var rawStartOffset = isForward ? anchorOffset : focusOffset;
+                            var rawEndNode = isForward ? focusNode : anchorNode;
+                            var rawEndOffset = isForward ? focusOffset : anchorOffset;
+                            
+                            var startResolved = resolveTextNodeAndOffset(rawStartNode, rawStartOffset) || { node: rawStartNode, offset: rawStartOffset };
+                            var endResolved = resolveTextNodeAndOffset(rawEndNode, rawEndOffset) || { node: rawEndNode, offset: rawEndOffset };
+                            
+                            try {
+                                var range = document.createRange();
+                                range.setStart(startResolved.node, startResolved.offset);
+                                range.setEnd(endResolved.node, endResolved.offset);
+                                return range;
+                            } catch (err) {
+                                try {
+                                    return sel.getRangeAt(0);
+                                } catch (e2) {
+                                    return null;
+                                }
+                            }
+                        }
+
+                        window.__initSelectionSystem = function() {
+                            if (window.__selectionSystemInitialized) return;
+                            window.__selectionSystemInitialized = true;
+                            
+                            var _selScrollThrottled = false;
+                            var _selScrollMAX = 30;
+                            var _selReportTimeout = null;
+
+                            function handleSelectionUpdate() {
+                                if (window.isPickerMode) return;
+                                var sel = window.getSelection();
+                                if (!sel || sel.isCollapsed || sel.rangeCount === 0) return;
+                                
+                                var range = getAccurateSelectionRange(sel);
+                                if (!range) return;
+                                
+                                var text = extractSelectionText(range);
+                                var images = extractImagesFromRange(range);
+                                
+                                if (text.trim().length > 0 || images.length > 0) {
+                                    AndroidBridge.onTextSelected(text, JSON.stringify(images));
+                                }
+                            }
+
+                            document.addEventListener('selectionchange', function() {
+                                if (window.isPickerMode) return;
+                                var sel = window.getSelection();
+                                if (!sel || sel.isCollapsed || sel.rangeCount === 0) return;
+                                
+                                var range = getAccurateSelectionRange(sel);
+                                if (!range) return;
+                                
+                                // 防抖 120ms 上报，过滤拖动/出屏过程中的瞬时脏状态
+                                clearTimeout(_selReportTimeout);
+                                _selReportTimeout = setTimeout(function() {
+                                    handleSelectionUpdate();
+                                }, 120);
+                                
+                                // 阻尼自动滚动系统
+                                try {
+                                    var rect = range.getBoundingClientRect();
+                                    var viewportHeight = window.innerHeight;
+                                    var triggerThreshold = viewportHeight - 240;
+                                    if (rect.bottom > triggerThreshold && !_selScrollThrottled) {
+                                        _selScrollThrottled = true;
+                                        requestAnimationFrame(function() {
+                                            _selScrollThrottled = false;
+                                            var rawDelta = rect.bottom - triggerThreshold;
+                                            var dampedDelta = Math.sqrt(rawDelta) * 3;
+                                            var finalScroll = Math.min(dampedDelta, _selScrollMAX);
+                                            window.scrollBy({ top: finalScroll, behavior: 'auto' });
+                                        });
+                                    }
+                                } catch (err) {}
+                            });
+
+                            document.addEventListener('touchend', function() {
+                                if (window.isPickerMode) return;
+                                clearTimeout(_selReportTimeout);
+                                setTimeout(function() {
+                                    handleSelectionUpdate();
+                                }, 80);
+                            }, true);
+                        };
+
+                        // 立即尝试启动选区系统
+                        window.__initSelectionSystem();
 
                         window.setPickerMode = function(enabled) {
                             window.isPickerMode = enabled;
@@ -2368,11 +2475,15 @@ fun HtmlContentViewer(
                             var caretRange = getCaretPointFromEvent(e);
                             if (!caretRange) return;
 
+                            var rawResolved = resolveTextNodeAndOffset(caretRange.startContainer, caretRange.startOffset);
+                            var resolvedNode = rawResolved ? rawResolved.node : caretRange.startContainer;
+                            var resolvedOffset = rawResolved ? rawResolved.offset : caretRange.startOffset;
+
                             if (!window.pickerStart) {
-                                var text = (caretRange.startContainer.textContent || '').substring(caretRange.startOffset, caretRange.startOffset + 12) || '起点';
+                                var text = (resolvedNode.textContent || '').substring(resolvedOffset, resolvedOffset + 12) || '起点';
                                 window.pickerStart = {
-                                    node: caretRange.startContainer,
-                                    offset: caretRange.startOffset
+                                    node: resolvedNode,
+                                    offset: resolvedOffset
                                 };
                                 var hudText = document.getElementById('picker-hud-text');
                                 if (hudText) hudText.innerHTML = '📍 <strong>起点已锁定</strong> (“' + text.trim() + '”)：请点击【终点】';
@@ -2391,8 +2502,8 @@ fun HtmlContentViewer(
                             } else {
                                 var startNode = window.pickerStart.node;
                                 var startOffset = window.pickerStart.offset;
-                                var endNode = caretRange.startContainer;
-                                var endOffset = caretRange.startOffset;
+                                var endNode = resolvedNode;
+                                var endOffset = resolvedOffset;
 
                                 var finalRange = document.createRange();
                                 var pos = startNode.compareDocumentPosition(endNode);
@@ -2476,8 +2587,15 @@ fun HtmlContentViewer(
                             if (isTouchMoved) return;
                             handlePickerTrigger(e);
                         }, true);
+
                         function extractImagesFromRange(range) {
-                          const fragment = range.cloneContents();
+                          if (!range) return [];
+                          var fragment;
+                          try {
+                            fragment = range.cloneContents();
+                          } catch (e) {
+                            return [];
+                          }
                           const images = [];
                           const imgElements = fragment.querySelectorAll('img');
                           imgElements.forEach(img => {
@@ -2493,20 +2611,29 @@ fun HtmlContentViewer(
                         }
 
                         function extractSelectionText(range) {
+                          if (!range) return '';
                           const BLOCK_ELEMENTS = new Set([
                             'P', 'DIV', 'LI', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6',
                             'BR', 'HR', 'BLOCKQUOTE', 'PRE', 'TR', 'DT', 'DD',
-                            'SECTION', 'ARTICLE', 'HEADER', 'FOOTER', 'FIGURE', 'FIGCAPTION'
+                            'SECTION', 'ARTICLE', 'HEADER', 'FOOTER', 'FIGURE', 'FIGCAPTION', 'TABLE'
                           ]);
                           
-                          const fragment = range.cloneContents();
+                          let fragment;
+                          try {
+                            fragment = range.cloneContents();
+                          } catch (e) {
+                            return (range.toString() || '').trim();
+                          }
+                          
                           const parts = [];
                           
-                          function walk(node, olCounter) {
+                          function walk(node, olCounter, inPre) {
                             if (node.nodeType === Node.TEXT_NODE) {
                               parts.push(node.textContent);
                             } else if (node.nodeType === Node.ELEMENT_NODE) {
                               const tagName = node.tagName;
+                              const isPre = inPre || tagName === 'PRE' || tagName === 'CODE';
+                              
                               if (tagName === 'BR') {
                                 parts.push('\n');
                                 return;
@@ -2514,12 +2641,17 @@ fun HtmlContentViewer(
                               if (tagName === 'IMG') {
                                 const alt = node.getAttribute('alt') || '图片';
                                 const src = node.getAttribute('src') || node.src || '';
-                                if (src) {
+                                if (src && (src.startsWith('http://') || src.startsWith('https://') || src.startsWith('data:') || src.startsWith('blob:'))) {
                                   parts.push('\n\n![' + alt + '](' + src + ')\n\n');
                                 } else {
                                   parts.push('[图片: ' + alt + ']');
                                 }
                                 return;
+                              }
+                              if (tagName === 'TD' || tagName === 'TH') {
+                                if (parts.length > 0 && !parts[parts.length - 1].endsWith(' ') && !parts[parts.length - 1].endsWith('\n')) {
+                                  parts.push(' ');
+                                }
                               }
                               const isBlock = BLOCK_ELEMENTS.has(tagName);
                               if (isBlock && parts.length > 0 && parts[parts.length - 1] !== '\n') {
@@ -2534,7 +2666,7 @@ fun HtmlContentViewer(
                               }
                               const childCounter = (tagName === 'OL') ? { value: 1 } : olCounter;
                               for (let i = 0; i < node.childNodes.length; i++) {
-                                walk(node.childNodes[i], childCounter);
+                                walk(node.childNodes[i], childCounter, isPre);
                               }
                               if (isBlock && parts.length > 0 && parts[parts.length - 1] !== '\n') {
                                 parts.push('\n');
@@ -2543,7 +2675,7 @@ fun HtmlContentViewer(
                           }
                           
                           for (let i = 0; i < fragment.childNodes.length; i++) {
-                            walk(fragment.childNodes[i], null);
+                            walk(fragment.childNodes[i], null, false);
                           }
                           return parts.join('').trim();
                         }
