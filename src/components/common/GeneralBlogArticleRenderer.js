@@ -4,6 +4,7 @@ import React, { useMemo, useEffect, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Link as LinkIcon, RefreshCw, Sparkles, Loader2, Cpu, CheckCircle2 } from 'lucide-react';
+import { sanitizeMarkdownQuotes } from '@/lib/utils';
 
 /**
  * 通用文章 AI 博客 Markdown 渲染器
@@ -39,17 +40,7 @@ const GeneralBlogArticleRenderer = React.memo(function GeneralBlogArticleRendere
   // 解决 CommonMark 规范不允许 URL 包含未转义空格/特殊符号导致 [原文](#quote-foo bar) 无法解析为 <a> 链接的问题
   const sanitizedBlogContent = useMemo(() => {
     if (!blogContent) return '';
-    return blogContent.replace(/\[([^\]]+)\]\(#quote-([^\n\)]+)\)/g, (match, label, quoteText) => {
-      const cleanQuote = quoteText.trim();
-      let encodedQuote = cleanQuote;
-      try {
-        const decoded = decodeURIComponent(cleanQuote);
-        encodedQuote = encodeURIComponent(decoded);
-      } catch (e) {
-        encodedQuote = encodeURIComponent(cleanQuote);
-      }
-      return `[${label}](#quote-${encodedQuote})`;
-    });
+    return sanitizeMarkdownQuotes(blogContent);
   }, [blogContent]);
 
   const components = useMemo(() => ({

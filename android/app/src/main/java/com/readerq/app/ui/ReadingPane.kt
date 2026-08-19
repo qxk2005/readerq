@@ -621,11 +621,9 @@ fun ReadingPane(
                                         modifier = Modifier.padding(2.dp)
                                     ) {
                                         Surface(
+                                            onClick = { readingModeTab = "text" },
                                             shape = RoundedCornerShape(12.dp),
-                                            color = if (readingModeTab == "text") MaterialTheme.colorScheme.surface else Color.Transparent,
-                                            modifier = Modifier
-                                                .clip(RoundedCornerShape(12.dp))
-                                                .clickable { readingModeTab = "text" }
+                                            color = if (readingModeTab == "text") MaterialTheme.colorScheme.surface else Color.Transparent
                                         ) {
                                             Text(
                                                 "正文",
@@ -636,13 +634,9 @@ fun ReadingPane(
                                             )
                                         }
                                         Surface(
+                                            onClick = { readingModeTab = "blog" },
                                             shape = RoundedCornerShape(12.dp),
-                                            color = if (readingModeTab == "blog") MaterialTheme.colorScheme.primary else Color.Transparent,
-                                            modifier = Modifier
-                                                .clip(RoundedCornerShape(12.dp))
-                                                .clickable {
-                                                    readingModeTab = "blog"
-                                                }
+                                            color = if (readingModeTab == "blog") MaterialTheme.colorScheme.primary else Color.Transparent
                                         ) {
                                             Text(
                                                 "✨ 博客",
@@ -3260,8 +3254,93 @@ private fun stripParagraphTimestamps(text: String): String {
     return cleaned.replace(Regex(" {2,}"), " ").trim()
 }
 
+private fun sanitizeMarkdownQuotesForAndroid(markdown: String): String {
+    if (markdown.isBlank()) return ""
+
+    val sb = StringBuilder()
+    var i = 0
+    val len = markdown.length
+
+    while (i < len) {
+        if (markdown[i] == '[') {
+            var closeBracket = -1
+            for (j in (i + 1) until len) {
+                if (markdown[j] == '\n') break
+                if (markdown[j] == ']') {
+                    closeBracket = j
+                    break
+                }
+            }
+
+            if (closeBracket != -1) {
+                var parenStart = -1
+                var k = closeBracket + 1
+                while (k < len && (markdown[k] == ' ' || markdown[k] == '\t')) k++
+                if (k < len && markdown[k] == '(') {
+                    parenStart = k
+                }
+
+                if (parenStart != -1) {
+                    var parenDepth = 1
+                    var parenEnd = -1
+                    for (m in (parenStart + 1) until len) {
+                        if (markdown[m] == '\n') break
+                        if (markdown[m] == '(') {
+                            parenDepth++
+                        } else if (markdown[m] == ')') {
+                            parenDepth--
+                            if (parenDepth == 0) {
+                                parenEnd = m
+                                break
+                            }
+                        }
+                    }
+
+                    if (parenEnd != -1) {
+                        val rawLabel = markdown.substring(i + 1, closeBracket)
+                        val insideParen = markdown.substring(parenStart + 1, parenEnd).trim()
+
+                        val quotePrefixRegex = Regex("^(?:#quote-|#quote:|quote:|#quote\\s+)(.*)$", RegexOption.DOT_MATCHES_ALL)
+                        val match = quotePrefixRegex.find(insideParen)
+                        if (match != null) {
+                            val rawQuote = match.groupValues[1]
+                            val cleanQuote = rawQuote.trim()
+                                .removePrefix("\"").removeSuffix("\"")
+                                .removePrefix("“").removeSuffix("”")
+                                .removePrefix("'").removeSuffix("'")
+                                .trim()
+
+                            var cleanLabel = rawLabel.trim().removePrefix("🔗").trim()
+                            if (cleanLabel.isEmpty() || cleanLabel == "原文" || cleanLabel == "quote" || cleanLabel == "来源" || cleanLabel == "查看原文" || cleanLabel == "引用") {
+                                cleanLabel = "原文"
+                            }
+
+                            val attrEscapedHref = "#quote-" + cleanQuote.replace("\"", "&quot;").replace("'", "&apos;")
+                            val jsEscapedHref = "#quote-" + cleanQuote.replace("\\", "\\\\").replace("'", "\\'")
+
+                            val anchorHtml = "<span class=\"blog-quote-anchor\" data-href=\"$attrEscapedHref\" onclick=\"if(window.AndroidBridge && typeof window.AndroidBridge.onQuoteClick === 'function'){window.AndroidBridge.onQuoteClick('$jsEscapedHref');}\" style=\"display:inline-flex;align-items:center;gap:3px;padding:1px 8px;margin:0 4px;border-radius:12px;background-color:rgba(0,122,255,0.12);color:#007aff;font-size:12px;font-weight:600;cursor:pointer;border:1px solid rgba(0,122,255,0.25);vertical-align:middle;\">🔗 $cleanLabel</span>"
+
+                            sb.append(anchorHtml)
+                            i = parenEnd + 1
+                            continue
+                        }
+                    }
+                }
+            }
+        }
+
+        sb.append(markdown[i])
+        i++
+    }
+
+    return sb.toString()
+}
+
 private fun markdownToHtml(markdown: String): String {
-    var html = markdown
+    // 1. 优先对全部原文引用锚点进行高容错预处理，转换为统一的交互式药丸按钮
+    val preprocessed = sanitizeMarkdownQuotesForAndroid(markdown)
+
+    var html = preprocessed
     val lines = html.split("\n")
     val sb = StringBuilder()
     var inList = false
@@ -3296,14 +3375,7 @@ private fun markdownToHtml(markdown: String): String {
     
     html = html.replace(Regex("\\*\\*(.*?)\\*\\*"), "<strong>$1</strong>")
     html = html.replace(Regex("\\*(.*?)\\*"), "<em>$1</em>")
-    html = html.replace(Regex("\\[(.*?)\\]\\((#quote-[^)]+)\\)")) { m ->
-        var label = m.groupValues[1].removePrefix("🔗").trim()
-        if (label.isEmpty()) label = "原文"
-        val rawHref = m.groupValues[2]
-        val attrEscapedHref = rawHref.replace("\"", "&quot;").replace("'", "&apos;")
-        val jsEscapedHref = rawHref.replace("\\", "\\\\").replace("'", "\\'")
-        "<span class=\"blog-quote-anchor\" data-href=\"$attrEscapedHref\" onclick=\"if(window.AndroidBridge && typeof window.AndroidBridge.onQuoteClick === 'function'){window.AndroidBridge.onQuoteClick('$jsEscapedHref');}\" style=\"display:inline-flex;align-items:center;gap:3px;padding:1px 8px;margin:0 4px;border-radius:12px;background-color:rgba(0,122,255,0.12);color:#007aff;font-size:12px;font-weight:600;cursor:pointer;border:1px solid rgba(0,122,255,0.25);vertical-align:middle;\">🔗 $label</span>"
-    }
+    // 普通外链替换
     html = html.replace(Regex("\\[(.*?)\\]\\((?!#quote-)(.*?)\\)"), "<a href=\"$2\" target=\"_blank\">$1</a>")
 
     html += """

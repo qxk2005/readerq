@@ -6,6 +6,7 @@ import { cleanBlogMarkdownText } from '@/lib/textSanitizer';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Loader2, FileText, BookOpen, RefreshCw, Sparkles, Upload, Trash2, CheckCircle, Play, Languages, DownloadCloud } from 'lucide-react';
+import { sanitizeMarkdownQuotes } from '@/lib/utils';
 import { useApp } from '@/context/AppContext';
 
 // 动态解析包含时间戳的节点，并将时间戳转化为可点击跳转的跳播 Badge
@@ -142,17 +143,7 @@ const BlogArticleRenderer = React.memo(function BlogArticleRenderer({ blogConten
   // 预处理 Markdown：自动清洗与 URI 编码 [原文](#quote-含空格的短语) 中的 URL 部分
   const sanitizedBlogContent = useMemo(() => {
     if (!blogContent) return '';
-    return blogContent.replace(/\[([^\]]+)\]\(#quote-([^\n\)]+)\)/g, (match, label, quoteText) => {
-      const cleanQuote = quoteText.trim();
-      let encodedQuote = cleanQuote;
-      try {
-        const decoded = decodeURIComponent(cleanQuote);
-        encodedQuote = encodeURIComponent(decoded);
-      } catch (e) {
-        encodedQuote = encodeURIComponent(cleanQuote);
-      }
-      return `[${label}](#quote-${encodedQuote})`;
-    });
+    return sanitizeMarkdownQuotes(blogContent);
   }, [blogContent]);
 
   const components = useMemo(() => ({
@@ -163,6 +154,38 @@ const BlogArticleRenderer = React.memo(function BlogArticleRenderer({ blogConten
     p: ({ children }) => <p>{processChildrenForParagraph(children)}</p>,
     li: ({ children }) => <li>{processChildrenForParagraph(children)}</li>,
     blockquote: ({ children }) => <blockquote>{processChildrenForParagraph(children)}</blockquote>,
+    a: ({ href, children }) => {
+      if (href && href.startsWith('#quote-')) {
+        return (
+          <span
+            className="blog-quote-anchor"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '3px',
+              padding: '1px 8px',
+              margin: '0 4px',
+              borderRadius: '12px',
+              backgroundColor: 'rgba(0, 122, 255, 0.12)',
+              color: 'var(--color-accent, #007aff)',
+              fontSize: '12px',
+              fontWeight: 600,
+              cursor: 'pointer',
+              border: '1px solid rgba(0, 122, 255, 0.25)',
+              userSelect: 'none',
+              verticalAlign: 'middle',
+            }}
+          >
+            🔗 {children || '原文'}
+          </span>
+        );
+      }
+      return (
+        <a href={href} target="_blank" rel="noopener noreferrer">
+          {children}
+        </a>
+      );
+    },
   }), [onSeek]);
 
   return (
