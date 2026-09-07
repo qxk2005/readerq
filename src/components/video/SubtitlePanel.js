@@ -121,24 +121,34 @@ const processChildrenForParagraph = (children) => {
 };
 
 // 受 React.memo 保护的博客文章独立渲染组件
-// 隔离父组件 SubtitlePanel 因 currentTime 频繁 update 导致的 Re-render，彻底避免 DOM 选区失焦
-const BlogArticleRenderer = React.memo(function BlogArticleRenderer({ blogContent, onSeek, articleRef, onRendered }) {
-  const internalRef = useRef(null);
-  // 当传入的 articleRef.current 为空（如视频模式下无文章正文容器）时，自动降级为 internalRef
-  const resolvedRef = (articleRef && articleRef.current) ? articleRef : internalRef;
+// 隔离父组件 SubtitlePanel 因 currentTime 频繁 update 导致的 Re-render，彻底避免 DOM 选区失焦及 insertBefore 报错
+const BlogArticleRenderer = React.memo(
+  function BlogArticleRenderer({ blogContent, onSeek, articleRef, onRendered }) {
+    const internalRef = useRef(null);
 
-  // 当 blogContent 改变或 onRendered 更新时，通知父组件 DOM 已就绪以还原高亮划线
-  useEffect(() => {
-    if (blogContent && onRendered) {
-      const timer = setTimeout(() => {
-        const domContainer = resolvedRef.current || document.querySelector('.blog-article');
-        if (domContainer) {
-          onRendered(domContainer);
+    // 在 Effect 中将 DOM 引用同步回父组件传入的 articleRef，遵守 React 19 不可变性规范
+    useEffect(() => {
+      if (articleRef) {
+        if (typeof articleRef === 'function') {
+          articleRef(internalRef.current);
+        } else if (typeof articleRef === 'object') {
+          articleRef.current = internalRef.current;
         }
-      }, 100);
-      return () => clearTimeout(timer);
-    }
-  }, [blogContent, onRendered, resolvedRef]);
+      }
+    }, [articleRef]);
+
+    // 当 blogContent 改变或 onRendered 更新时，通知父组件 DOM 已就绪以还原高亮划线
+    useEffect(() => {
+      if (blogContent && onRendered) {
+        const timer = setTimeout(() => {
+          const domContainer = internalRef.current || (articleRef?.current) || document.querySelector('.blog-article');
+          if (domContainer) {
+            onRendered(domContainer);
+          }
+        }, 100);
+        return () => clearTimeout(timer);
+      }
+    }, [blogContent, onRendered, articleRef]);
 
   // 预处理 Markdown：自动清洗与 URI 编码 [原文](#quote-含空格的短语) 中的 URL 部分
   const sanitizedBlogContent = useMemo(() => {
@@ -189,11 +199,17 @@ const BlogArticleRenderer = React.memo(function BlogArticleRenderer({ blogConten
   }), [onSeek]);
 
   return (
-    <div className="blog-article reading-article-body" ref={resolvedRef}>
+    <div className="blog-article reading-article-body" ref={internalRef}>
       <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
         {sanitizedBlogContent}
       </ReactMarkdown>
     </div>
+  );
+}, (prevProps, nextProps) => {
+  // 严格阻断因 currentTime 高频变化或选区变化导致的无意义重绘
+  return (
+    prevProps.blogContent === nextProps.blogContent &&
+    prevProps.onSeek === nextProps.onSeek
   );
 });
 

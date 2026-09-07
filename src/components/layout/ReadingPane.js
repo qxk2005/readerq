@@ -337,6 +337,11 @@ export default function ReadingPane() {
     }
   }, [selectedDoc?.id, isDocVideo, selectedDoc?.blog_content, selectedDoc?.html_content, triggerGenerateBlog, fetchDocumentDetails]);
 
+  // 稳定的重新生成博客回调，防止子组件无谓重渲染
+  const handleRegenerateBlog = useCallback(() => {
+    triggerGenerateBlog(true);
+  }, [triggerGenerateBlog]);
+
   // 安全提取划线高亮标签名称列表 (兼容数组/对象/缺失，过滤掉杂质 '0')
   const extractTagNames = useCallback((tagsInput) => {
     if (!tagsInput) return [];
@@ -754,7 +759,9 @@ export default function ReadingPane() {
             parent.insertBefore(mark.firstChild, mark);
           }
           parent.removeChild(mark);
-          parent.normalize();
+          // ⚠️ 注意：绝不能在此处调用 parent.normalize()！
+          // Node.normalize() 会把相邻的文本节点合并为一个全新节点，导致 React Fiber 所引用的原有 Text 节点被销毁脱离文档树，
+          // 进而在后续用户划选文本或 React 协调更新时触发 "Failed to execute 'insertBefore' on 'Node': The node before which the new node is to be inserted is not a child of this node"
         }
       } catch (e) {
         // 忽略个别复杂跨节点 mark 的解包错误
@@ -2097,7 +2104,7 @@ export default function ReadingPane() {
                   onQuoteClick={handleBlogQuoteClick}
                   isGenerating={isBlogGenerating}
                   streamProgress={blogStreamProgress}
-                  onRegenerate={() => triggerGenerateBlog(true)}
+                  onRegenerate={handleRegenerateBlog}
                   onRendered={restoreBlogHighlightsToContainer}
                 />
               </div>

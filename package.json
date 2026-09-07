@@ -9,11 +9,11 @@
   },
   "main": "electron/main.js",
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev -p 3010",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "electron:dev": "concurrently -k \"next dev\" \"wait-on http://localhost:3000 && electron .\"",
+    "electron:dev": "concurrently -k \"next dev -p 3010\" \"wait-on http://localhost:3010 && electron .\"",
     "electron:build": "npm run build && node scripts/build-electron.js && electron-builder && node scripts/post-build.js",
     "postinstall": "electron-builder install-app-deps",
     "android:bundle": "cd android && ./gradlew bundleRelease"

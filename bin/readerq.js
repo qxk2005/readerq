@@ -12,7 +12,7 @@ const os = require('os');
 
 const ROOT_DIR = join(__dirname, '..');
 const PID_FILE = join(ROOT_DIR, 'data', '.readerq.pid');
-const PORT = 3000;
+const PORT = 3010;
 const IS_WIN = os.platform() === 'win32';
 
 // ---- 颜色 ----
@@ -41,7 +41,7 @@ function isRunning(pid) {
   try { process.kill(pid, 0); return true; } catch { return false; }
 }
 
-// ---- 跨平台：精准查找占用指定端口 3000 的 LISTENING 进程 ----
+// ---- 跨平台：精准查找占用指定端口的 LISTENING 进程 ----
 function findProcessOnPort(port) {
   try {
     if (IS_WIN) {

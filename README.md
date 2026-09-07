@@ -182,7 +182,7 @@ OPENAI_MODEL=gpt-4o-mini
 ### 服务启停管理 (CLI 命令)
 
 ```bash
-# 启动或重启后台服务，自动清理 3000 端口占用
+# 启动或重启后台服务，自动清理 3010 端口占用
 readerq --restart
 
 # 查看后台运行日志 (macOS / Linux)

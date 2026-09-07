@@ -121,7 +121,10 @@ async function createWindow() {
   mainWindow.webContents.on('will-navigate', (event, url) => {
     const isLocal = url.startsWith(`http://127.0.0.1:${port}`) || 
                     url.startsWith(`http://localhost:${port}`) || 
-                    (!app.isPackaged && (url.startsWith('http://127.0.0.1:3000') || url.startsWith('http://localhost:3000')));
+                    (!app.isPackaged && (
+                      url.startsWith('http://127.0.0.1:3010') || url.startsWith('http://localhost:3010') ||
+                      url.startsWith('http://127.0.0.1:3000') || url.startsWith('http://localhost:3000')
+                    ));
     
     if (!isLocal && (url.startsWith('http:') || url.startsWith('https:'))) {
       event.preventDefault();
@@ -230,11 +233,12 @@ async function createWindow() {
 
     waitForServer();
   } else {
-    // In development, assume next dev is running on port 3000
-    serverPort = 3000;
+    // In development, assume next dev is running on port 3010
+    const devPort = process.env.PORT ? parseInt(process.env.PORT, 10) : 3010;
+    serverPort = devPort;
     // 开发模式也注入 YouTube Cookie
-    injectYouTubeCookies(3000).then(() => {
-      mainWindow.loadURL('http://127.0.0.1:3000');
+    injectYouTubeCookies(devPort).then(() => {
+      mainWindow.loadURL(`http://127.0.0.1:${devPort}`);
       mainWindow.show();
       mainWindow.webContents.openDevTools();
     });
