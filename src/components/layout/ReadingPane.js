@@ -788,11 +788,14 @@ export default function ReadingPane() {
             parent.insertBefore(mark.firstChild, mark);
           }
           parent.removeChild(mark);
+        }
+      } catch (e) {
         // 忽略个别复杂跨节点 mark 的解包错误
       }
     });
     attachImageErrorFallback(container);
-    const processed = restoreHighlights(container, highlights, (hl, e) => {
+    const blogHighlights = highlights.filter(hl => hasBlogTag(hl) && !isOfficialHighlight(hl));
+    const processed = restoreHighlights(container, blogHighlights, (hl, e) => {
       const rect = e.target.getBoundingClientRect();
       setEditingHighlight({ ...hl, rect });
     });
