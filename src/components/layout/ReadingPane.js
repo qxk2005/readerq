@@ -12,7 +12,7 @@ import TagInput from '@/components/TagInput';
 import VideoReadingPane from '@/components/video/VideoReadingPane';
 import ParagraphPreviewDrawer from '@/components/common/ParagraphPreviewDrawer';
 import GeneralBlogArticleRenderer from '@/components/common/GeneralBlogArticleRenderer';
-import { BookOpen, Link, Info, Edit3, Bot, Loader2, ClipboardList, AlertTriangle, RefreshCw, CheckCircle2, XCircle, ImageIcon, Upload, Trash2, RotateCcw, Inbox, Clock, Archive, Volume2, Share2, Play, Pause, SkipBack, SkipForward, X, Copy, Check, ArrowUpDown, Target, ArrowLeft, Sparkles, FileText } from 'lucide-react';
+import { BookOpen, Link, Info, Edit3, Bot, Loader2, ClipboardList, AlertTriangle, RefreshCw, CheckCircle2, XCircle, ImageIcon, Upload, Trash2, RotateCcw, Inbox, Clock, Archive, Volume2, Share2, Play, Pause, SkipBack, SkipForward, X, Copy, Check, ArrowUpDown, Target, ArrowLeft, Sparkles, FileText, Bookmark } from 'lucide-react';
 import RssAiRecommendView from '@/components/home/RssAiRecommendView';
 
 const scrollToElement = (container, element) => {
@@ -101,6 +101,7 @@ export default function ReadingPane() {
   const [previewParagraphText, setPreviewParagraphText] = useState('');
   const [matchedAnchorQuery, setMatchedAnchorQuery] = useState('');
   const [highlightSortMode, setHighlightSortMode] = useState('position_asc'); // 'position_asc' | 'position_desc' | 'time_asc' | 'time_desc'
+  const [highlightSourceFilter, setHighlightSourceFilter] = useState('all'); // 'all' | 'readerq' | 'readwise'
 
   // 🎯 点选高亮选择器 (Point-to-Point Highlight Picker) 状态
   const [isPickerMode, setIsPickerMode] = useState(false);
@@ -112,6 +113,7 @@ export default function ReadingPane() {
     setIsPickerMode(false);
     setPickerStart(null);
     setPreviewDrawerOpen(false);
+    setHighlightSourceFilter('all');
     setGeneralBlogContent(selectedDoc?.blog_content || '');
     lastGeneratedBlogRef.current = selectedDoc?.blog_content || '';
     setBlogStreamProgress('');
@@ -746,6 +748,33 @@ export default function ReadingPane() {
     return false;
   };
 
+  const isOfficialHighlight = (hl) => {
+    if (!hl) return false;
+    // 1. 如果有 readerq 标签，则是 ReaderQ 本地创建的高亮
+    let hasReaderqTag = false;
+    if (hl.tags) {
+      if (Array.isArray(hl.tags)) {
+        hasReaderqTag = hl.tags.some(t => typeof t === 'string' ? t.toLowerCase() === 'readerq' : (t?.name || t?.key || '').toLowerCase() === 'readerq');
+      } else if (typeof hl.tags === 'object') {
+        hasReaderqTag = Object.keys(hl.tags).some(k => k.toLowerCase() === 'readerq' || (hl.tags[k]?.name || '').toLowerCase() === 'readerq');
+      } else if (typeof hl.tags === 'string') {
+        try {
+          const parsed = JSON.parse(hl.tags);
+          hasReaderqTag = Object.keys(parsed).some(k => k.toLowerCase() === 'readerq');
+        } catch {
+          hasReaderqTag = hl.tags.toLowerCase().includes('readerq');
+        }
+      }
+    }
+    if (hasReaderqTag) return false;
+
+    // 2. 如果带有 readwise_highlight_id，或者 ID 格式是 Readwise 的 ULID / readwise-v2- 开头，且不带 readerq 标签，则判定为官方标注
+    if (hl.readwise_highlight_id) return true;
+    if (typeof hl.id === 'string' && (hl.id.startsWith('readwise-v2-') || hl.id.startsWith('01m') || /^[0-9a-z]{26}$/i.test(hl.id))) return true;
+
+    return false;
+  };
+
   // 博客模式高亮还原函数 — 由 GeneralBlogArticleRenderer 的 onRendered 回调驱动
   // 这解决了 ReactMarkdown 重新渲染会摧毁已注入 <mark> 的 React 声明式/命令式冲突
   const restoreBlogHighlightsToContainer = useCallback((container) => {
@@ -759,11 +788,6 @@ export default function ReadingPane() {
             parent.insertBefore(mark.firstChild, mark);
           }
           parent.removeChild(mark);
-          // ⚠️ 注意：绝不能在此处调用 parent.normalize()！
-          // Node.normalize() 会把相邻的文本节点合并为一个全新节点，导致 React Fiber 所引用的原有 Text 节点被销毁脱离文档树，
-          // 进而在后续用户划选文本或 React 协调更新时触发 "Failed to execute 'insertBefore' on 'Node': The node before which the new node is to be inserted is not a child of this node"
-        }
-      } catch (e) {
         // 忽略个别复杂跨节点 mark 的解包错误
       }
     });
@@ -802,8 +826,8 @@ export default function ReadingPane() {
           }, 150);
         }
       } else if (articleContainer && selectedDoc?.html_content) {
-        // 正文模式 (readingTabMode === 'text')：仅在正文模式下才装载原 HTML 并还原高亮
-        const textHighlights = highlights.filter(hl => !hasBlogTag(hl));
+        // 正文模式 (readingTabMode === 'text')：仅在正文模式下才装载原 HTML 并还原高亮（排除官方 Reader 高亮，保持正文洁净且解耦）
+        const textHighlights = highlights.filter(hl => !hasBlogTag(hl) && !isOfficialHighlight(hl));
         const scrollContainer = document.getElementById('article-scroll-container');
         const shouldPreserveScroll = lastRenderedDocIdRef.current === selectedDoc?.id;
         const prevScrollTop = (shouldPreserveScroll && scrollContainer) ? scrollContainer.scrollTop : 0;
@@ -2313,7 +2337,7 @@ export default function ReadingPane() {
 
               {/* Highlights List */}
               <div style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 'var(--space-3)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 'var(--space-2)' }}>
                   <h3 style={{ fontSize: '11px', fontWeight: '600', color: 'var(--color-text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.05em', margin: 0 }}>Highlights ({highlights.length})</h3>
                   {highlights.length > 0 && (
                     <div style={{ position: 'relative' }}>
@@ -2340,12 +2364,63 @@ export default function ReadingPane() {
                     </div>
                   )}
                 </div>
+
+                {/* 高亮来源分段筛选器 */}
+                {highlights.length > 0 && (() => {
+                  const officialCount = highlights.filter(isOfficialHighlight).length;
+                  const localCount = highlights.length - officialCount;
+                  return (
+                    <div style={{ 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      background: 'var(--color-bg-secondary)', 
+                      padding: '2px', 
+                      borderRadius: 'var(--radius-md)', 
+                      marginBottom: 'var(--space-3)',
+                      border: '1px solid var(--color-border-light)'
+                    }}>
+                      {[
+                        { key: 'all', label: `全部 (${highlights.length})` },
+                        { key: 'readerq', label: `ReaderQ (${localCount})` },
+                        { key: 'readwise', label: `Readwise (${officialCount})` }
+                      ].map(tab => {
+                        const isActive = highlightSourceFilter === tab.key;
+                        return (
+                          <button
+                            key={tab.key}
+                            style={{
+                              flex: 1,
+                              padding: '3px 0',
+                              fontSize: '11px',
+                              fontWeight: isActive ? '600' : '400',
+                              color: isActive ? 'var(--color-text-primary)' : 'var(--color-text-tertiary)',
+                              background: isActive ? 'var(--color-bg-primary)' : 'transparent',
+                              border: 'none',
+                              borderRadius: 'var(--radius-sm)',
+                              boxShadow: isActive ? '0 1px 2px rgba(0,0,0,0.05)' : 'none',
+                              cursor: 'pointer',
+                              transition: 'all 0.15s ease'
+                            }}
+                            onClick={() => setHighlightSourceFilter(tab.key)}
+                          >
+                            {tab.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
                 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)', paddingBottom: '220px' }}>
                   {(() => {
                     const posMap = highlightPositionsRef.current;
                     const getPos = (hl) => posMap[hl.id] ?? hl.location_start ?? Infinity;
-                    const sortedHighlights = [...highlights].sort((a, b) => {
+                    const filtered = highlights.filter(hl => {
+                      if (highlightSourceFilter === 'readerq') return !isOfficialHighlight(hl);
+                      if (highlightSourceFilter === 'readwise') return isOfficialHighlight(hl);
+                      return true;
+                    });
+                    const sortedHighlights = [...filtered].sort((a, b) => {
                       switch (highlightSortMode) {
                         case 'position_desc':
                           return getPos(b) - getPos(a);
@@ -2362,6 +2437,7 @@ export default function ReadingPane() {
                   })().map(hl => {
                     const uploadStatus = imageUploadStatus[hl.id];
                     const isEditing = sidebarEditingId === hl.id;
+                    const isOfficial = isOfficialHighlight(hl);
 
                     return (
                       <div 
@@ -2370,14 +2446,33 @@ export default function ReadingPane() {
                         className="highlight-card"
                         style={{ 
                           padding: 'var(--space-3)', 
-                          backgroundColor: 'var(--color-bg-primary)', 
+                          backgroundColor: isOfficial 
+                            ? 'rgba(99, 102, 241, 0.05)' 
+                            : 'var(--color-bg-primary)', 
                           borderRadius: 'var(--radius-md)', 
-                          border: isEditing ? '1px solid var(--color-accent)' : '1px solid var(--color-border)',
-                          boxShadow: isEditing ? '0 0 0 1px var(--color-accent)' : 'var(--shadow-sm)',
+                          border: isEditing 
+                            ? '1px solid var(--color-accent)' 
+                            : isOfficial 
+                              ? '1px solid rgba(99, 102, 241, 0.25)' 
+                              : '1px solid var(--color-border)',
+                          boxShadow: isEditing 
+                            ? '0 0 0 1px var(--color-accent)' 
+                            : isOfficial 
+                              ? '0 1px 3px rgba(99, 102, 241, 0.08)' 
+                              : 'var(--shadow-sm)',
                           cursor: isEditing ? 'default' : 'pointer',
-                          transition: 'border-color 0.15s, box-shadow 0.15s'
+                          transition: 'border-color 0.15s, box-shadow 0.15s, background-color 0.15s'
                         }}
                         onClick={() => {
+                          if (isOfficial) {
+                            // 官方高亮：无需在屏幕上进行 DOM 定位，直接激活卡片编辑/详情
+                            if (isEditing) return;
+                            setSidebarEditingId(hl.id);
+                            setSidebarEditNote(hl.note || '');
+                            setSidebarEditTags(extractTagNames(hl?.tags));
+                            return;
+                          }
+
                           const isCurrentlyBlog = isDocVideo ? videoTabMode === 'blog' : readingTabMode === 'blog';
                           const currentContainer = (isDocVideo || isCurrentlyBlog)
                             ? document.querySelector('.blog-article')
@@ -2433,6 +2528,31 @@ export default function ReadingPane() {
                           setSidebarEditTags(extractTagNames(hl?.tags));
                         }}
                       >
+                        {/* 官方高亮来源 Badge */}
+                        {isOfficial && (
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 'var(--space-2)' }}>
+                            <span style={{ 
+                              display: 'inline-flex', 
+                              alignItems: 'center', 
+                              gap: '4px', 
+                              fontSize: '10px', 
+                              fontWeight: '600', 
+                              color: 'rgb(79, 70, 229)', 
+                              backgroundColor: 'rgba(99, 102, 241, 0.12)', 
+                              padding: '2px 7px', 
+                              borderRadius: '10px',
+                              letterSpacing: '0.02em'
+                            }}>
+                              <Bookmark size={10} style={{ fill: 'currentColor' }} />
+                              Readwise Reader
+                            </span>
+                            <span style={{ fontSize: '10px', color: 'var(--color-text-tertiary)', display: 'flex', alignItems: 'center', gap: '3px' }}>
+                              <CheckCircle2 size={11} style={{ color: 'var(--color-success)' }} />
+                              官方标注
+                            </span>
+                          </div>
+                        )}
+
                         {/* 按正文实际出现位置穿插渲染文字段落与图片 */}
                         {(() => {
                           const contentBlocks = parseHighlightContentBlocks(hl.text);
@@ -2652,6 +2772,10 @@ export default function ReadingPane() {
                             {verifyStatus[hl.id] ? (
                               <span style={{ fontSize: '11px', color: verifyStatus[hl.id].synced ? 'var(--color-success)' : 'var(--color-danger)' }}>
                                 {verifyStatus[hl.id].synced ? <span style={{display:'flex', alignItems:'center', gap:'4px'}}><CheckCircle2 size={12}/>已同步至 Readwise</span> : <span style={{display:'flex', alignItems:'center', gap:'4px'}}><XCircle size={12}/>{verifyStatus[hl.id].message}</span>}
+                              </span>
+                            ) : isOfficial ? (
+                              <span style={{ fontSize: '11px', color: 'var(--color-success)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                <CheckCircle2 size={12}/>官方标注已同步
                               </span>
                             ) : (
                               <span style={{ fontSize: '11px', color: 'var(--color-text-tertiary)' }}>未验证同步</span>

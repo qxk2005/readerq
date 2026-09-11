@@ -25,7 +25,8 @@ export async function POST(request) {
     // 从 Readwise 拉取 highlight 类型的文档
     // 注意: v3 API 没有按 parent_id 筛选的参数,
     // 我们拉取所有 highlight 文档后在客户端过滤
-    const allHighlightDocs = await client.fetchAllDocuments({ category: 'highlight' });
+    const fetchResult = await client.fetchAllDocuments({ category: 'highlight' });
+    const allHighlightDocs = fetchResult?.results || [];
     
     // 过滤出属于目标文档的高亮
     const docHighlightDocs = allHighlightDocs.filter(d => d.parent_id === documentId);

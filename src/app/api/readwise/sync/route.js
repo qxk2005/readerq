@@ -5,7 +5,7 @@
 
 import { NextResponse } from 'next/server';
 import { getServerReadwiseClient } from '@/lib/readwise';
-import { upsertDocuments, upsertTags, upsertHighlights, convertReadwiseDocToHighlight, setSyncState, getSyncState, getDocumentCount, clearAllData, findDocumentIdBySourceUrl, findDocumentIdByTitle } from '@/lib/db';
+import { upsertDocuments, upsertTags, upsertHighlights, convertReadwiseDocToHighlight, setSyncState, getSyncState, getDocumentCount, clearAllData, findDocumentIdBySourceUrl, findDocumentIdByTitle, getHighlight, getCachedDocument } from '@/lib/db';
 
 export async function POST(request) {
   try {
@@ -140,13 +140,23 @@ async function runSync(client, fullSync) {
               continue;
             }
 
-            const highlightsToInsert = item.highlights.map(h => ({
-              ...h,
-              document_id: documentId,
-              location_start: h.location,
-              location_end: null,
-              readwise_highlight_id: h.readwise_highlight_id,
-            }));
+            const highlightsToInsert = item.highlights.map(h => {
+              let finalDocId = documentId;
+              const existingHl = getHighlight(h.id);
+              if (existingHl?.document_id) {
+                const existingDoc = getCachedDocument(existingHl.document_id);
+                if (existingDoc && existingDoc.location !== 'trash') {
+                  finalDocId = existingHl.document_id;
+                }
+              }
+              return {
+                ...h,
+                document_id: finalDocId,
+                location_start: h.location,
+                location_end: null,
+                readwise_highlight_id: h.readwise_highlight_id,
+              };
+            });
 
             if (highlightsToInsert.length > 0) {
               upsertHighlights(highlightsToInsert);

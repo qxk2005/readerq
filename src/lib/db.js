@@ -694,6 +694,16 @@ export function upsertHighlight(highlight) {
   const existingById = db.prepare('SELECT * FROM highlights WHERE id = ?').get(highlight.id);
 
   if (existingById) {
+    let targetDocId = highlight.document_id || existingById.document_id;
+    // 如果已有记录关联的不是垃圾箱，而新传入的 document_id 属于垃圾箱，则保护并保留原有效关联
+    if (existingById.document_id && highlight.document_id && existingById.document_id !== highlight.document_id) {
+      const existingDoc = db.prepare('SELECT location FROM documents WHERE id = ?').get(existingById.document_id);
+      const newDoc = db.prepare('SELECT location FROM documents WHERE id = ?').get(highlight.document_id);
+      if (existingDoc && existingDoc.location !== 'trash' && newDoc && newDoc.location === 'trash') {
+        targetDocId = existingById.document_id;
+      }
+    }
+
     db.prepare(`
       UPDATE highlights SET
         document_id = @document_id,
@@ -711,6 +721,7 @@ export function upsertHighlight(highlight) {
       location_end: null,
       created_at: new Date().toISOString(),
       ...highlight,
+      document_id: targetDocId,
       tags_json: JSON.stringify(highlight.tags || {}),
       readwise_highlight_id: highlight.readwise_highlight_id || null
     });
@@ -918,9 +929,26 @@ export function getLatestDocumentDate({ location, category, tag } = {}) {
 export function findDocumentIdBySourceUrl(sourceUrl) {
   if (!sourceUrl) return null;
   const db = getDatabase();
-  // 优先匹配 source_url，其次匹配 url
-  const doc = db.prepare('SELECT id FROM documents WHERE (source_url = ? OR url = ?) AND parent_id IS NULL LIMIT 1').get(sourceUrl, sourceUrl);
-  return doc?.id || null;
+  // 1. 优先匹配非垃圾箱文档（按 updated_at 降序，优先关联最新活跃文档）
+  const activeDoc = db.prepare(`
+    SELECT id FROM documents 
+    WHERE (source_url = ? OR url = ?) 
+      AND parent_id IS NULL 
+      AND (location IS NULL OR location != 'trash')
+    ORDER BY updated_at DESC 
+    LIMIT 1
+  `).get(sourceUrl, sourceUrl);
+  if (activeDoc?.id) return activeDoc.id;
+
+  // 2. 兜底匹配垃圾箱文档
+  const trashDoc = db.prepare(`
+    SELECT id FROM documents 
+    WHERE (source_url = ? OR url = ?) 
+      AND parent_id IS NULL 
+    ORDER BY updated_at DESC 
+    LIMIT 1
+  `).get(sourceUrl, sourceUrl);
+  return trashDoc?.id || null;
 }
 
 /**
@@ -929,8 +957,26 @@ export function findDocumentIdBySourceUrl(sourceUrl) {
 export function findDocumentIdByTitle(title) {
   if (!title) return null;
   const db = getDatabase();
-  const doc = db.prepare('SELECT id FROM documents WHERE title = ? AND parent_id IS NULL LIMIT 1').get(title);
-  return doc?.id || null;
+  // 1. 优先匹配非垃圾箱文档
+  const activeDoc = db.prepare(`
+    SELECT id FROM documents 
+    WHERE title = ? 
+      AND parent_id IS NULL 
+      AND (location IS NULL OR location != 'trash')
+    ORDER BY updated_at DESC 
+    LIMIT 1
+  `).get(title);
+  if (activeDoc?.id) return activeDoc.id;
+
+  // 2. 兜底匹配垃圾箱文档
+  const trashDoc = db.prepare(`
+    SELECT id FROM documents 
+    WHERE title = ? 
+      AND parent_id IS NULL 
+    ORDER BY updated_at DESC 
+    LIMIT 1
+  `).get(title);
+  return trashDoc?.id || null;
 }
 
 /**
