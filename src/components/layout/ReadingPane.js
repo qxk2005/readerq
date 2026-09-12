@@ -12,7 +12,7 @@ import TagInput from '@/components/TagInput';
 import VideoReadingPane from '@/components/video/VideoReadingPane';
 import ParagraphPreviewDrawer from '@/components/common/ParagraphPreviewDrawer';
 import GeneralBlogArticleRenderer from '@/components/common/GeneralBlogArticleRenderer';
-import { BookOpen, Link, Info, Edit3, Bot, Loader2, ClipboardList, AlertTriangle, RefreshCw, CheckCircle2, XCircle, ImageIcon, Upload, Trash2, RotateCcw, Inbox, Clock, Archive, Volume2, Share2, Play, Pause, SkipBack, SkipForward, X, Copy, Check, ArrowUpDown, Target, ArrowLeft, Sparkles, FileText, Bookmark } from 'lucide-react';
+import { BookOpen, Link, Info, Edit3, Bot, Loader2, ClipboardList, AlertTriangle, RefreshCw, CheckCircle2, XCircle, ImageIcon, Upload, Trash2, RotateCcw, Inbox, Clock, Archive, Volume2, Share2, Play, Pause, SkipBack, SkipForward, X, Copy, Check, ArrowUpDown, Target, ArrowLeft, Sparkles, FileText, Bookmark, MoreHorizontal, ExternalLink } from 'lucide-react';
 import RssAiRecommendView from '@/components/home/RssAiRecommendView';
 
 const scrollToElement = (container, element) => {
@@ -107,6 +107,31 @@ export default function ReadingPane() {
   const [isPickerMode, setIsPickerMode] = useState(false);
   const [pickerStart, setPickerStart] = useState(null); // { node, offset, rect, snippet }
 
+  // 更多菜单 (···) 浮层状态与 DOM 引用
+  const [isMoreMenuOpen, setIsMoreMenuOpen] = useState(false);
+  const moreMenuRef = useRef(null);
+
+  // 点击外部空白区域或按 ESC 键时自动关闭更多菜单
+  useEffect(() => {
+    if (!isMoreMenuOpen) return;
+    const handleClickOutside = (e) => {
+      if (moreMenuRef.current && !moreMenuRef.current.contains(e.target)) {
+        setIsMoreMenuOpen(false);
+      }
+    };
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        setIsMoreMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isMoreMenuOpen]);
+
   useEffect(() => {
     setVideoTabMode('subtitle');
     setReadingTabMode('text');
@@ -114,6 +139,7 @@ export default function ReadingPane() {
     setPickerStart(null);
     setPreviewDrawerOpen(false);
     setHighlightSourceFilter('all');
+    setIsMoreMenuOpen(false);
     setGeneralBlogContent(selectedDoc?.blog_content || '');
     lastGeneratedBlogRef.current = selectedDoc?.blog_content || '';
     setBlogStreamProgress('');
@@ -1719,16 +1745,16 @@ export default function ReadingPane() {
         {/* 左侧主显示区，包含固定头部和滚动正文 */}
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
           {/* 固定头部容器 */}
-          <div className="article-sticky-header" style={{ display: 'flex', flexDirection: 'column', flexShrink: 0, zIndex: 20 }}>
+          <div className="article-sticky-header" style={{ display: 'flex', flexDirection: 'column', flexShrink: 0, zIndex: 100 }}>
             {/* 阅读头部 */}
             <div className="reading-header">
-        <div className="reading-header-left">
+        <div className="reading-header-left" style={{ minWidth: 0, overflow: 'hidden', flexWrap: 'nowrap' }}>
           {(isRssActive || selectedDoc.category === 'rss' || selectedDoc.location === 'feed' || selectedDoc.site_name) && (
             <button
               className="btn btn-ghost btn-sm"
               onClick={() => setSelectedDoc(null)}
               style={{
-                display: 'flex',
+                display: 'inline-flex',
                 alignItems: 'center',
                 gap: '4px',
                 fontSize: 'var(--text-xs)',
@@ -1736,10 +1762,17 @@ export default function ReadingPane() {
                 color: 'var(--color-accent)',
                 background: 'rgba(99, 102, 241, 0.1)',
                 borderRadius: '6px',
-                padding: '4px 8px'
+                padding: '4px 8px',
+                whiteSpace: 'nowrap',
+                maxWidth: '150px',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                flexShrink: 0
               }}
+              title="返回 AI 推荐探索"
             >
-              <ArrowLeft size={14} /> 返回 AI 推荐探索
+              <ArrowLeft size={14} style={{ flexShrink: 0 }} />
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>返回推荐</span>
             </button>
           )}
           {selectedDoc.source_url && (
@@ -1748,13 +1781,15 @@ export default function ReadingPane() {
               target="_blank"
               rel="noopener noreferrer"
               className="btn btn-ghost btn-sm"
-              style={{ fontSize: 'var(--text-xs)' }}
+              style={{ fontSize: 'var(--text-xs)', maxWidth: '140px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flexShrink: 1 }}
+              title={selectedDoc.source_url}
             >
-              <Link size={14} style={{ display: 'inline', verticalAlign: 'middle', marginRight: '4px' }} /> {extractDomain(selectedDoc.source_url)}
+              <Link size={14} style={{ display: 'inline', verticalAlign: 'middle', marginRight: '4px', flexShrink: 0 }} /> 
+              {extractDomain(selectedDoc.source_url)}
             </a>
           )}
           {selectedDoc.category && (
-            <span className="tag-pill">
+            <span className="tag-pill" style={{ flexShrink: 0, whiteSpace: 'nowrap' }}>
               {CATEGORY_LABELS[selectedDoc.category] || selectedDoc.category}
             </span>
           )}
@@ -1820,7 +1855,7 @@ export default function ReadingPane() {
             </div>
           )}
         </div>
-        <div className="reading-header-right">
+        <div className="reading-header-right" style={{ position: 'relative', flexShrink: 0 }}>
           {/* 🎯 点选高亮模式按钮 (置顶第一优先级，凸显视觉) */}
           <button
             className={`btn-icon ${isPickerMode ? 'active' : ''}`}
@@ -1834,183 +1869,306 @@ export default function ReadingPane() {
               backgroundColor: isPickerMode ? 'var(--color-accent)' : 'rgba(0, 122, 255, 0.1)',
               borderRadius: 'var(--radius-md)',
               border: isPickerMode ? 'none' : '1px solid rgba(0, 122, 255, 0.25)',
-              transition: 'all 0.15s ease'
+              transition: 'all 0.15s ease',
+              flexShrink: 0
             }}
           >
             <Target size={16} />
           </button>
 
-          <div style={{ width: '1px', height: '16px', backgroundColor: 'var(--color-border)', margin: '0 4px' }} />
-          {selectedDoc.location === 'trash' ? (
-            <>
-              <button
-                className="btn-icon"
-                onClick={async () => {
-                  await batchMoveDocuments([selectedDoc.id], 'new');
-                }}
-                data-tooltip="恢复到收件箱"
-              >
-                <RotateCcw size={16} />
-              </button>
-              <button
-                className="btn-icon"
-                style={{ color: 'var(--color-danger)' }}
-                onClick={async () => {
-                  if (confirm('确定要彻底删除该文档吗？此操作无法撤销。')) {
-                    await batchDeleteDocuments([selectedDoc.id]);
-                  }
-                }}
-                data-tooltip="彻底删除"
-              >
-                <Trash2 size={16} />
-              </button>
-            </>
+          {/* 📦 快捷归档按钮 */}
+          {selectedDoc.location === 'archive' ? (
+            <button
+              className="btn btn-ghost btn-sm"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '4px',
+                fontSize: '12px',
+                color: 'var(--color-accent)',
+                background: 'var(--color-accent-light)',
+                padding: '2px 10px',
+                borderRadius: '12px',
+                border: '1px solid var(--color-accent)',
+                cursor: 'pointer',
+                flexShrink: 0,
+                whiteSpace: 'nowrap'
+              }}
+              onClick={async () => {
+                await batchMoveDocuments([selectedDoc.id], 'new');
+              }}
+              title="点击取消归档，移回收件箱"
+            >
+              <Archive size={14} />
+              已归档
+            </button>
           ) : (
-            <>
-              {selectedDoc.location !== 'new' && (
-                <button
-                  className="btn-icon"
-                  onClick={async () => {
-                    await batchMoveDocuments([selectedDoc.id], 'new');
-                  }}
-                  data-tooltip="移至收件箱"
-                >
-                  <Inbox size={16} />
-                </button>
-              )}
-              {selectedDoc.location !== 'later' && (
-                <button
-                  className="btn-icon"
-                  onClick={async () => {
-                    await batchMoveDocuments([selectedDoc.id], 'later');
-                  }}
-                  data-tooltip="移至稍后阅读"
-                >
-                  <Clock size={16} />
-                </button>
-              )}
-              {selectedDoc.location === 'archive' ? (
-                <button
-                  className="btn btn-ghost btn-sm"
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '4px',
-                    fontSize: '12px',
-                    color: 'var(--color-accent)',
-                    background: 'var(--color-accent-light)',
-                    padding: '2px 10px',
-                    borderRadius: '12px',
-                    border: '1px solid var(--color-accent)',
-                    cursor: 'pointer'
-                  }}
-                  onClick={async () => {
-                    await batchMoveDocuments([selectedDoc.id], 'new');
-                  }}
-                  title="点击取消归档，移回收件箱"
-                >
-                  <Archive size={14} />
-                  已归档
-                </button>
-              ) : (
-                <button
-                  className="btn-icon"
-                  onClick={async () => {
-                    await batchMoveDocuments([selectedDoc.id], 'archive');
-                  }}
-                  data-tooltip="移至归档"
-                >
-                  <Archive size={16} />
-                </button>
-              )}
-              <button
-                className="btn-icon"
-                style={{ color: 'var(--color-danger)' }}
-                onClick={async () => {
-                  await batchMoveDocuments([selectedDoc.id], 'trash');
-                }}
-                data-tooltip="移入垃圾箱"
-              >
-                <Trash2 size={16} />
-              </button>
-            </>
+            <button
+              className="btn-icon"
+              onClick={async () => {
+                await batchMoveDocuments([selectedDoc.id], 'archive');
+              }}
+              data-tooltip="移至归档"
+              style={{ flexShrink: 0 }}
+            >
+              <Archive size={16} />
+            </button>
           )}
 
-          <div style={{ width: '1px', height: '16px', backgroundColor: 'var(--color-border)', margin: '0 8px' }} />
+          {/* 🔊 朗读播放中动态状态胶囊（仅在朗读激活时浮现） */}
+          {ttsState.isActive && (
+            <button
+              onClick={stopTts}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                fontSize: '12px',
+                fontWeight: 500,
+                color: '#ffffff',
+                backgroundColor: 'var(--color-accent)',
+                padding: '2px 10px',
+                borderRadius: '14px',
+                border: 'none',
+                cursor: 'pointer',
+                animation: 'pulse-banner 2s infinite',
+                boxShadow: '0 2px 6px rgba(99, 102, 241, 0.3)',
+                flexShrink: 0
+              }}
+              title="点击停止朗读"
+            >
+              <Volume2 size={14} />
+              <span>朗读中</span>
+              <X size={12} style={{ opacity: 0.8 }} />
+            </button>
+          )}
 
-          {/* 朗读文章按钮 */}
-          <button
-            className="btn-icon"
-            onClick={() => {
-              if (ttsState.isActive) {
-                stopTts();
-              } else if (articleRef.current) {
-                startTtsFromDom(articleRef.current);
-              }
-            }}
-            data-tooltip={ttsState.isActive ? '停止朗读' : '朗读文章'}
-            style={ttsState.isActive ? { color: 'var(--color-accent)' } : {}}
-          >
-            <Volume2 size={16} />
-          </button>
-          {/* 分享文章链接按钮 */}
-          <button
-            className="btn-icon"
-            onClick={() => {
-              const shareUrl = selectedDoc?.source_url || selectedDoc?.url;
-              if (shareUrl) {
-                navigator.clipboard.writeText(shareUrl).then(() => {
-                  setShareCopied(true);
-                  setTimeout(() => setShareCopied(false), 2000);
-                }).catch(() => {
-                  // fallback: 创建临时 textarea 来复制
-                  const textarea = document.createElement('textarea');
-                  textarea.value = shareUrl;
-                  textarea.style.position = 'fixed';
-                  textarea.style.opacity = '0';
-                  document.body.appendChild(textarea);
-                  textarea.select();
-                  document.execCommand('copy');
-                  document.body.removeChild(textarea);
-                  setShareCopied(true);
-                  setTimeout(() => setShareCopied(false), 2000);
-                });
-              }
-            }}
-            data-tooltip={shareCopied ? '已复制！' : '复制文章链接'}
-            style={shareCopied ? { color: 'var(--color-success, #22c55e)' } : {}}
-          >
-            {shareCopied ? <Check size={16} /> : <Share2 size={16} />}
-          </button>
+          {/* ⋯ 更多操作菜单按钮与浮层 */}
+          <div ref={moreMenuRef} style={{ position: 'relative', display: 'inline-flex' }}>
+            <button
+              className={`btn-icon ${isMoreMenuOpen ? 'active' : ''}`}
+              onClick={() => setIsMoreMenuOpen(!isMoreMenuOpen)}
+              data-tooltip="更多操作"
+              style={{
+                backgroundColor: isMoreMenuOpen ? 'var(--color-bg-tertiary)' : 'transparent',
+                color: isMoreMenuOpen ? 'var(--color-accent)' : 'inherit',
+                borderRadius: 'var(--radius-md)',
+                flexShrink: 0
+              }}
+            >
+              <MoreHorizontal size={16} />
+            </button>
 
-          <div style={{ width: '1px', height: '16px', backgroundColor: 'var(--color-border)', margin: '0 8px' }} />
+            {/* 下拉菜单浮层 */}
+            {isMoreMenuOpen && (
+              <div
+                className="more-menu-dropdown animate-fade-in"
+                style={{
+                  position: 'absolute',
+                  top: 'calc(100% + 8px)',
+                  right: 0,
+                  width: '200px',
+                  backgroundColor: 'var(--color-bg-primary)',
+                  borderRadius: 'var(--radius-lg, 12px)',
+                  border: '1px solid var(--color-border)',
+                  boxShadow: '0 12px 32px rgba(0, 0, 0, 0.18), 0 2px 6px rgba(0, 0, 0, 0.08)',
+                  backdropFilter: 'blur(20px)',
+                  WebkitBackdropFilter: 'blur(20px)',
+                  padding: '5px',
+                  zIndex: 1000,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '1px'
+                }}
+              >
+                {/* 分组一：侧边面板 (独立分组) */}
+                <div style={{ fontSize: '10px', fontWeight: 600, color: 'var(--color-text-tertiary)', padding: '4px 8px 2px', letterSpacing: '0.04em' }}>
+                  侧边面板
+                </div>
+                <button
+                  className={`more-menu-item ${rightPanelTab === 'info' ? 'active' : ''}`}
+                  onClick={() => {
+                    setIsMoreMenuOpen(false);
+                    setRightPanelTab(rightPanelTab === 'info' ? null : 'info');
+                  }}
+                >
+                  <Info size={14} />
+                  <span style={{ flex: 1 }}>文档信息</span>
+                  {rightPanelTab === 'info' && (
+                    <span style={{ fontSize: '10px', color: 'var(--color-accent)', fontWeight: 600, padding: '1px 5px', borderRadius: '4px', backgroundColor: 'rgba(99, 102, 241, 0.12)' }}>已开启</span>
+                  )}
+                </button>
+                <button
+                  className={`more-menu-item ${rightPanelTab === 'notebook' ? 'active' : ''}`}
+                  onClick={() => {
+                    setIsMoreMenuOpen(false);
+                    setRightPanelTab(rightPanelTab === 'notebook' ? null : 'notebook');
+                  }}
+                >
+                  <Edit3 size={14} />
+                  <span style={{ flex: 1 }}>{highlights.length > 0 ? `文章笔记 (${highlights.length})` : '文章笔记'}</span>
+                  {rightPanelTab === 'notebook' && (
+                    <span style={{ fontSize: '10px', color: 'var(--color-accent)', fontWeight: 600, padding: '1px 5px', borderRadius: '4px', backgroundColor: 'rgba(99, 102, 241, 0.12)' }}>已开启</span>
+                  )}
+                </button>
+                <button
+                  className={`more-menu-item ${rightPanelTab === 'chat' ? 'active' : ''}`}
+                  onClick={() => {
+                    setIsMoreMenuOpen(false);
+                    setRightPanelTab(rightPanelTab === 'chat' ? null : 'chat');
+                  }}
+                >
+                  <Bot size={14} />
+                  <span style={{ flex: 1 }}>AI 助手</span>
+                  {rightPanelTab === 'chat' && (
+                    <span style={{ fontSize: '10px', color: 'var(--color-accent)', fontWeight: 600, padding: '1px 5px', borderRadius: '4px', backgroundColor: 'rgba(99, 102, 241, 0.12)' }}>已开启</span>
+                  )}
+                </button>
 
+                {/* 分割线 */}
+                <div style={{ height: '1px', backgroundColor: 'var(--color-border-light)', margin: '4px 0' }} />
 
+                {/* 分组二：位置管理 */}
+                <div style={{ fontSize: '10px', fontWeight: 600, color: 'var(--color-text-tertiary)', padding: '4px 8px 2px', letterSpacing: '0.04em' }}>
+                  位置管理
+                </div>
 
-          <button
-            className="btn-icon"
-            onClick={() => setRightPanelTab(rightPanelTab === 'info' ? null : 'info')}
-            data-tooltip="文档信息"
-            style={rightPanelTab === 'info' ? { color: 'var(--color-accent)' } : {}}
-          >
-            <Info size={16} />
-          </button>
-          <button
-            className="btn-icon"
-            onClick={() => setRightPanelTab(rightPanelTab === 'notebook' ? null : 'notebook')}
-            data-tooltip="笔记"
-            style={rightPanelTab === 'notebook' ? { color: 'var(--color-accent)' } : {}}
-          >
-            <Edit3 size={16} />
-          </button>
-          <button
-            className="btn-icon"
-            onClick={() => setRightPanelTab(rightPanelTab === 'chat' ? null : 'chat')}
-            data-tooltip="AI助手"
-            style={rightPanelTab === 'chat' ? { color: 'var(--color-accent)' } : {}}
-          >
-            <Bot size={16} />
-          </button>
+                {selectedDoc.location === 'trash' ? (
+                  <button
+                    className="more-menu-item"
+                    onClick={async () => {
+                      setIsMoreMenuOpen(false);
+                      await batchMoveDocuments([selectedDoc.id], 'new');
+                    }}
+                  >
+                    <RotateCcw size={14} />
+                    <span>恢复到收件箱</span>
+                  </button>
+                ) : (
+                  <>
+                    {selectedDoc.location !== 'later' && (
+                      <button
+                        className="more-menu-item"
+                        onClick={async () => {
+                          setIsMoreMenuOpen(false);
+                          await batchMoveDocuments([selectedDoc.id], 'later');
+                        }}
+                      >
+                        <Clock size={14} />
+                        <span>移至稍后阅读</span>
+                      </button>
+                    )}
+                    {selectedDoc.location !== 'new' && (
+                      <button
+                        className="more-menu-item"
+                        onClick={async () => {
+                          setIsMoreMenuOpen(false);
+                          await batchMoveDocuments([selectedDoc.id], 'new');
+                        }}
+                      >
+                        <Inbox size={14} />
+                        <span>移至收件箱</span>
+                      </button>
+                    )}
+                  </>
+                )}
+
+                {/* 分割线 */}
+                <div style={{ height: '1px', backgroundColor: 'var(--color-border-light)', margin: '4px 0' }} />
+
+                {/* 分组三：工具与分享 */}
+                <div style={{ fontSize: '10px', fontWeight: 600, color: 'var(--color-text-tertiary)', padding: '4px 8px 2px', letterSpacing: '0.04em' }}>
+                  工具与分享
+                </div>
+
+                <button
+                  className="more-menu-item"
+                  onClick={() => {
+                    setIsMoreMenuOpen(false);
+                    if (ttsState.isActive) {
+                      stopTts();
+                    } else if (articleRef.current) {
+                      startTtsFromDom(articleRef.current);
+                    }
+                  }}
+                >
+                  <Volume2 size={14} />
+                  <span>{ttsState.isActive ? '停止朗读文章' : '朗读文章 (TTS)'}</span>
+                </button>
+
+                <button
+                  className="more-menu-item"
+                  onClick={() => {
+                    setIsMoreMenuOpen(false);
+                    const shareUrl = selectedDoc?.source_url || selectedDoc?.url;
+                    if (shareUrl) {
+                      navigator.clipboard.writeText(shareUrl).then(() => {
+                        setShareCopied(true);
+                        setTimeout(() => setShareCopied(false), 2000);
+                      }).catch(() => {
+                        const textarea = document.createElement('textarea');
+                        textarea.value = shareUrl;
+                        textarea.style.position = 'fixed';
+                        textarea.style.opacity = '0';
+                        document.body.appendChild(textarea);
+                        textarea.select();
+                        document.execCommand('copy');
+                        document.body.removeChild(textarea);
+                        setShareCopied(true);
+                        setTimeout(() => setShareCopied(false), 2000);
+                      });
+                    }
+                  }}
+                >
+                  {shareCopied ? <Check size={14} style={{ color: 'var(--color-success)' }} /> : <Share2 size={14} />}
+                  <span>{shareCopied ? '链接已复制！' : '复制文章链接'}</span>
+                </button>
+
+                {selectedDoc?.source_url && (
+                  <button
+                    className="more-menu-item"
+                    onClick={() => {
+                      setIsMoreMenuOpen(false);
+                      window.open(selectedDoc.source_url, '_blank', 'noopener,noreferrer');
+                    }}
+                  >
+                    <ExternalLink size={14} />
+                    <span>在浏览器中打开</span>
+                  </button>
+                )}
+
+                {/* 分割线 */}
+                <div style={{ height: '1px', backgroundColor: 'var(--color-border-light)', margin: '4px 0' }} />
+
+                {/* 分组四：危险操作 */}
+                {selectedDoc.location === 'trash' ? (
+                  <button
+                    className="more-menu-item danger"
+                    onClick={async () => {
+                      setIsMoreMenuOpen(false);
+                      if (confirm('确定要彻底删除该文档吗？此操作无法撤销。')) {
+                        await batchDeleteDocuments([selectedDoc.id]);
+                      }
+                    }}
+                  >
+                    <Trash2 size={14} />
+                    <span>彻底删除</span>
+                  </button>
+                ) : (
+                  <button
+                    className="more-menu-item danger"
+                    onClick={async () => {
+                      setIsMoreMenuOpen(false);
+                      await batchMoveDocuments([selectedDoc.id], 'trash');
+                    }}
+                  >
+                    <Trash2 size={14} />
+                    <span>移入垃圾箱</span>
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       </div>
       
@@ -2233,27 +2391,37 @@ export default function ReadingPane() {
           >
         
         {/* Tab Header */}
-        <div style={{ display: 'flex', borderBottom: '1px solid var(--color-border)', padding: '0 var(--space-4)' }}>
-          {['info', 'notebook', 'chat'].map(tab => (
-            <button
-              key={tab}
-              onClick={() => setRightPanelTab(tab)}
-              style={{
-                flex: 1,
-                padding: 'var(--space-3) 0',
-                background: 'none',
-                border: 'none',
-                borderBottom: rightPanelTab === tab ? '2px solid var(--color-accent)' : '2px solid transparent',
-                color: rightPanelTab === tab ? 'var(--color-accent)' : 'var(--color-text-secondary)',
-                fontWeight: rightPanelTab === tab ? '600' : '400',
-                fontSize: '13px',
-                cursor: 'pointer',
-                textTransform: 'capitalize'
-              }}
-            >
-              {tab === 'info' ? '信息' : tab === 'notebook' ? `笔记 (${highlights.length})` : 'AI助手'}
-            </button>
-          ))}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid var(--color-border)', padding: '0 var(--space-2) 0 var(--space-4)' }}>
+          <div style={{ display: 'flex', flex: 1 }}>
+            {['info', 'notebook', 'chat'].map(tab => (
+              <button
+                key={tab}
+                onClick={() => setRightPanelTab(tab)}
+                style={{
+                  flex: 1,
+                  padding: 'var(--space-3) 0',
+                  background: 'none',
+                  border: 'none',
+                  borderBottom: rightPanelTab === tab ? '2px solid var(--color-accent)' : '2px solid transparent',
+                  color: rightPanelTab === tab ? 'var(--color-accent)' : 'var(--color-text-secondary)',
+                  fontWeight: rightPanelTab === tab ? '600' : '400',
+                  fontSize: '13px',
+                  cursor: 'pointer',
+                  textTransform: 'capitalize'
+                }}
+              >
+                {tab === 'info' ? '信息' : tab === 'notebook' ? `笔记 (${highlights.length})` : 'AI助手'}
+              </button>
+            ))}
+          </div>
+          <button
+            className="btn-icon"
+            onClick={() => setRightPanelTab(null)}
+            title="关闭侧边面板"
+            style={{ width: '28px', height: '28px', flexShrink: 0, marginLeft: '6px' }}
+          >
+            <X size={15} />
+          </button>
         </div>
 
         {/* Tab Content Container */}

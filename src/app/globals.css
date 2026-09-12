@@ -992,6 +992,9 @@ textarea:focus {
   -webkit-backdrop-filter: blur(12px);
   z-index: 10;
   -webkit-app-region: drag; /* 允许拖动窗口 */
+  flex-wrap: nowrap;
+  overflow: visible;
+  gap: var(--space-3);
 }
 
 .reading-header button,
@@ -1005,12 +1008,55 @@ textarea:focus {
   display: flex;
   align-items: center;
   gap: var(--space-3);
+  flex-wrap: nowrap;
+  min-width: 0;
+  overflow: hidden;
+  flex: 1;
 }
 
 .reading-header-right {
   display: flex;
   align-items: center;
   gap: var(--space-2);
+  flex-wrap: nowrap;
+  flex-shrink: 0;
+}
+
+/* 更多操作菜单项样式 */
+.more-menu-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 6px 10px;
+  border-radius: var(--radius-sm, 6px);
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: var(--text-xs, 12px);
+  color: var(--color-text-primary);
+  width: 100%;
+  text-align: left;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.more-menu-item:hover {
+  background-color: var(--color-bg-secondary, rgba(0, 0, 0, 0.05));
+  color: var(--color-accent);
+}
+
+.more-menu-item.active {
+  color: var(--color-accent);
+  background-color: rgba(99, 102, 241, 0.08);
+  font-weight: 500;
+}
+
+.more-menu-item.danger {
+  color: var(--color-danger, #ef4444);
+}
+
+.more-menu-item.danger:hover {
+  background-color: rgba(239, 68, 68, 0.08);
+  color: var(--color-danger, #ef4444);
 }
 
 .reading-content {
