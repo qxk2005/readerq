@@ -6,7 +6,7 @@ const ThemeContext = createContext(null);
 
 export function ThemeProvider({ children }) {
   const [isInitialized, setIsInitialized] = useState(false);
-  const [theme, setThemeState] = useState('dark');
+  const [theme, setThemeState] = useState('light');
   const [fontSize, setFontSize] = useState(17);
   const [lineHeight, setLineHeight] = useState(1.8);
   const [contentWidth, setContentWidth] = useState(720);
@@ -137,7 +137,7 @@ export function ThemeProvider({ children }) {
   }, []);
 
   const resetAppearance = useCallback(() => {
-    setThemeState('dark');
+    setThemeState('light');
     setFontSize(17);
     setLineHeight(1.8);
     setContentWidth(720);

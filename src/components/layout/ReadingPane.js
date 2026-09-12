@@ -1532,11 +1532,13 @@ export default function ReadingPane() {
 
     return (
       <div className="reading-panel">
-        <div className="empty-state">
-          <div className="empty-state-icon"><BookOpen size={48} strokeWidth={1} /></div>
-          <div className="empty-state-title">选择一篇文章开始阅读</div>
-          <div className="empty-state-description">
-            从左侧列表中选择一篇文章，或使用 Cmd+K 打开命令面板
+        <div className="reading-paper-card empty-paper-card">
+          <div className="empty-state">
+            <div className="empty-state-icon"><BookOpen size={48} strokeWidth={1} /></div>
+            <div className="empty-state-title">选择一篇文章开始阅读</div>
+            <div className="empty-state-description">
+              从左侧列表中选择一篇文章，或使用 Cmd+K 打开命令面板
+            </div>
           </div>
         </div>
       </div>
@@ -1742,8 +1744,8 @@ export default function ReadingPane() {
           userSelect: isResizingRightPanel ? 'none' : undefined
         }}
       >
-        {/* 左侧主显示区，包含固定头部和滚动正文 */}
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
+        {/* 左侧主显示区，包含固定头部和滚动正文 (苹果原生独立悬浮纸张卡片) */}
+        <div className="reading-paper-card">
           {/* 固定头部容器 */}
           <div className="article-sticky-header" style={{ display: 'flex', flexDirection: 'column', flexShrink: 0, zIndex: 100 }}>
             {/* 阅读头部 */}
@@ -2382,8 +2384,6 @@ export default function ReadingPane() {
             style={{ 
               width: `${rightPanelWidth}px`, 
               minWidth: `${rightPanelWidth}px`, 
-              borderLeft: '1px solid var(--color-border)', 
-              backgroundColor: 'var(--color-bg-secondary)', 
               display: 'flex', 
               flexDirection: 'column', 
               overflowY: 'hidden' 
