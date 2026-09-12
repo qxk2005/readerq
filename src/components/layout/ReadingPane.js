@@ -1734,6 +1734,7 @@ export default function ReadingPane() {
       )}
 
       <div 
+        className="reading-pane"
         style={{ 
           display: 'flex', 
           flexDirection: 'row', 

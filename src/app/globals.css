@@ -302,33 +302,43 @@ textarea:focus {
 }
 
 .platform-darwin .app-layout,
-.platform-darwin .sidebar,
-.platform-darwin .doclist-panel,
-.platform-darwin .reading-pane {
+.platform-darwin .sidebar {
   height: 100vh !important;
 }
 
-/* macOS 侧边栏 Header 增加顶部留白避开左上角红绿灯 (trafficLightPosition: { x: 16, y: 18 }) */
+/* 顶部专属红绿灯拖拽条 (Window Top Drag Strip) */
+.sidebar-top-drag-strip {
+  width: 100%;
+  height: 38px;
+  -webkit-app-region: drag;
+  flex-shrink: 0;
+  cursor: default;
+}
+
+.platform-darwin .sidebar-top-drag-strip {
+  height: 38px;
+}
+
+/* macOS 侧边栏 Header：红绿灯独立占用 top-drag-strip，下方 header 高度自然对齐 */
 .platform-darwin .sidebar-header {
-  padding-top: 34px;
-  min-height: 74px;
+  padding-top: 0;
+  min-height: 48px;
 }
 
 .platform-darwin .sidebar.collapsed .sidebar-header {
-  padding-top: 34px;
-  padding-left: 0;
-  padding-right: 0;
+  padding-top: 0;
+  min-height: 48px;
 }
 
-/* macOS 中间文档列表 Header 与右侧阅读区 Header 高度与留白与侧边栏完美对齐 */
+/* macOS 中间文档列表 Header 与正文 Header 保持统一 10px 悬浮顶基线 */
 .platform-darwin .doclist-header {
-  padding-top: 34px;
-  min-height: 74px;
+  padding-top: var(--space-4);
+  min-height: 52px;
 }
 
 .platform-darwin .reading-header {
-  padding-top: 34px;
-  min-height: 74px;
+  padding-top: 0;
+  min-height: 52px;
 }
 
 .daily-review-header,
@@ -422,52 +432,83 @@ textarea:focus {
 .sidebar-nav {
   flex: 1;
   overflow-y: auto;
-  padding: var(--space-2) var(--space-2);
+  overflow-x: hidden;
+  padding: 6px 0 16px 0;
 }
 
-.sidebar-section {
-  margin-bottom: var(--space-2);
+/* 侧边栏分段现代卡片分组 (Modern Segmented Group Cards) */
+.sidebar-group-card {
+  background: rgba(255, 255, 255, 0.45);
+  border: 1px solid rgba(0, 0, 0, 0.05);
+  border-radius: var(--radius-md, 10px);
+  padding: 4px;
+  margin: 0 10px 12px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
+  transition: all var(--transition-fast);
 }
 
-.sidebar-section-title {
-  font-size: var(--text-xs);
+[data-theme='dark'] .sidebar-group-card {
+  background: rgba(255, 255, 255, 0.035);
+  border-color: rgba(255, 255, 255, 0.06);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.sidebar.collapsed .sidebar-group-card {
+  margin: 0 4px 10px 4px;
+  padding: 4px 2px;
+  align-items: center;
+}
+
+.sidebar-group-title {
+  font-size: 10px;
   font-weight: 600;
   color: var(--color-text-tertiary);
   text-transform: uppercase;
-  letter-spacing: 0.08em;
-  padding: var(--space-3) var(--space-3) var(--space-1);
+  letter-spacing: 0.06em;
+  padding: 5px 8px 3px 8px;
+  user-select: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }
 
 .sidebar-item {
   display: flex;
   align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-2) var(--space-3);
-  border-radius: var(--radius-md);
-  font-size: var(--text-sm);
+  gap: 9px;
+  padding: 6px 8px;
+  border-radius: var(--radius-sm, 7px);
+  font-size: 12.5px;
+  font-weight: 450;
   color: var(--color-text-secondary);
   cursor: pointer;
   transition: all var(--transition-fast);
   user-select: none;
   width: 100%;
   text-align: left;
+  border: none;
+  background: transparent;
 }
 
 .sidebar-item:hover {
-  background: var(--color-bg-hover);
+  background: var(--color-bg-hover, rgba(0, 0, 0, 0.04));
   color: var(--color-text-primary);
 }
 
 .sidebar-item.active {
-  background: var(--color-accent-light);
-  color: var(--color-accent);
-  font-weight: 500;
+  background: linear-gradient(135deg, rgba(0, 113, 227, 0.12) 0%, rgba(0, 113, 227, 0.06) 100%);
+  color: var(--color-accent, #0071e3);
+  font-weight: 600;
 }
 
 .sidebar-item-icon {
-  font-size: var(--text-base);
-  width: 20px;
-  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
   flex-shrink: 0;
 }
 
@@ -479,13 +520,14 @@ textarea:focus {
 }
 
 .sidebar-item-count {
-  font-size: var(--text-xs);
+  font-size: 10.5px;
   color: var(--color-text-tertiary);
   background: var(--color-bg-tertiary);
   padding: 1px 6px;
   border-radius: var(--radius-full);
-  min-width: 20px;
+  min-width: 18px;
   text-align: center;
+  font-weight: 500;
 }
 
 .sidebar-footer {
@@ -506,22 +548,36 @@ textarea:focus {
   gap: var(--space-3);
 }
 
-/* ---- 文档列表面板 ---- */
+/* ---- 文档列表面板 (苹果原生独立悬浮白卡纸卡片) ---- */
 .doclist-panel,
 .doclist-container {
   width: var(--doclist-width);
   min-width: var(--doclist-width);
-  height: 100%;
-  background: var(--color-bg-secondary);
-  border-right: 1px solid var(--color-border);
+  height: calc(100% - 20px) !important;
+  max-height: calc(100% - 20px);
+  margin: 10px 0;
+  background: var(--color-bg-primary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg, 14px);
+  box-shadow: var(--shadow-paper);
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  position: relative;
+  transition: width var(--transition-base), min-width var(--transition-base);
+}
+
+.platform-darwin .doclist-panel {
+  height: calc(100% - 20px) !important;
+  max-height: calc(100% - 20px);
+  margin: 10px 0;
 }
 
 .doclist-header {
   padding: var(--space-4) var(--space-4) var(--space-3);
   border-bottom: 1px solid var(--color-border-light);
+  border-top-left-radius: 13px;
+  border-top-right-radius: 13px;
   -webkit-app-region: drag; /* 允许拖动窗口 */
   position: relative;
   z-index: 25;
@@ -998,13 +1054,32 @@ textarea:focus {
   border-radius: var(--radius-lg, 14px);
   border: 1px solid var(--color-border);
   box-shadow: var(--shadow-paper);
-  margin: var(--space-3) var(--space-4) var(--space-3) var(--space-3);
+  margin: 10px;
   position: relative;
   transition: all var(--transition-base);
 }
 
+.reading-paper-card:not(:last-child) {
+  margin-right: 0;
+}
+
+/* 当左侧紧邻 resizer-bar (多栏列表模式) 时，左边距归零，由 10px resizer-bar 充当间隙 */
+.resizer-bar + .reading-panel .reading-paper-card,
+.resizer-bar + div .reading-paper-card {
+  margin-left: 0;
+}
+
 .platform-darwin .reading-paper-card {
-  margin: 10px 16px 14px 10px;
+  margin: 10px;
+}
+
+.platform-darwin .reading-paper-card:not(:last-child) {
+  margin-right: 0;
+}
+
+.platform-darwin .resizer-bar + .reading-panel .reading-paper-card,
+.platform-darwin .resizer-bar + div .reading-paper-card {
+  margin-left: 0;
 }
 
 .reading-paper-card .reading-header {
@@ -1026,19 +1101,19 @@ textarea:focus {
   justify-content: center;
 }
 
-/* 侧边面板 (Info, Notebook, Chat) 悬浮卡片适配 */
+/* 侧边面板 (Info, Notebook, Chat) 悬浮卡片适配 - 10px 原生等距网格 */
 .right-sidebar {
   background: var(--color-bg-primary) !important;
   border-radius: var(--radius-lg, 14px);
   border: 1px solid var(--color-border) !important;
   box-shadow: var(--shadow-paper);
-  margin: var(--space-3) var(--space-4) var(--space-3) 0;
+  margin: 10px 10px 10px 0;
   overflow: hidden;
   transition: width var(--transition-base);
 }
 
 .platform-darwin .right-sidebar {
-  margin: 10px 16px 14px 0;
+  margin: 10px 10px 10px 0;
 }
 
 .reading-header {
@@ -2148,21 +2223,35 @@ mark.highlight-color.red {
   animation: progress-complete-pulse 1s ease-out;
 }
 
-/* ========== 拖拽栏样式 (Resizer Bar) ========== */
+/* ========== 拖拽栏样式 (Resizer Bar) - 填充 10px 间隙 ========== */
 .resizer-bar {
   position: relative;
-  width: 6px;
-  margin: 0 -3px;
+  width: 10px;
+  margin: 0;
   z-index: 40;
   cursor: col-resize;
   flex-shrink: 0;
   background: transparent;
-  transition: background-color 0.15s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all var(--transition-fast);
 }
 
-.resizer-bar:hover,
-.resizer-bar.dragging {
-  background: var(--color-accent);
+.resizer-bar::after {
+  content: '';
+  width: 2px;
+  height: 36px;
+  border-radius: 1px;
+  background: transparent;
+  transition: all 0.18s ease;
+}
+
+.resizer-bar:hover::after,
+.resizer-bar.dragging::after {
+  background: var(--color-accent, #0071e3);
+  height: 64px;
+  box-shadow: 0 0 6px rgba(0, 113, 227, 0.4);
 }
 
 /* =============================================

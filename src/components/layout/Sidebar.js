@@ -37,13 +37,11 @@ export default function Sidebar({ width }) {
   } = useApp();
   const { theme, toggleTheme } = useTheme();
 
-  const locations = [
+  const libraryLocations = [
     { key: 'new', icon: LOCATION_ICONS_SVG.new, label: LOCATION_LABELS.new },
     { key: 'later', icon: LOCATION_ICONS_SVG.later, label: LOCATION_LABELS.later },
     { key: 'shortlist', icon: LOCATION_ICONS_SVG.shortlist, label: LOCATION_LABELS.shortlist },
     { key: 'archive', icon: LOCATION_ICONS_SVG.archive, label: LOCATION_LABELS.archive },
-    { key: 'feed', icon: LOCATION_ICONS_SVG.feed, label: LOCATION_LABELS.feed },
-    { key: 'trash', icon: LOCATION_ICONS_SVG.trash, label: LOCATION_LABELS.trash },
   ];
 
   const categories = [
@@ -61,11 +59,16 @@ export default function Sidebar({ width }) {
       className={`sidebar ${sidebarCollapsed ? 'collapsed' : ''}`}
       style={(!sidebarCollapsed && width) ? { width: `${width}px`, minWidth: `${width}px` } : {}}
     >
+      {/* 顶部专属红绿灯拖拽区 (Window Top Drag Strip: 38px) */}
+      <div className="sidebar-top-drag-strip" />
+
+      {/* 品牌与侧栏控制头 */}
       <div className="sidebar-header" style={{
         display: 'flex',
         alignItems: 'center',
         justifyContent: sidebarCollapsed ? 'center' : 'space-between',
         width: '100%',
+        padding: sidebarCollapsed ? '0 8px 6px' : '0 12px 8px',
         boxSizing: 'border-box'
       }}>
         {!sidebarCollapsed ? (
@@ -74,23 +77,35 @@ export default function Sidebar({ width }) {
             <div className="sidebar-logo" style={{
               display: 'flex',
               alignItems: 'center',
-              gap: '10px',
-              fontWeight: '750',
-              fontSize: '1.25rem',
-              letterSpacing: '-0.035em',
+              gap: '8px',
+              fontWeight: '700',
+              fontSize: '1.2rem',
+              letterSpacing: '-0.03em',
               color: 'var(--color-text-primary)',
               fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "Inter", sans-serif',
               userSelect: 'none'
             }}>
-              <ReaderQLogoSymbol size={28} />
+              <ReaderQLogoSymbol size={26} />
               <span style={{ color: 'var(--color-text-primary)' }}>ReaderQ</span>
+              <span style={{
+                fontSize: '9.5px',
+                fontWeight: '700',
+                padding: '1px 5px',
+                borderRadius: '4px',
+                background: 'linear-gradient(135deg, rgba(0, 113, 227, 0.15), rgba(0, 113, 227, 0.08))',
+                color: 'var(--color-accent)',
+                letterSpacing: '0.04em',
+                border: '1px solid rgba(0, 113, 227, 0.2)'
+              }}>
+                PRO
+              </span>
             </div>
 
             {/* 同一行右侧有收拢左侧栏按钮以及加号添加按钮 */}
             <div style={{
               display: 'flex',
               alignItems: 'center',
-              gap: '6px'
+              gap: '4px'
             }}>
               {/* 收拢左侧栏按钮 */}
               <button
@@ -133,16 +148,12 @@ export default function Sidebar({ width }) {
                   padding: '0'
                 }}
               >
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                  <circle cx="12" cy="12" r="10" />
-                  <path d="M12 8v8" />
-                  <path d="M8 12h8" />
-                </svg>
+                <Plus size={18} />
               </button>
             </div>
           </>
         ) : (
-          /* 折叠状态下只显示一个展开按钮，避开 macOS 红绿灯已在 globals.css 中处理 */
+          /* 折叠状态下只显示一个展开按钮 */
           <button
             className="btn-icon add-doc-btn-header"
             onClick={() => setSidebarCollapsed(false)}
@@ -166,15 +177,14 @@ export default function Sidebar({ width }) {
         )}
       </div>
 
-
       <nav className="sidebar-nav">
-        {/* 主导航 */}
-        <div className="sidebar-section">
-          {!sidebarCollapsed && <div className="sidebar-section-title">导航</div>}
+        {/* 分组一：收件与书库 (INBOX & LIBRARY) */}
+        <div className="sidebar-group-card">
           {/* 首页瀑布流按钮 */}
           <button
             className={`sidebar-item ${currentView === 'home' ? 'active' : ''}`}
             onClick={() => switchView('home')}
+            data-tooltip={sidebarCollapsed ? "首页" : undefined}
           >
             <span className="sidebar-item-icon"><Compass size={16} /></span>
             {!sidebarCollapsed && (
@@ -185,6 +195,7 @@ export default function Sidebar({ width }) {
           <button
             className={`sidebar-item ${currentView === 'all' && !currentCategory && !currentTag ? 'active' : ''}`}
             onClick={() => switchView('all')}
+            data-tooltip={sidebarCollapsed ? "全部" : undefined}
           >
             <span className="sidebar-item-icon"><Layers size={16} /></span>
             {!sidebarCollapsed && (
@@ -194,11 +205,13 @@ export default function Sidebar({ width }) {
               </>
             )}
           </button>
-          {locations.map(loc => (
+          {/* 收件箱、稍后阅读、短列表、归档 */}
+          {libraryLocations.map(loc => (
             <button
               key={loc.key}
               className={`sidebar-item ${currentView === loc.key && !currentCategory ? 'active' : ''}`}
               onClick={() => switchView(loc.key)}
+              data-tooltip={sidebarCollapsed ? loc.label : undefined}
             >
               <span className="sidebar-item-icon">{loc.icon}</span>
               {!sidebarCollapsed && (
@@ -211,56 +224,70 @@ export default function Sidebar({ width }) {
               )}
             </button>
           ))}
+        </div>
 
-          {/* 每日回顾 (Daily Review) 入口 */}
+        {/* 分组二：精读与探索 (EXPLORATION & DISCOVERY) */}
+        <div className="sidebar-group-card">
+          {/* 每日回顾 (Daily Review) */}
           <button
             className={`sidebar-item ${currentView === 'daily-review' ? 'active' : ''}`}
             onClick={() => switchView('daily-review')}
-            style={{
-              marginTop: '4px',
-              color: currentView === 'daily-review' ? 'var(--color-accent)' : 'inherit'
-            }}
+            data-tooltip={sidebarCollapsed ? "每日回顾" : undefined}
           >
             <span className="sidebar-item-icon" style={{ color: '#ff9500' }}>
               <Sparkles size={16} />
             </span>
             {!sidebarCollapsed && (
               <>
-                <span className="sidebar-item-label" style={{ fontWeight: '600' }}>每日回顾</span>
-                <span className="sidebar-item-count" style={{ background: 'rgba(255, 149, 0, 0.15)', color: '#ff9500', fontWeight: '700' }}>Review</span>
+                <span className="sidebar-item-label" style={{ fontWeight: '500' }}>每日回顾</span>
+                <span className="sidebar-item-count" style={{ background: 'rgba(255, 149, 0, 0.12)', color: '#ff9500', fontWeight: '700' }}>Review</span>
               </>
             )}
           </button>
 
-          {/* 禅阅读 (Zen Read) AI 抽卡推荐入口 */}
+          {/* 禅阅读 (Zen Read) */}
           <button
             className={`sidebar-item ${currentView === 'zen-read' ? 'active' : ''}`}
             onClick={() => switchView('zen-read')}
-            style={{
-              marginTop: '4px',
-              color: currentView === 'zen-read' ? '#8b5cf6' : 'inherit'
-            }}
+            data-tooltip={sidebarCollapsed ? "禅阅读" : undefined}
           >
             <span className="sidebar-item-icon" style={{ color: '#8b5cf6' }}>
               <Wand2 size={16} />
             </span>
             {!sidebarCollapsed && (
               <>
-                <span className="sidebar-item-label" style={{ fontWeight: '600' }}>禅阅读</span>
-                <span className="sidebar-item-count" style={{ background: 'rgba(139, 92, 246, 0.15)', color: '#8b5cf6', fontWeight: '700' }}>Zen</span>
+                <span className="sidebar-item-label" style={{ fontWeight: '500' }}>禅阅读</span>
+                <span className="sidebar-item-count" style={{ background: 'rgba(139, 92, 246, 0.12)', color: '#8b5cf6', fontWeight: '700' }}>Zen</span>
+              </>
+            )}
+          </button>
+
+          {/* 订阅源 (Feed) */}
+          <button
+            className={`sidebar-item ${currentView === 'feed' && !currentCategory ? 'active' : ''}`}
+            onClick={() => switchView('feed')}
+            data-tooltip={sidebarCollapsed ? LOCATION_LABELS.feed : undefined}
+          >
+            <span className="sidebar-item-icon">{LOCATION_ICONS_SVG.feed}</span>
+            {!sidebarCollapsed && (
+              <>
+                <span className="sidebar-item-label">{LOCATION_LABELS.feed}</span>
+                {stats.byLocation?.['feed'] > 0 && (
+                  <span className="sidebar-item-count">{stats.byLocation['feed']}</span>
+                )}
               </>
             )}
           </button>
         </div>
 
-        {/* 类别筛选 */}
-        <div className="sidebar-section">
-          {!sidebarCollapsed && <div className="sidebar-section-title">类别</div>}
+        {/* 分组三：内容载体 (FORMATS & MEDIA) */}
+        <div className="sidebar-group-card">
           {categories.map(cat => (
             <button
               key={cat.key}
               className={`sidebar-item ${currentCategory === cat.key ? 'active' : ''}`}
               onClick={() => switchCategory(cat.key)}
+              data-tooltip={sidebarCollapsed ? cat.label : undefined}
             >
               <span className="sidebar-item-icon">{cat.icon}</span>
               {!sidebarCollapsed && (
@@ -275,39 +302,54 @@ export default function Sidebar({ width }) {
           ))}
         </div>
 
-        {/* 标签 Section (只显示最近使用的 4 个标签，最后一行是固定的标签管理按钮) */}
-        {tags.length > 0 && (
-          <div className="sidebar-section">
-            {!sidebarCollapsed && (
-              <div className="sidebar-section-title">
-                <span>最近标签</span>
-              </div>
-            )}
-            {tags.slice(0, 4).map(tag => (
-              <button
-                key={tag.key}
-                className={`sidebar-item ${currentTag === tag.key ? 'active' : ''}`}
-                onClick={() => switchTag(tag.key)}
-              >
-                <span className="sidebar-item-icon"><Tag size={16} /></span>
-                {!sidebarCollapsed && <span className="sidebar-item-label">{tag.name}</span>}
-              </button>
-            ))}
-
-            {/* 最后一行固定的标签管理按钮 */}
+        {/* 分组四：知识网络 (KNOWLEDGE & SYSTEM) */}
+        <div className="sidebar-group-card">
+          {tags.slice(0, 4).map(tag => (
             <button
-              className="sidebar-item"
-              onClick={() => setShowTagsManager(true)}
-              data-tooltip={sidebarCollapsed ? "管理所有标签" : undefined}
-              style={{ color: 'var(--color-text-secondary)', marginTop: '2px' }}
+              key={tag.key}
+              className={`sidebar-item ${currentTag === tag.key ? 'active' : ''}`}
+              onClick={() => switchTag(tag.key)}
+              data-tooltip={sidebarCollapsed ? tag.name : undefined}
             >
-              <span className="sidebar-item-icon"><SlidersHorizontal size={16} /></span>
-              {!sidebarCollapsed && (
-                <span className="sidebar-item-label" style={{ fontWeight: '500' }}>标签管理...</span>
-              )}
+              <span className="sidebar-item-icon"><Tag size={15} /></span>
+              {!sidebarCollapsed && <span className="sidebar-item-label">{tag.name}</span>}
             </button>
-          </div>
-        )}
+          ))}
+
+          {/* 标签管理按钮 */}
+          <button
+            className="sidebar-item"
+            onClick={() => setShowTagsManager(true)}
+            data-tooltip={sidebarCollapsed ? "管理所有标签" : undefined}
+            style={{ color: 'var(--color-text-secondary)' }}
+          >
+            <span className="sidebar-item-icon"><SlidersHorizontal size={15} /></span>
+            {!sidebarCollapsed && (
+              <span className="sidebar-item-label" style={{ fontWeight: '450' }}>标签管理...</span>
+            )}
+          </button>
+
+          {/* 垃圾箱 (系统回收站，安全收纳在知识网络组末尾) */}
+          <button
+            className={`sidebar-item ${currentView === 'trash' && !currentCategory ? 'active' : ''}`}
+            onClick={() => switchView('trash')}
+            data-tooltip={sidebarCollapsed ? LOCATION_LABELS.trash : undefined}
+            style={{
+              marginTop: '2px',
+              color: currentView === 'trash' ? 'var(--color-danger)' : 'var(--color-text-tertiary)'
+            }}
+          >
+            <span className="sidebar-item-icon" style={{ opacity: 0.85 }}>{LOCATION_ICONS_SVG.trash}</span>
+            {!sidebarCollapsed && (
+              <>
+                <span className="sidebar-item-label">{LOCATION_LABELS.trash}</span>
+                {stats.byLocation?.['trash'] > 0 && (
+                  <span className="sidebar-item-count">{stats.byLocation['trash']}</span>
+                )}
+              </>
+            )}
+          </button>
+        </div>
       </nav>
 
       <div className="sidebar-footer">
