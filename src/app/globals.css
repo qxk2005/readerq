@@ -337,8 +337,8 @@ textarea:focus {
 }
 
 .platform-darwin .reading-header {
-  padding-top: 0;
-  min-height: 52px;
+  padding: 10px var(--space-6);
+  min-height: 50px;
 }
 
 .daily-review-header,
@@ -1120,9 +1120,9 @@ textarea:focus {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: var(--space-3) var(--space-6);
+  padding: 10px var(--space-6);
   border-bottom: 1px solid var(--color-border-light);
-  min-height: 52px;
+  min-height: 50px;
   background: var(--color-bg-glass);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
@@ -2142,74 +2142,44 @@ mark.highlight-color.red {
   box-shadow: 0 0 16px rgba(129, 140, 248, 0.15);
 }
 
-/* ========== 阅读进度条 ========== */
-.reading-progress-container {
+/* ========== 极细贴合阅读进度条 (节省正文垂直空间) ========== */
+.reading-slim-progress-bar {
   position: relative;
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  padding: 6px var(--space-4);
-  background: var(--color-bg-primary);
-  border-bottom: 1px solid var(--color-border);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  transition: opacity 0.3s ease;
-  min-height: 28px;
-}
-
-.reading-progress-bar {
-  flex: 1;
-  height: 3px;
-  background: var(--color-bg-tertiary);
-  border-radius: 2px;
+  width: 100%;
+  height: 2.5px;
+  background: var(--color-bg-tertiary, rgba(0, 0, 0, 0.06));
   overflow: hidden;
-  position: relative;
+  flex-shrink: 0;
+  z-index: 20;
 }
 
-.reading-progress-fill {
+.reading-slim-progress-bar .reading-progress-fill {
   height: 100%;
-  border-radius: 2px;
   background: linear-gradient(90deg, var(--color-accent), var(--color-accent-hover, #818cf8));
   transition: width 0.15s ease-out;
   position: relative;
 }
 
-/* 进度条末端的发光点 */
-.reading-progress-fill::after {
+/* 进度条末端的精致微发光点 */
+.reading-slim-progress-bar .reading-progress-fill::after {
   content: '';
   position: absolute;
   right: 0;
   top: 50%;
   transform: translateY(-50%);
-  width: 6px;
-  height: 6px;
+  width: 5px;
+  height: 5px;
   border-radius: 50%;
   background: var(--color-accent);
   box-shadow: 0 0 6px var(--color-accent);
-  opacity: 0.8;
+  opacity: 0.85;
   transition: opacity 0.3s ease;
 }
 
 /* 进度为 0 或 100% 时隐藏发光点 */
-.reading-progress-fill[data-progress="0"]::after,
-.reading-progress-fill[data-progress="100"]::after {
+.reading-slim-progress-bar .reading-progress-fill[data-progress="0"]::after,
+.reading-slim-progress-bar .reading-progress-fill[data-progress="100"]::after {
   opacity: 0;
-}
-
-.reading-progress-text {
-  font-size: 11px;
-  font-variant-numeric: tabular-nums;
-  color: var(--color-text-tertiary);
-  white-space: nowrap;
-  min-width: 36px;
-  text-align: right;
-  user-select: none;
-  transition: color 0.3s ease;
-}
-
-/* 完成状态 */
-.reading-progress-text.completed {
-  color: var(--color-success, #22c55e);
 }
 
 @keyframes progress-complete-pulse {
@@ -2218,7 +2188,7 @@ mark.highlight-color.red {
   100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); }
 }
 
-.reading-progress-fill.completed {
+.reading-slim-progress-bar .reading-progress-fill.completed {
   background: linear-gradient(90deg, var(--color-success, #22c55e), #4ade80);
   animation: progress-complete-pulse 1s ease-out;
 }

@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useApp } from '@/context/AppContext';
 import { useTheme } from '@/context/ThemeContext';
-import { formatDate, extractDomain, CATEGORY_LABELS } from '@/lib/utils';
+import { formatDate, extractDomain, CATEGORY_LABELS, formatLanguage } from '@/lib/utils';
 import { getTextOffset, restoreHighlights } from '@/lib/highlight';
 import { useTts } from '@/lib/useTts';
 import GhostReader from '@/components/ai/GhostReader';
@@ -1796,9 +1796,20 @@ export default function ReadingPane() {
               {CATEGORY_LABELS[selectedDoc.category] || selectedDoc.category}
             </span>
           )}
-          {selectedDoc.reading_progress > 0 && (
-            <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-tertiary)' }}>
-              已读 {Math.round(selectedDoc.reading_progress * 100)}%
+          {Math.round(Math.max(readingProgress || 0, selectedDoc.reading_progress || 0) * 100) > 0 && (
+            <span
+              style={{
+                fontSize: 'var(--text-xs)',
+                color: Math.round(Math.max(readingProgress || 0, selectedDoc.reading_progress || 0) * 100) >= 100 ? 'var(--color-success, #34c759)' : 'var(--color-text-tertiary)',
+                fontWeight: Math.round(Math.max(readingProgress || 0, selectedDoc.reading_progress || 0) * 100) >= 100 ? 600 : 400,
+                transition: 'color 0.2s ease',
+                flexShrink: 0,
+                whiteSpace: 'nowrap'
+              }}
+            >
+              {Math.round(Math.max(readingProgress || 0, selectedDoc.reading_progress || 0) * 100) >= 100
+                ? '✓ 已读完'
+                : `已读 ${Math.round(Math.max(readingProgress || 0, selectedDoc.reading_progress || 0) * 100)}%`}
             </span>
           )}
           {!isDocVideo && (
@@ -2175,19 +2186,14 @@ export default function ReadingPane() {
         </div>
       </div>
       
-      {/* 阅读进度条 (已移动至功能区下方) */}
+      {/* 极细贴合阅读进度条 (紧贴功能区底线，高度 2.5px，释放正文垂直空间) */}
       {!isContentLoading && !isLoadingHighlights && selectedDoc?.html_content && (
-        <div className="reading-progress-container">
-          <div className="reading-progress-bar">
-            <div
-              className={`reading-progress-fill${Math.round(readingProgress * 100) >= 100 ? ' completed' : ''}`}
-              style={{ width: `${Math.round(readingProgress * 100)}%` }}
-              data-progress={Math.round(readingProgress * 100)}
-            />
-          </div>
-          <span className={`reading-progress-text${Math.round(readingProgress * 100) >= 100 ? ' completed' : ''}`}>
-            {Math.round(readingProgress * 100) >= 100 ? '✓ 已读完' : `${Math.round(readingProgress * 100)}%`}
-          </span>
+        <div className="reading-slim-progress-bar">
+          <div
+            className={`reading-progress-fill${Math.round(Math.max(readingProgress || 0, selectedDoc?.reading_progress || 0) * 100) >= 100 ? ' completed' : ''}`}
+            style={{ width: `${Math.round(Math.max(readingProgress || 0, selectedDoc?.reading_progress || 0) * 100)}%` }}
+            data-progress={Math.round(Math.max(readingProgress || 0, selectedDoc?.reading_progress || 0) * 100)}
+          />
         </div>
       )}
       </div> {/* Close article-sticky-header */}
@@ -2433,20 +2439,46 @@ export default function ReadingPane() {
             <div style={{ padding: 'var(--space-4)', paddingBottom: 'var(--space-8)' }}>
               {/* Metadata */}
               <div style={{ marginBottom: 'var(--space-6)' }}>
-                <h3 style={{ fontSize: '11px', fontWeight: '600', color: 'var(--color-text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 'var(--space-3)' }}>Metadata</h3>
-                <div style={{ fontSize: '12px', display: 'grid', gridTemplateColumns: '80px 1fr', gap: 'var(--space-2)', color: 'var(--color-text-secondary)' }}>
-                  <div>Type</div><div style={{color: 'var(--color-text-primary)'}}>{selectedDoc.category || 'Article'}</div>
-                  <div>Domain</div><div style={{color: 'var(--color-text-primary)'}}>{extractDomain(selectedDoc.url) || extractDomain(selectedDoc.source_url) || '-'}</div>
-                  <div>Published</div><div style={{color: 'var(--color-text-primary)'}}>{selectedDoc.published_date ? new Date(selectedDoc.published_date).toLocaleDateString() : '-'}</div>
-                  <div>Length</div><div style={{color: 'var(--color-text-primary)'}}>{selectedDoc.word_count ? `${selectedDoc.word_count} words` : '-'}</div>
-                  <div>Progress</div><div style={{color: 'var(--color-text-primary)'}}>{Math.round((selectedDoc.reading_progress || 0) * 100)}%</div>
-                  <div>Language</div><div style={{color: 'var(--color-text-primary)'}}>{selectedDoc.language || 'Chinese'}</div>
+                <h3 style={{ fontSize: '11px', fontWeight: '600', color: 'var(--color-text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 'var(--space-3)' }}>文章信息</h3>
+                <div style={{ fontSize: '12px', display: 'grid', gridTemplateColumns: '72px 1fr', gap: 'var(--space-2)', color: 'var(--color-text-secondary)', alignItems: 'baseline' }}>
+                  <div>标题</div>
+                  <div style={{ color: 'var(--color-text-primary)', fontWeight: 600, wordBreak: 'break-word', lineHeight: 1.4 }}>
+                    {selectedDoc.title || '无标题'}
+                  </div>
+                  <div>作者</div>
+                  <div style={{ color: 'var(--color-text-primary)', wordBreak: 'break-word' }}>
+                    {selectedDoc.author || '-'}
+                  </div>
+                  <div>类型</div>
+                  <div style={{ color: 'var(--color-text-primary)' }}>
+                    {CATEGORY_LABELS[selectedDoc.category] || selectedDoc.category || '文章'}
+                  </div>
+                  <div>来源网站</div>
+                  <div style={{ color: 'var(--color-text-primary)', wordBreak: 'break-all' }}>
+                    {extractDomain(selectedDoc.url) || extractDomain(selectedDoc.source_url) || '-'}
+                  </div>
+                  <div>发布时间</div>
+                  <div style={{ color: 'var(--color-text-primary)' }}>
+                    {selectedDoc.published_date ? new Date(selectedDoc.published_date).toLocaleDateString() : '-'}
+                  </div>
+                  <div>字数</div>
+                  <div style={{ color: 'var(--color-text-primary)' }}>
+                    {selectedDoc.word_count ? `${selectedDoc.word_count} 字` : '-'}
+                  </div>
+                  <div>阅读进度</div>
+                  <div style={{ color: 'var(--color-text-primary)' }}>
+                    {Math.round(Math.max(readingProgress || 0, selectedDoc.reading_progress || 0) * 100)}%
+                  </div>
+                  <div>语言</div>
+                  <div style={{ color: 'var(--color-text-primary)' }}>
+                    {formatLanguage(selectedDoc.language)}
+                  </div>
                 </div>
               </div>
               
               {/* Document Tags */}
               <div style={{ marginTop: 'var(--space-6)' }}>
-                <h3 style={{ fontSize: '11px', fontWeight: '600', color: 'var(--color-text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 'var(--space-3)' }}>Document Tags</h3>
+                <h3 style={{ fontSize: '11px', fontWeight: '600', color: 'var(--color-text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 'var(--space-3)' }}>文档标签</h3>
                 <TagInput 
                   value={docTags}
                   onChange={handleTagsChange}

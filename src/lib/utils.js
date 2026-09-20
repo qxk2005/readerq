@@ -266,3 +266,20 @@ export const HIGHLIGHT_COLORS = [
   { name: '红色', value: '#fecaca', key: 'red' },
 ];
 
+/**
+ * 语言代码/名称地道中文化
+ */
+export function formatLanguage(lang) {
+  if (!lang) return '中文';
+  const l = String(lang).trim().toLowerCase();
+  if (l.includes('zh') || l.includes('chin')) return '中文';
+  if (l.includes('en')) return '英文';
+  if (l.includes('ja') || l.includes('jp')) return '日文';
+  if (l.includes('ko') || l.includes('kr')) return '韩文';
+  if (l.includes('fr')) return '法文';
+  if (l.includes('de')) return '德文';
+  if (l.includes('es')) return '西班牙文';
+  if (l.includes('ru')) return '俄文';
+  return lang;
+}
+
