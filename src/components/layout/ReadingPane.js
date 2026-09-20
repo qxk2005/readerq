@@ -89,6 +89,7 @@ export default function ReadingPane() {
   const [sidebarEditNote, setSidebarEditNote] = useState('');
   const [sidebarEditTags, setSidebarEditTags] = useState([]);
   const [shareCopied, setShareCopied] = useState(false);
+  const [urlCopied, setUrlCopied] = useState(false);
   const [videoTabMode, setVideoTabMode] = useState('subtitle'); // 'subtitle' | 'blog'
   const [readingTabMode, setReadingTabMode] = useState('text'); // 'text' | 'blog'
   const [generalBlogContent, setGeneralBlogContent] = useState('');
@@ -140,6 +141,7 @@ export default function ReadingPane() {
     setPreviewDrawerOpen(false);
     setHighlightSourceFilter('all');
     setIsMoreMenuOpen(false);
+    setUrlCopied(false);
     setGeneralBlogContent(selectedDoc?.blog_content || '');
     lastGeneratedBlogRef.current = selectedDoc?.blog_content || '';
     setBlogStreamProgress('');
@@ -2456,6 +2458,69 @@ export default function ReadingPane() {
                   <div>来源网站</div>
                   <div style={{ color: 'var(--color-text-primary)', wordBreak: 'break-all' }}>
                     {extractDomain(selectedDoc.url) || extractDomain(selectedDoc.source_url) || '-'}
+                  </div>
+                  <div>原始地址</div>
+                  <div style={{ color: 'var(--color-text-primary)', minWidth: 0 }}>
+                    {(selectedDoc.source_url || selectedDoc.url) ? (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0 }}>
+                        <a
+                          href={selectedDoc.source_url || selectedDoc.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          style={{
+                            color: 'var(--color-text-link, #0071e3)',
+                            textDecoration: 'none',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                            maxWidth: '145px',
+                            fontSize: '12px'
+                          }}
+                          title={`在新标签页打开: ${selectedDoc.source_url || selectedDoc.url}`}
+                        >
+                          {selectedDoc.source_url || selectedDoc.url}
+                        </a>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const rawUrl = selectedDoc.source_url || selectedDoc.url;
+                            navigator.clipboard.writeText(rawUrl).then(() => {
+                              setUrlCopied(true);
+                              setTimeout(() => setUrlCopied(false), 2000);
+                            }).catch(err => console.error('复制失败:', err));
+                          }}
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '3px',
+                            padding: '2px 7px',
+                            borderRadius: '4px',
+                            border: '1px solid var(--color-border)',
+                            backgroundColor: urlCopied ? 'rgba(52, 199, 89, 0.12)' : 'var(--color-bg-secondary)',
+                            color: urlCopied ? 'var(--color-success, #34c759)' : 'var(--color-text-secondary)',
+                            fontSize: '11px',
+                            cursor: 'pointer',
+                            flexShrink: 0,
+                            transition: 'all 0.15s ease'
+                          }}
+                          title="点击复制原始链接"
+                        >
+                          {urlCopied ? (
+                            <>
+                              <Check size={12} style={{ color: 'var(--color-success, #34c759)' }} />
+                              <span style={{ fontWeight: 500 }}>已复制</span>
+                            </>
+                          ) : (
+                            <>
+                              <Copy size={12} />
+                              <span>复制</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    ) : (
+                      <span style={{ color: 'var(--color-text-tertiary)' }}>-</span>
+                    )}
                   </div>
                   <div>发布时间</div>
                   <div style={{ color: 'var(--color-text-primary)' }}>
