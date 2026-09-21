@@ -12,7 +12,7 @@ import TagInput from '@/components/TagInput';
 import VideoReadingPane from '@/components/video/VideoReadingPane';
 import ParagraphPreviewDrawer from '@/components/common/ParagraphPreviewDrawer';
 import GeneralBlogArticleRenderer from '@/components/common/GeneralBlogArticleRenderer';
-import { BookOpen, Link, Info, Edit3, Bot, Loader2, ClipboardList, AlertTriangle, RefreshCw, CheckCircle2, XCircle, ImageIcon, Upload, Trash2, RotateCcw, Inbox, Clock, Archive, Volume2, Share2, Play, Pause, SkipBack, SkipForward, X, Copy, Check, ArrowUpDown, Target, ArrowLeft, Sparkles, FileText, Bookmark, MoreHorizontal, ExternalLink } from 'lucide-react';
+import { BookOpen, Link, Info, Edit3, Bot, Loader2, ClipboardList, AlertTriangle, RefreshCw, CheckCircle2, XCircle, ImageIcon, Upload, Trash2, RotateCcw, Inbox, Clock, Archive, Volume2, Share2, Play, Pause, SkipBack, SkipForward, X, Copy, Check, ArrowUpDown, Target, ArrowLeft, Sparkles, FileText, Bookmark, MoreHorizontal, ExternalLink, PanelLeftOpen } from 'lucide-react';
 import RssAiRecommendView from '@/components/home/RssAiRecommendView';
 
 const scrollToElement = (container, element) => {
@@ -60,7 +60,9 @@ export default function ReadingPane() {
     batchDeleteDocuments,
     currentView,
     currentCategory,
-    tags: allTags 
+    tags: allTags,
+    sidebarCollapsed,
+    setSidebarCollapsed,
   } = useApp();
   
   const { 
@@ -1754,6 +1756,27 @@ export default function ReadingPane() {
             {/* 阅读头部 */}
             <div className="reading-header">
         <div className="reading-header-left" style={{ minWidth: 0, overflow: 'hidden', flexWrap: 'nowrap' }}>
+          {sidebarCollapsed && (
+            <button
+              className="btn btn-ghost btn-sm"
+              onClick={() => setSidebarCollapsed(false)}
+              data-tooltip="展开左侧列表 (快捷键 [ )"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: '28px',
+                height: '28px',
+                padding: '0',
+                borderRadius: '6px',
+                marginRight: '6px',
+                flexShrink: 0,
+                color: 'var(--color-text-secondary)',
+              }}
+            >
+              <PanelLeftOpen size={16} />
+            </button>
+          )}
           {(isRssActive || selectedDoc.category === 'rss' || selectedDoc.location === 'feed' || selectedDoc.site_name) && (
             <button
               className="btn btn-ghost btn-sm"

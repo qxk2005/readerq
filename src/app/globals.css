@@ -780,24 +780,39 @@ textarea:focus {
   position: relative;
   height: 42px;
   padding: 6px 10px;
-  margin: 3px 2px;
+  margin: 3px 0;
   border-radius: 8px;
   display: flex;
   align-items: center;
   gap: 10px;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: background 0.15s ease, border-color 0.15s ease;
   border: 1px solid transparent;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
 }
 
 .doc-card-slim-item:hover {
   background: var(--color-bg-hover);
-  transform: translateX(2px);
 }
 
 .doc-card-slim-item.active {
   background: var(--color-accent-light);
   border-color: rgba(0, 122, 255, 0.25);
+}
+
+/* 鼠标悬停预览时条目保持一体化联动高亮 */
+.doc-card-slim-item.is-preview-active {
+  background: rgba(0, 122, 255, 0.08) !important;
+  border-color: rgba(0, 122, 255, 0.38) !important;
+  box-shadow: 0 0 0 1px rgba(0, 122, 255, 0.16);
+}
+
+.doc-card-slim-item.is-preview-active .doc-card-slim-title {
+  color: var(--color-accent) !important;
+  font-weight: 600;
 }
 
 .doc-card-slim-cover {
@@ -2818,3 +2833,637 @@ mark.highlight-color.red {
     transform: scale(1);
   }
 }
+
+/* ============================================
+   统一主面板 (Unified Sidebar & Document List)
+   ============================================ */
+
+.unified-sidebar-list {
+  height: 100% !important;
+  background: var(--color-bg-primary);
+  border-right: 1px solid var(--color-border);
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  overflow-x: hidden !important;
+  overflow-y: hidden;
+  box-sizing: border-box;
+  flex-shrink: 0;
+  z-index: 30;
+  transition: width var(--transition-base), min-width var(--transition-base);
+}
+
+.platform-darwin .unified-sidebar-list {
+  height: 100vh !important;
+}
+
+/* 顶部第一行：品牌 Logo、添加文章、收起侧栏 */
+.unified-header-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 14px 8px 14px;
+  -webkit-app-region: drag;
+  user-select: none;
+  flex-shrink: 0;
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+}
+
+.unified-header-top button,
+.unified-header-top a,
+.unified-header-top input {
+  -webkit-app-region: no-drag;
+}
+
+.pro-badge {
+  font-size: 9.5px;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: linear-gradient(135deg, rgba(0, 113, 227, 0.15), rgba(0, 113, 227, 0.08));
+  color: var(--color-accent);
+  letter-spacing: 0.04em;
+  border: 1px solid rgba(0, 113, 227, 0.2);
+  flex-shrink: 0;
+}
+
+.unified-top-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.header-action-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--color-text-secondary);
+  padding: 0;
+  transition: background var(--transition-fast), color var(--transition-fast);
+  flex-shrink: 0;
+}
+
+.header-action-btn:hover {
+  background: var(--color-bg-hover);
+  color: var(--color-text-primary);
+}
+
+/* CRM 视图三档切换组件 */
+.view-mode-toggle-group {
+  display: flex;
+  align-items: center;
+  background: var(--color-bg-tertiary);
+  padding: 2px;
+  border-radius: 8px;
+  border: 1px solid var(--color-border-light);
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.view-toggle-btn {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--color-text-tertiary);
+  padding: 0;
+  transition: all var(--transition-fast);
+  flex-shrink: 0;
+}
+
+.view-toggle-btn.active {
+  background: var(--color-bg-card);
+  color: var(--color-accent);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+.view-toggle-btn:hover:not(.active) {
+  color: var(--color-text-primary);
+}
+
+/* 顶部第二行：大胶囊下拉触发器与操作 */
+.unified-header-nav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 14px 8px 14px;
+  position: relative;
+  flex-shrink: 0;
+  box-sizing: border-box;
+  width: 100%;
+}
+
+/* 方案 B 原型风格的分类大卡片胶囊触发器 */
+.source-switcher-trigger {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 11px;
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  cursor: pointer;
+  text-align: left;
+  user-select: none;
+  transition: all 0.15s ease;
+  position: relative;
+}
+
+.source-switcher-trigger:hover {
+  background: var(--color-bg-tertiary);
+  border-color: var(--color-border);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
+}
+
+.source-switcher-trigger.active {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 2px rgba(0, 122, 255, 0.15);
+  background: var(--color-bg-primary);
+}
+
+.trigger-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-accent);
+  flex-shrink: 0;
+}
+
+.trigger-title {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.trigger-count {
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--color-text-tertiary);
+  white-space: nowrap;
+}
+
+.trigger-badge {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: rgba(0, 122, 255, 0.1);
+  color: var(--color-accent);
+}
+
+.trigger-chevron {
+  margin-left: auto;
+  color: var(--color-text-tertiary);
+  transition: transform 0.2s ease;
+  flex-shrink: 0;
+}
+
+.trigger-chevron.rotate {
+  transform: rotate(180deg);
+  color: var(--color-accent);
+}
+
+/* 搜索栏区 */
+.unified-search-toolbar {
+  padding: 0 14px 8px 14px;
+  flex-shrink: 0;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* 中间主要列表滚动内容区 */
+.unified-list-content {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden !important;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 2px 8px 8px 8px;
+}
+
+/* 底部常驻功能按钮行 (刷新、深色、向导、设置) */
+.unified-sidebar-footer {
+  padding: 8px 14px;
+  border-top: 1px solid var(--color-border-light);
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  background: var(--color-bg-primary);
+  flex-shrink: 0;
+  z-index: 10;
+  width: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.footer-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--color-text-secondary);
+  transition: all var(--transition-fast);
+}
+
+.footer-btn:hover {
+  background: var(--color-bg-hover);
+  color: var(--color-text-primary);
+}
+
+/* ============================================
+   分类下拉弹出层 (Source Switcher Popover)
+   ============================================ */
+
+.source-switcher-popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  width: 100%;
+  min-width: 250px;
+  max-width: 320px;
+  max-height: 480px;
+  background: var(--color-bg-primary);
+  border: 1px solid var(--color-border);
+  border-radius: 14px;
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.18), 0 2px 8px rgba(0, 0, 0, 0.06);
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  animation: popoverFadeIn 0.16s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes popoverFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.source-switcher-scroll-area {
+  flex: 1;
+  overflow-y: auto;
+  padding: 6px;
+}
+
+.popover-group {
+  padding-bottom: 6px;
+  margin-bottom: 6px;
+  border-bottom: 1px solid var(--color-border-light);
+}
+
+.popover-group-title {
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--color-text-tertiary);
+  padding: 4px 8px 4px 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.popover-item {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 7px 10px;
+  border-radius: 8px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--color-text-primary);
+  transition: all 0.12s ease;
+  gap: 9px;
+  text-align: left;
+}
+
+.popover-item:hover {
+  background: var(--color-bg-hover);
+}
+
+.popover-item.active {
+  background: rgba(0, 122, 255, 0.09);
+  color: var(--color-accent);
+  font-weight: 600;
+}
+
+.popover-item-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: inherit;
+  flex-shrink: 0;
+  opacity: 0.9;
+}
+
+.popover-item-label {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.popover-item-count {
+  font-size: 11px;
+  color: var(--color-text-tertiary);
+  font-weight: 500;
+}
+
+.popover-item.active .popover-item-count {
+  color: var(--color-accent);
+  opacity: 0.85;
+}
+
+.popover-item-check {
+  color: var(--color-accent);
+  margin-left: 2px;
+  flex-shrink: 0;
+}
+
+.popover-item-badge {
+  font-size: 9.5px;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+
+.popover-item-badge.review {
+  background: rgba(255, 149, 0, 0.14);
+  color: #ff9500;
+}
+
+.popover-item-badge.zen {
+  background: rgba(139, 92, 246, 0.14);
+  color: #8b5cf6;
+}
+
+.popover-item.secondary-action {
+  color: var(--color-text-secondary);
+  font-size: 12.5px;
+}
+
+.popover-item.trash {
+  color: var(--color-text-tertiary);
+}
+
+.popover-item.trash:hover {
+  color: var(--color-danger);
+  background: rgba(239, 68, 68, 0.08);
+}
+
+.popover-empty-tip {
+  font-size: 12px;
+  color: var(--color-text-tertiary);
+  padding: 4px 8px;
+}
+
+/* ============================================
+   特殊视图模块专属概览面板 (Module Overview Panel)
+   ============================================ */
+
+.module-overview-panel {
+  padding: 12px 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.overview-card {
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  padding: 14px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+}
+
+.overview-card.secondary {
+  background: transparent;
+  border: 1px dashed var(--color-border);
+  padding: 12px;
+}
+
+.overview-card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.overview-card-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.overview-card-desc {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  line-height: 1.5;
+  margin: 0 0 12px 0;
+}
+
+.overview-stats-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.stat-box {
+  background: var(--color-bg-primary);
+  border: 1px solid var(--color-border-light);
+  border-radius: 8px;
+  padding: 8px 10px;
+  text-align: center;
+}
+
+.stat-box-val {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--color-text-primary);
+}
+
+.stat-box-lbl {
+  font-size: 10.5px;
+  color: var(--color-text-tertiary);
+  margin-top: 2px;
+}
+
+.overview-quick-action {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  padding: 6px 10px;
+  margin-bottom: 4px;
+}
+
+.overview-quick-action:hover {
+  color: var(--color-accent);
+}
+
+/* ============================================
+   单行模式悬停预览 Portal 浮层 (Slim Doc Preview Portal)
+   挂载于 document.body，防截断并提供高品质玻璃拟态卡片
+   ============================================ */
+
+.slim-doc-preview-portal {
+  position: relative;
+  width: 310px;
+  background: var(--color-bg-primary);
+  border: 1px solid rgba(0, 122, 255, 0.35);
+  border-radius: 14px;
+  padding: 13px 15px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.22), 0 0 0 1px rgba(0, 122, 255, 0.18), 0 4px 16px rgba(0, 122, 255, 0.08);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  pointer-events: auto;
+  user-select: text;
+  animation: slimPreviewFadeIn 0.16s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* 精准指向左侧列表当前条目中心的一体化小指示尖角 */
+.preview-portal-arrow {
+  position: absolute;
+  left: -6px;
+  width: 10px;
+  height: 10px;
+  background: var(--color-bg-primary);
+  border-left: 1px solid rgba(0, 122, 255, 0.35);
+  border-bottom: 1px solid rgba(0, 122, 255, 0.35);
+  transform: translateY(-50%) rotate(45deg);
+  border-bottom-left-radius: 2px;
+  z-index: 10;
+  pointer-events: none;
+}
+
+@keyframes slimPreviewFadeIn {
+  from {
+    opacity: 0;
+    transform: translateX(-4px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}
+
+.preview-portal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.preview-domain-pill {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-accent);
+  background: rgba(0, 122, 255, 0.1);
+  padding: 2px 7px;
+  border-radius: 5px;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.preview-meta-pill {
+  font-size: 11px;
+  color: var(--color-text-tertiary);
+  font-weight: 500;
+}
+
+.preview-portal-title {
+  font-size: 13.5px;
+  font-weight: 600;
+  line-height: 1.45;
+  color: var(--color-text-primary);
+  word-break: break-word;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.preview-portal-summary {
+  font-size: 11.5px;
+  line-height: 1.55;
+  color: var(--color-text-secondary);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.preview-portal-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.preview-tag-item {
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--color-bg-tertiary);
+  color: var(--color-text-secondary);
+  border: 1px solid var(--color-border-light);
+  font-weight: 500;
+}
+
+.preview-portal-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 8px;
+  margin-top: 2px;
+  border-top: 1px solid var(--color-border-light);
+}
+
+.preview-date-text {
+  font-size: 11px;
+  color: var(--color-text-tertiary);
+}
+
+.preview-actions-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+

@@ -415,13 +415,10 @@ export function AppProvider({ children }) {
         setSidebarCollapsed(saved === 'true');
       }
       const savedMode = localStorage.getItem('readerq_doclist_mode');
-      if (savedMode && ['full', 'slim', 'micro'].includes(savedMode)) {
+      if (savedMode && ['full', 'slim'].includes(savedMode)) {
         setDocListMode(savedMode);
       } else {
-        const savedCompact = localStorage.getItem('readerq_doclist_compact');
-        if (savedCompact === 'true') {
-          setDocListMode('micro');
-        }
+        setDocListMode('full');
       }
     }
     fetch('/api/settings')
@@ -431,10 +428,8 @@ export function AppProvider({ children }) {
           if (data.ui_sidebar_collapsed !== undefined && data.ui_sidebar_collapsed !== '') {
             setSidebarCollapsed(data.ui_sidebar_collapsed === 'true');
           }
-          if (data.ui_doclist_mode && ['full', 'slim', 'micro'].includes(data.ui_doclist_mode)) {
+          if (data.ui_doclist_mode && ['full', 'slim'].includes(data.ui_doclist_mode)) {
             setDocListMode(data.ui_doclist_mode);
-          } else if (data.ui_doclist_compact === 'true') {
-            setDocListMode('micro');
           }
           // 自动检测是否为首次启动：如果未完成向导且缺少关键凭证，则触发配置向导
           const isCompleted = data.onboarding_completed === 'true';

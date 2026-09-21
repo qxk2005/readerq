@@ -4,8 +4,7 @@ import { useEffect, useState } from 'react';
 import { ArrowLeft, CheckCircle2, AlertCircle, Info, XCircle } from 'lucide-react';
 import { useApp } from '@/context/AppContext';
 import { useTheme } from '@/context/ThemeContext';
-import Sidebar from '@/components/layout/Sidebar';
-import DocumentList from '@/components/layout/DocumentList';
+import UnifiedSidebarList from '@/components/layout/UnifiedSidebarList';
 import ReadingPane from '@/components/layout/ReadingPane';
 import CommandPalette from '@/components/layout/CommandPalette';
 
@@ -42,76 +41,45 @@ export default function HomePage() {
   } = useApp();
   const { toggleTheme } = useTheme();
 
-  // 侧边栏与列表栏的自定义宽度状态 (以 px 为单位)
-  const [sidebarWidth, setSidebarWidth] = useState(240);
-  const [docListWidth, setDocListWidth] = useState(380);
+  // 合并后统一列表栏的自定义宽度状态 (默认 360px)
+  const [sidebarListWidth, setSidebarListWidth] = useState(360);
+  const [isResizingSidebarList, setIsResizingSidebarList] = useState(false);
 
-  // 在客户端组件挂载后加载已保存的宽度，避免 Hydration 错误
+  // 在客户端组件挂载后加载已保存的宽度
   useEffect(() => {
-    const savedSidebar = localStorage.getItem('readerq_sidebar_width');
-    if (savedSidebar) {
-      setSidebarWidth(parseInt(savedSidebar, 10));
-    }
-    const savedDocList = localStorage.getItem('readerq_doclist_width');
-    if (savedDocList) {
-      setDocListWidth(parseInt(savedDocList, 10));
+    const savedWidth = localStorage.getItem('readerq_sidebar_list_width') || localStorage.getItem('readerq_doclist_width');
+    if (savedWidth) {
+      setSidebarListWidth(parseInt(savedWidth, 10));
     }
 
     fetch('/api/settings')
       .then(res => res.json())
       .then(data => {
-        if (data && data.ui_sidebar_width) {
-          setSidebarWidth(parseInt(data.ui_sidebar_width, 10));
-        }
-        if (data && data.ui_doclist_width) {
-          setDocListWidth(parseInt(data.ui_doclist_width, 10));
+        if (data && data.ui_sidebar_list_width) {
+          setSidebarListWidth(parseInt(data.ui_sidebar_list_width, 10));
+        } else if (data && data.ui_doclist_width) {
+          setSidebarListWidth(parseInt(data.ui_doclist_width, 10));
         }
       })
       .catch(() => {});
   }, []);
-  const [isResizingSidebar, setIsResizingSidebar] = useState(false);
-  const [isResizingDocList, setIsResizingDocList] = useState(false);
 
-  // 拖拽调整 Sidebar 宽度
-  const handleSidebarResizeStart = (e) => {
+  // 拖拽调整统一列表栏宽度
+  const handleSidebarListResizeStart = (e) => {
     e.preventDefault();
-    setIsResizingSidebar(true);
+    setIsResizingSidebarList(true);
     const startX = e.clientX;
-    const startWidth = sidebarWidth;
+    const startWidth = sidebarListWidth;
 
     const handleMouseMove = (moveEvent) => {
       const deltaX = moveEvent.clientX - startX;
-      // 导航栏宽度限制在 160px 到 450px 之间
-      const newWidth = Math.max(160, Math.min(450, startWidth + deltaX));
-      setSidebarWidth(newWidth);
+      // 宽度限制在 260px 到 550px 之间
+      const newWidth = Math.max(260, Math.min(550, startWidth + deltaX));
+      setSidebarListWidth(newWidth);
     };
 
     const handleMouseUp = () => {
-      setIsResizingSidebar(false);
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
-    };
-
-    document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseup', handleMouseUp);
-  };
-
-  // 拖拽调整 DocumentList 宽度
-  const handleDocListResizeStart = (e) => {
-    e.preventDefault();
-    setIsResizingDocList(true);
-    const startX = e.clientX;
-    const startWidth = docListWidth;
-
-    const handleMouseMove = (moveEvent) => {
-      const deltaX = moveEvent.clientX - startX;
-      // 列表栏宽度限制在 240px 到 600px 之间
-      const newWidth = Math.max(240, Math.min(600, startWidth + deltaX));
-      setDocListWidth(newWidth);
-    };
-
-    const handleMouseUp = () => {
-      setIsResizingDocList(false);
+      setIsResizingSidebarList(false);
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
     };
@@ -122,26 +90,18 @@ export default function HomePage() {
 
   // 宽度变化并拖动结束时保存到 localStorage 与数据库
   useEffect(() => {
-    if (!isResizingSidebar && sidebarWidth !== 240) {
-      localStorage.setItem('readerq_sidebar_width', sidebarWidth.toString());
+    if (!isResizingSidebarList && sidebarListWidth !== 360) {
+      localStorage.setItem('readerq_sidebar_list_width', sidebarListWidth.toString());
       fetch('/api/settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ui_sidebar_width: sidebarWidth.toString() }),
+        body: JSON.stringify({ 
+          ui_sidebar_list_width: sidebarListWidth.toString(),
+          ui_doclist_width: sidebarListWidth.toString() 
+        }),
       }).catch(() => {});
     }
-  }, [sidebarWidth, isResizingSidebar]);
-
-  useEffect(() => {
-    if (!isResizingDocList && docListWidth !== 380) {
-      localStorage.setItem('readerq_doclist_width', docListWidth.toString());
-      fetch('/api/settings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ui_doclist_width: docListWidth.toString() }),
-      }).catch(() => {});
-    }
-  }, [docListWidth, isResizingDocList]);
+  }, [sidebarListWidth, isResizingSidebarList]);
 
   // 全局键盘快捷键
   useEffect(() => {
@@ -188,14 +148,10 @@ export default function HomePage() {
         cycleRightPanelTab();
       }
 
-      // \ -> 轮询切换文章列表模式 (全量卡片 380px -> 精简单行 200px -> 微型图标 68px)
+      // \ -> 切换文章列表模式 (全量卡片 <-> 精简单行)
       if (e.key === '\\' && !e.metaKey && !e.ctrlKey && document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA') {
         e.preventDefault();
-        setDocListMode(prev => {
-          if (prev === 'full') return 'slim';
-          if (prev === 'slim') return 'micro';
-          return 'full';
-        });
+        setDocListMode(prev => prev === 'full' ? 'slim' : 'full');
       }
 
       // Escape -> 关闭弹窗
@@ -206,21 +162,24 @@ export default function HomePage() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [setShowCommandPalette, cycleRightPanelTab, setSidebarCollapsed, syncData, toggleTheme, setShowAddUrl]);
+  }, [setShowCommandPalette, cycleRightPanelTab, setSidebarCollapsed, syncData, toggleTheme, setShowAddUrl, setDocListMode]);
 
   return (
     <>
       <div 
         className="app-layout"
-        style={isResizingSidebar || isResizingDocList ? { cursor: 'col-resize', userSelect: 'none' } : {}}
+        style={isResizingSidebarList ? { cursor: 'col-resize', userSelect: 'none' } : {}}
       >
-        <Sidebar width={sidebarWidth} />
         {!sidebarCollapsed && (
-          <div 
-            className={`resizer-bar ${isResizingSidebar ? 'dragging' : ''}`} 
-            onMouseDown={handleSidebarResizeStart} 
-          />
+          <>
+            <UnifiedSidebarList width={sidebarListWidth} />
+            <div 
+              className={`resizer-bar ${isResizingSidebarList ? 'dragging' : ''}`} 
+              onMouseDown={handleSidebarListResizeStart} 
+            />
+          </>
         )}
+
         {currentView === 'daily-review' ? (
           <div style={{ flex: 1, minWidth: 0, height: '100%', overflow: 'hidden' }}>
             <DailyReviewView onBackToArticles={() => switchView('all')} />
@@ -265,16 +224,7 @@ export default function HomePage() {
             </div>
           </div>
         ) : (
-          <>
-            <DocumentList width={docListMode === 'micro' ? 68 : docListMode === 'slim' ? 200 : docListWidth} />
-            {docListMode === 'full' && (
-              <div 
-                className={`resizer-bar ${isResizingDocList ? 'dragging' : ''}`} 
-                onMouseDown={handleDocListResizeStart} 
-              />
-            )}
-            <ReadingPane />
-          </>
+          <ReadingPane />
         )}
       </div>
 
