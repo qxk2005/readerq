@@ -62,7 +62,21 @@ export default function HomePage() {
         }
       })
       .catch(() => {});
-  }, []);
+
+    // 支持通过 URL ?docId=... 快速定位与打开文档
+    const urlParams = new URLSearchParams(window.location.search);
+    const queryDocId = urlParams.get('docId');
+    if (queryDocId) {
+      fetch(`/api/readwise/documents?id=${queryDocId}`)
+        .then(res => res.json())
+        .then(doc => {
+          if (doc && !doc.error) {
+            setSelectedDoc(doc);
+          }
+        })
+        .catch(() => {});
+    }
+  }, [setSelectedDoc]);
 
   // 拖拽调整统一列表栏宽度
   const handleSidebarListResizeStart = (e) => {

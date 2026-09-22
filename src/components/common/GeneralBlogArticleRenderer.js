@@ -3,8 +3,10 @@
 import React, { useMemo, useEffect, useRef, Component } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
 import { Link as LinkIcon, RefreshCw, Sparkles, Loader2, Cpu } from 'lucide-react';
 import { sanitizeMarkdownQuotes } from '@/lib/utils';
+import { preprocessLatexFormulas } from '@/lib/mathjaxHelper';
 
 /**
  * 局部错误边界：用于捕获并自愈任何浏览器 DOM 协调异常
@@ -80,11 +82,11 @@ const GeneralBlogArticleRenderer = React.memo(
       }
     }, [blogContent, isGenerating, onRendered, articleRef]);
 
-    // 预处理 Markdown：自动清洗与 URI 编码 [原文](#quote-含空格或英文的短语) 中的 URL 部分
-    // 解决 CommonMark 规范不允许 URL 包含未转义空格/特殊符号导致 [原文](#quote-foo bar) 无法解析为 <a> 链接的问题
+    // 预处理 Markdown：自动清洗与 URI 编码 [原文](#quote-含空格或英文的短语) 中的 URL 部分，并对数学公式做定界符保护
     const sanitizedBlogContent = useMemo(() => {
       if (!blogContent) return '';
-      return sanitizeMarkdownQuotes(blogContent);
+      const preprocessed = preprocessLatexFormulas(blogContent);
+      return sanitizeMarkdownQuotes(preprocessed);
     }, [blogContent]);
 
     // 生成轮次自增 Key：每次重新触发生成时递增，确保以干净且无任何 <mark> 污染的全新 DOM 树挂载
@@ -98,6 +100,16 @@ const GeneralBlogArticleRenderer = React.memo(
     }, [isGenerating]);
 
     const components = useMemo(() => ({
+      math: ({ value, children }) => (
+        <div className="math math-display">
+          {`$$\n${value || children || ''}\n$$`}
+        </div>
+      ),
+      inlineMath: ({ value, children }) => (
+        <span className="math math-inline">
+          {`$${value || children || ''}$`}
+        </span>
+      ),
       a: ({ href, children }) => {
         if (href && href.startsWith('#quote-')) {
           const rawQuote = href.replace(/^#quote-/, '');
@@ -240,7 +252,7 @@ const GeneralBlogArticleRenderer = React.memo(
           )}
 
           {/* 实时流式输出的 Markdown 文章渲染 */}
-          <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
+          <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} components={components}>
             {sanitizedBlogContent}
           </ReactMarkdown>
 

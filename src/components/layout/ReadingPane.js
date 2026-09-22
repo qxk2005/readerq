@@ -14,6 +14,7 @@ import ParagraphPreviewDrawer from '@/components/common/ParagraphPreviewDrawer';
 import GeneralBlogArticleRenderer from '@/components/common/GeneralBlogArticleRenderer';
 import { BookOpen, Link, Info, Edit3, Bot, Loader2, ClipboardList, AlertTriangle, RefreshCw, CheckCircle2, XCircle, ImageIcon, Upload, Trash2, RotateCcw, Inbox, Clock, Archive, Volume2, Share2, Play, Pause, SkipBack, SkipForward, X, Copy, Check, ArrowUpDown, Target, ArrowLeft, Sparkles, FileText, Bookmark, MoreHorizontal, ExternalLink, PanelLeftOpen } from 'lucide-react';
 import RssAiRecommendView from '@/components/home/RssAiRecommendView';
+import { preprocessLatexFormulas, typesetMathJax } from '@/lib/mathjaxHelper';
 
 const scrollToElement = (container, element) => {
   if (!container || !element) return;
@@ -389,13 +390,15 @@ export default function ReadingPane() {
   // 将高亮中的段落文本与 Markdown 图片解析为在正文中穿插顺序一致的块
   const parseHighlightContentBlocks = useCallback((text) => {
     if (!text) return [];
+    // 针对列表项符号与内容被意外插入换行的情况进行归一化清洗：将 "• \n文本" 或 "1. \n文本" 修复为 "• 文本"
+    const normalizedText = text.replace(/([•·\-\*]|\d+\.)[ \t]*\n+[ \t]*/g, '$1 ');
     const mdImageRegex = /!\[([^\]]*)\]\(([^)]+)\)/g;
     const blocks = [];
     let lastIndex = 0;
     let match;
 
-    while ((match = mdImageRegex.exec(text)) !== null) {
-      const textBefore = text.slice(lastIndex, match.index)
+    while ((match = mdImageRegex.exec(normalizedText)) !== null) {
+      const textBefore = normalizedText.slice(lastIndex, match.index)
         .replace(/\n{3,}/g, '\n\n')
         .trim();
       if (textBefore) {
@@ -409,7 +412,7 @@ export default function ReadingPane() {
       lastIndex = mdImageRegex.lastIndex;
     }
 
-    const remainingText = text.slice(lastIndex)
+    const remainingText = normalizedText.slice(lastIndex)
       .replace(/\n{3,}/g, '\n\n')
       .trim();
     if (remainingText) {
@@ -856,6 +859,7 @@ export default function ReadingPane() {
             const activeContainer = document.querySelector('.blog-article');
             if (!activeContainer) return;
             restoreBlogHighlightsToContainer(activeContainer);
+            typesetMathJax(activeContainer);
           }, 150);
         }
       } else if (articleContainer && selectedDoc?.html_content) {
@@ -868,8 +872,12 @@ export default function ReadingPane() {
         lastRenderedDocIdRef.current = selectedDoc?.id;
 
         // 必须先重置 DOM 避免多次添加 <mark> 导致文本 offset 计算错误
-        articleContainer.innerHTML = sanitizeArticleHtml(selectedDoc.html_content);
+        // 先进行智能 LaTeX 语法预处理，再进行 HTML 安全净化
+        const processedHtml = preprocessLatexFormulas(selectedDoc.html_content);
+        articleContainer.innerHTML = sanitizeArticleHtml(processedHtml);
         attachImageErrorFallback(articleContainer);
+        // 立即调度 MathJax 进行即时数学排版（防止异步微任务或取消导致漏排）
+        typesetMathJax(articleContainer);
 
         timerId = setTimeout(() => {
           if (!articleContainer) return;
@@ -877,6 +885,9 @@ export default function ReadingPane() {
             const rect = e.target.getBoundingClientRect();
             setEditingHighlight({ ...hl, rect });
           });
+          // 高亮还原后再次确认排版
+          typesetMathJax(articleContainer);
+
           // 缓存推算出的 location_start 到 ref，供侧边栏排序使用
           if (processed) {
             const posMap = {};
@@ -972,7 +983,7 @@ export default function ReadingPane() {
     const fragment = range.cloneContents();
     const parts = [];
     
-    const walk = (node, olCounter = null) => {
+    const walk = (node, olCounter = null, isDirectFirstChildOfLi = false) => {
       if (node.nodeType === Node.TEXT_NODE) {
         parts.push(node.textContent);
       } else if (node.nodeType === Node.ELEMENT_NODE) {
@@ -993,8 +1004,8 @@ export default function ReadingPane() {
           return;
         }
         const isBlock = BLOCK_ELEMENTS.has(tagName);
-        // 在块级元素开头插入换行（如果前面已经有内容）
-        if (isBlock && parts.length > 0 && parts[parts.length - 1] !== '\n') {
+        // 在块级元素开头插入换行（如果前面已经有内容，且不是 LI 的首个直接子块级元素，避免在 • 后面立即换行）
+        if (isBlock && !isDirectFirstChildOfLi && parts.length > 0 && parts[parts.length - 1] !== '\n') {
           parts.push('\n');
         }
         // 为列表项添加标记符号
@@ -1007,8 +1018,13 @@ export default function ReadingPane() {
         }
         // 有序列表：传递计数器给子节点
         const childCounter = (tagName === 'OL') ? { value: 1 } : olCounter;
+        let isFirstChild = tagName === 'LI';
         for (const child of node.childNodes) {
-          walk(child, childCounter);
+          walk(child, childCounter, isFirstChild);
+          // 仅首个有效元素或非空文本节点作为首子节点
+          if (child.nodeType === Node.ELEMENT_NODE || (child.nodeType === Node.TEXT_NODE && child.textContent.trim())) {
+            isFirstChild = false;
+          }
         }
         // 在块级元素结尾插入换行
         if (isBlock && parts.length > 0 && parts[parts.length - 1] !== '\n') {
@@ -2354,7 +2370,7 @@ export default function ReadingPane() {
                 ) : selectedDoc.html_content ? (
                   <div
                     ref={articleRef}
-                    className="reading-article-body"
+                    className="reading-article-body tex2jax_process"
                   />
                 ) : (
                   <div className="reading-article-body" style={{ margin: 'var(--space-6) 0' }}>
